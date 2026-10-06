@@ -1,4 +1,13 @@
-import { BrawlerEntity, BrawlPlayerInput, BrawlWall, Bush, GemDrop, PowerCubeDrop, PowerCubeBox } from '../types/brawl';
+import {
+  BrawlerEntity,
+  BrawlPlayerInput,
+  BrawlWall,
+  Bush,
+  GemDrop,
+  PowerCubeDrop,
+  PowerCubeBox,
+  BRAWLERS,
+} from '../types/brawl';
 import { dist } from '../core/math';
 import { hasLineOfSight } from '../core/collision';
 import { NavGrid } from '../core/navGrid';
@@ -85,8 +94,24 @@ export class BrawlBot {
     }
 
     if (hasTarget) {
-      aimAngle = Math.atan2(targetY - bot.y, targetX - bot.x);
       targetDist = dist(bot.x, bot.y, targetX, targetY);
+
+      // Lead a moving target by the projectile's flight time. Aiming at where
+      // an enemy currently stands means every shot lands behind them the moment
+      // they move, which is why bots never hit anything that was not walking
+      // straight at them.
+      //
+      // The lead is deliberately short of perfect: a bot that solves the
+      // intercept exactly is unpleasant to play against.
+      let leadX = targetX;
+      let leadY = targetY;
+      if (nearestEnemy) {
+        const speed = BRAWLERS[bot.brawlerId].projectileSpeed || 500;
+        const flightTime = Math.min(targetDist / speed, 0.6);
+        leadX += nearestEnemy.vx * flightTime * 0.82;
+        leadY += nearestEnemy.vy * flightTime * 0.82;
+      }
+      aimAngle = Math.atan2(leadY - bot.y, leadX - bot.x);
 
       // Check attack range based on brawler
       const maxRange = bot.brawlerId === 'boulder' ? 160 : bot.brawlerId === 'mira' ? 300 : 420;

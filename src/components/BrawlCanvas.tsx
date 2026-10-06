@@ -116,6 +116,19 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   const getSnapshotRef = useRef<(() => BrawlSnapshot | null) | undefined>(getSnapshot);
   getSnapshotRef.current = getSnapshot;
 
+  /**
+   * World-space bounds of what the camera can currently see, with a margin so
+   * nothing pops in at the edge. Every draw pass tests against this before
+   * doing any work: the arena is 2400x1800 and the camera shows roughly a
+   * fifth of it, so most of the level was being drawn off screen every frame.
+   */
+  const cullRef = useRef({ minX: -1e9, minY: -1e9, maxX: 1e9, maxY: 1e9 });
+
+  const inView = (x: number, y: number, w = 0, h = 0): boolean => {
+    const c = cullRef.current;
+    return x + w >= c.minX && x <= c.maxX && y + h >= c.minY && y <= c.maxY;
+  };
+
   const viewRef = useRef<ViewMetrics>({
     w: 1,
     h: 1,
@@ -379,6 +392,14 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
       const cam = cameraRef.current;
 
+      const cullMargin = 90;
+      cullRef.current = {
+        minX: cam.x - view.worldW / 2 - cullMargin,
+        minY: cam.y - view.worldH / 2 - cullMargin,
+        maxX: cam.x + view.worldW / 2 + cullMargin,
+        maxY: cam.y + view.worldH / 2 + cullMargin,
+      };
+
       // 1. CLEAR & SAVE WORLD MATRIX
       // Everything below works in CSS pixels; the device-pixel-ratio scale is
       // applied once here so drawing code never has to know about it.
@@ -444,11 +465,13 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
         // 10. DRAW BRAWLERS
         snap.brawlers.forEach(b => {
+          if (!inView(b.x - 60, b.y - 60, 120, 120)) return;
           drawBrawler(ctx, b, b.id === myId, myBrawler);
         });
 
         // 11. DRAW PROJECTILES
         snap.projectiles.forEach(p => {
+          if (!inView(p.x - 24, p.y - 24, 48, 48)) return;
           drawProjectile(ctx, p);
         });
 
@@ -551,6 +574,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     const time = performance.now() * 0.003;
 
     bushes.forEach(b => {
+      if (!inView(b.x, b.y, b.w, b.h)) return;
       ctx.save();
 
       // Drop shadow for bush cluster
@@ -601,6 +625,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   const drawThornFields = (ctx: CanvasRenderingContext2D, fields: any[]) => {
     const time = performance.now() * 0.005;
     fields.forEach(f => {
+      if (!inView(f.x - f.radius, f.y - f.radius, f.radius * 2, f.radius * 2)) return;
       ctx.save();
       ctx.translate(f.x, f.y);
 
@@ -643,6 +668,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   const drawFirePatches = (ctx: CanvasRenderingContext2D, patches: any[]) => {
     const time = performance.now() * 0.008;
     patches.forEach(fp => {
+      if (!inView(fp.x - fp.radius, fp.y - fp.radius, fp.radius * 2, fp.radius * 2)) return;
       ctx.save();
       ctx.translate(fp.x, fp.y);
 
@@ -876,6 +902,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   // Authentic 3D Showdown Wooden & Metal Power Cube Boxes
   const drawBoxes = (ctx: CanvasRenderingContext2D, boxes: any[]) => {
     boxes.forEach(b => {
+      if (!inView(b.x, b.y, b.w, b.h)) return;
       ctx.save();
 
       // Drop shadow
@@ -956,6 +983,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     // 1. Purple Gems
     gems.forEach(g => {
+      if (!inView(g.x - 24, g.y - 24, 48, 48)) return;
       const bobY = Math.sin(time * 3 + g.x) * 4;
       ctx.save();
       ctx.translate(g.x, g.y + bobY);
@@ -977,6 +1005,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     // 2. Emerald Power Cubes
     cubes.forEach(c => {
+      if (!inView(c.x - 26, c.y - 26, 52, 52)) return;
       const bobY = Math.sin(time * 3 + c.x * 2) * 4;
       ctx.save();
       ctx.translate(c.x, c.y + bobY);
@@ -1000,6 +1029,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   // 3D Isometric Wall Blocks
   const drawWalls = (ctx: CanvasRenderingContext2D, walls: any[]) => {
     walls.forEach(w => {
+      if (!inView(w.x, w.y, w.w, w.h)) return;
       ctx.save();
 
       // Drop shadow for 3D depth
