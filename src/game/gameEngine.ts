@@ -204,27 +204,28 @@ export class GameEngine {
 
       if (!input) continue;
 
-      // Rotate body
-      if (input.turnLeft) tank.angle -= rotateSpeed * dt;
-      if (input.turnRight) tank.angle += rotateSpeed * dt;
-
       // Turret angle
       tank.turretAngle = input.aimAngle;
 
-      // Move forward/backward
       const speed = tank.speedBoostTimer > 0 ? baseSpeed * 1.5 : baseSpeed;
-      let moveDir = 0;
-      if (input.moveForward) moveDir += 1;
-      if (input.moveBackward) moveDir -= 0.65;
 
-      if (moveDir !== 0) {
-        const dx = Math.cos(tank.angle) * speed * moveDir * dt;
-        const dy = Math.sin(tank.angle) * speed * moveDir * dt;
+      // Direct WASD / Arrow Directional Movement
+      if (input.moveX !== 0 || input.moveY !== 0) {
+        const len = Math.hypot(input.moveX, input.moveY) || 1;
+        const normX = input.moveX / len;
+        const normY = input.moveY / len;
 
-        tank.x += dx;
-        tank.y += dy;
+        tank.x += normX * speed * dt;
+        tank.y += normY * speed * dt;
 
-        // Add tread mark periodically
+        // Smoothly rotate tank body towards motion direction
+        const targetAngle = Math.atan2(normY, normX);
+        let diff = targetAngle - tank.angle;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        tank.angle += diff * Math.min(1, dt * 16);
+
+        // Add tread mark
         if (Math.random() < 0.25) {
           this.treadMarks.push({
             x: tank.x,
@@ -233,6 +234,29 @@ export class GameEngine {
             alpha: 0.35,
           });
           if (this.treadMarks.length > 80) this.treadMarks.shift();
+        }
+      } else {
+        // Classic Tank Rotation & Drive (Fallback)
+        if (input.turnLeft) tank.angle -= rotateSpeed * dt;
+        if (input.turnRight) tank.angle += rotateSpeed * dt;
+
+        let moveDir = 0;
+        if (input.moveForward) moveDir += 1;
+        if (input.moveBackward) moveDir -= 0.65;
+
+        if (moveDir !== 0) {
+          tank.x += Math.cos(tank.angle) * speed * moveDir * dt;
+          tank.y += Math.sin(tank.angle) * speed * moveDir * dt;
+
+          if (Math.random() < 0.25) {
+            this.treadMarks.push({
+              x: tank.x,
+              y: tank.y,
+              angle: tank.angle,
+              alpha: 0.35,
+            });
+            if (this.treadMarks.length > 80) this.treadMarks.shift();
+          }
         }
       }
 

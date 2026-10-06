@@ -22,6 +22,7 @@ export const App: React.FC = () => {
   const [isInGame, setIsInGame] = useState<boolean>(false);
   const [isHost, setIsHost] = useState<boolean>(false);
   const [isSingleplayer, setIsSingleplayer] = useState<boolean>(false);
+  const [myPlayerId, setMyPlayerId] = useState<string>('');
   const [players, setPlayers] = useState<PlayerInfo[]>([]);
   const [targetScore, setTargetScore] = useState<number>(5);
 
@@ -89,6 +90,9 @@ export const App: React.FC = () => {
     setRoomCode(code);
     setIsHost(true);
     setIsSingleplayer(false);
+    const hostId = `tk2d-${code.toUpperCase()}`;
+    setMyPlayerId(hostId);
+    myPlayerIdRef.current = hostId;
 
     const pm = new PeerManager({
       onConnected: () => {
@@ -107,7 +111,6 @@ export const App: React.FC = () => {
 
     peerManagerRef.current = pm;
     pm.hostRoom(code, playerName, playerColor);
-    myPlayerIdRef.current = `tk2d-${code.toUpperCase()}`;
   };
 
   // Join Game
@@ -119,6 +122,10 @@ export const App: React.FC = () => {
     const pm = new PeerManager({
       onConnected: () => {
         setIsInRoom(true);
+        if (pm.myId) {
+          setMyPlayerId(pm.myId);
+          myPlayerIdRef.current = pm.myId;
+        }
       },
       onPlayersChanged: updatedPlayers => {
         setPlayers([...updatedPlayers]);
@@ -141,7 +148,6 @@ export const App: React.FC = () => {
 
     peerManagerRef.current = pm;
     pm.joinRoom(roomCode, playerName, playerColor);
-    myPlayerIdRef.current = pm.myId;
   };
 
   // Start Singleplayer (Instant vs 3 Bots)
@@ -151,6 +157,7 @@ export const App: React.FC = () => {
     setIsInRoom(false);
 
     const myId = 'local-player';
+    setMyPlayerId(myId);
     myPlayerIdRef.current = myId;
 
     const botColors: TankColor[] = ['red', 'green', 'amber'];
@@ -315,14 +322,14 @@ export const App: React.FC = () => {
         <div className="relative w-full h-full flex items-center justify-center bg-slate-950">
           <GameCanvas
             snapshot={snapshot}
-            myPlayerId={myPlayerIdRef.current}
+            myPlayerId={myPlayerId}
             onSendInput={handleSendInput}
             isHost={isHost}
           />
 
           <GameHUD
             snapshot={snapshot}
-            myPlayerId={myPlayerIdRef.current}
+            myPlayerId={myPlayerId}
             isHost={isHost}
             onOpenHelp={() => setIsHelpOpen(true)}
             onLeaveGame={handleLeaveGame}
@@ -333,7 +340,7 @@ export const App: React.FC = () => {
           {snapshot?.phase === 'match_end' && (
             <VictoryModal
               snapshot={snapshot}
-              myPlayerId={myPlayerIdRef.current}
+              myPlayerId={myPlayerId}
               isHost={isHost}
               onRestartMatch={handleRestartMatch}
               onReturnToLobby={handleLeaveGame}

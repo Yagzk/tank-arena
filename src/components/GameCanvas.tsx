@@ -30,8 +30,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     rightDown: false,
   });
 
-  // Track previous bullet/mine count to trigger local screen shakes
-  const prevBulletCountRef = useRef<number>(0);
+  // Stable references so interval and listeners never reset on snapshot updates
+  const snapshotRef = useRef<GameStateSnapshot | null>(snapshot);
+  snapshotRef.current = snapshot;
+
+  const myPlayerIdRef = useRef<string>(myPlayerId);
+  myPlayerIdRef.current = myPlayerId;
+
+  const onSendInputRef = useRef<(input: PlayerInput) => void>(onSendInput);
+  onSendInputRef.current = onSendInput;
 
   // Handle inputs and send at 60fps
   useEffect(() => {
@@ -40,18 +47,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
         e.preventDefault();
       }
-      keysRef.current[e.code.toLowerCase()] = true;
+      if (e.code) keysRef.current[e.code.toLowerCase()] = true;
+      if (e.key) keysRef.current[e.key.toLowerCase()] = true;
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      keysRef.current[e.code.toLowerCase()] = false;
+      if (e.code) keysRef.current[e.code.toLowerCase()] = false;
+      if (e.key) keysRef.current[e.key.toLowerCase()] = false;
     };
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!canvasRef.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
-      const scaleX = ARENA_WIDTH / rect.width;
-      const scaleY = ARENA_HEIGHT / rect.height;
+      const scaleX = ARENA_WIDTH / (rect.width || 1);
+      const scaleY = ARENA_HEIGHT / (rect.height || 1);
       mouseRef.current.x = (e.clientX - rect.left) * scaleX;
       mouseRef.current.y = (e.clientY - rect.top) * scaleY;
     };
@@ -80,27 +89,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('contextmenu', handleContextMenu);
 
-    // Send input loop
+    // Send input loop (runs cleanly at 60 FPS without interruption)
     const inputInterval = setInterval(() => {
       const keys = keysRef.current;
-      const myTank = snapshot?.tanks.find(t => t.id === myPlayerId);
+      const currentSnap = snapshotRef.current;
+      const myId = myPlayerIdRef.current;
+      const myTank = currentSnap?.tanks.find(t => t.id === myId);
 
       let aimAngle = 0;
       if (myTank) {
         aimAngle = Math.atan2(mouseRef.current.y - myTank.y, mouseRef.current.x - myTank.x);
       }
 
+      let moveX = 0;
+      let moveY = 0;
+      if (keys['keyw'] || keys['w'] || keys['arrowup']) moveY -= 1;
+      if (keys['keys'] || keys['s'] || keys['arrowdown']) moveY += 1;
+      if (keys['keya'] || keys['a'] || keys['arrowleft']) moveX -= 1;
+      if (keys['keyd'] || keys['d'] || keys['arrowright']) moveX += 1;
+
       const input: PlayerInput = {
-        moveForward: !!(keys['keyw'] || keys['arrowup']),
-        moveBackward: !!(keys['keys'] || keys['arrowdown']),
-        turnLeft: !!(keys['keya'] || keys['arrowleft']),
-        turnRight: !!(keys['keyd'] || keys['arrowright']),
+        moveX,
+        moveY,
+        moveForward: moveY < 0,
+        moveBackward: moveY > 0,
+        turnLeft: moveX < 0,
+        turnRight: moveX > 0,
         aimAngle,
-        shoot: !!(mouseRef.current.isDown || keys['space']),
-        placeMine: !!(mouseRef.current.rightDown || keys['keyq'] || keys['keye'] || keys['shiftleft']),
+        shoot: !!(mouseRef.current.isDown || keys['space'] || keys[' ']),
+        placeMine: !!(mouseRef.current.rightDown || keys['keyq'] || keys['q'] || keys['keye'] || keys['e'] || keys['shiftleft'] || keys['shift']),
       };
 
-      onSendInput(input);
+      onSendInputRef.current?.(input);
     }, 1000 / 60);
 
     return () => {
@@ -112,7 +132,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       window.removeEventListener('contextmenu', handleContextMenu);
       clearInterval(inputInterval);
     };
-  }, [snapshot, myPlayerId, onSendInput]);
+  }, []);
 
   // Main Render Loop
   useEffect(() => {

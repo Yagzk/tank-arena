@@ -176,6 +176,8 @@ export interface GameStateSnapshot {
 }
 
 export interface PlayerInput {
+  moveX: number;
+  moveY: number;
   moveForward: boolean;
   moveBackward: boolean;
   turnLeft: boolean;

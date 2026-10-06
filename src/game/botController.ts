@@ -78,6 +78,8 @@ export class BotController {
     const shouldMine = targetEnemy && minEnemyDist < 120 && Math.random() < 0.05;
 
     return {
+      moveX: 0,
+      moveY: 0,
       moveForward: this.currentMove.forward,
       moveBackward: this.currentMove.backward,
       turnLeft: this.currentMove.left,
