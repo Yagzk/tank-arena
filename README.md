@@ -45,6 +45,13 @@ Her karakterin ayrıca bir **aksesuarı** (3 kullanım) ve bir **yıldız gücü
 
 ---
 
+## 🗺️ Yol Haritası
+
+Tüm geliştirme planı — mekanik envanteri, 24 kişilik kadro planı, modlar,
+haritalar, meta ve altyapı — [PLAN.md](PLAN.md) dosyasında.
+
+---
+
 ## 🧱 Mimari (Teknik)
 
 Simülasyon, render ve ağ katmanları ayrıldı. Çekirdek `src/core/` altında, oyundan bağımsız ve tekrar kullanılabilir:
