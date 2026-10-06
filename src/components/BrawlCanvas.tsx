@@ -17,6 +17,7 @@ import { CHARACTER_STYLES } from '../render/characterStyles';
 import { SnapshotInterpolator } from '../net/interpolation';
 import { TouchControls } from '../input/touchControls';
 import { getInputMode, onInputModeChange } from '../input/inputMode';
+import { profiler } from '../core/profiler';
 import { clamp } from '../core/math';
 
 /**
@@ -107,6 +108,10 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     hp: Infinity,
     superReady: false,
   });
+
+  /** Diagnostics overlay, toggled with F3. */
+  const showDiagnosticsRef = useRef<boolean>(false);
+  const lastFrameAtRef = useRef<number>(performance.now());
 
   /** Mirrors the touch-device flag for the input loop, whose effect runs once
    *  and would otherwise close over the initial value forever. */
@@ -216,6 +221,11 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       }
       if (e.code) keysRef.current[e.code.toLowerCase()] = true;
       if (e.key) keysRef.current[e.key.toLowerCase()] = true;
+
+      if (e.code === 'F3') {
+        e.preventDefault();
+        showDiagnosticsRef.current = !showDiagnosticsRef.current;
+      }
 
       // Space key toggles Super Aiming Mode
       if (e.code === 'Space' || e.key === ' ') {
@@ -416,6 +426,11 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     let animId: number;
 
     const render = () => {
+      const now = performance.now();
+      profiler.frame.push(now - lastFrameAtRef.current);
+      lastFrameAtRef.current = now;
+      profiler.render.begin();
+
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -587,6 +602,19 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
           snap?.brawlers.find(b => b.id === myId),
           isSuperAimingRef.current
         );
+      }
+
+      if (snap) {
+        profiler.setCount('brawlers', snap.brawlers.length);
+        profiler.setCount('projectiles', snap.projectiles.length);
+        profiler.setCount('effects', snap.visualEffects?.length ?? 0);
+        profiler.setCount('walls', snap.walls.length);
+      }
+
+      profiler.render.end();
+
+      if (showDiagnosticsRef.current) {
+        drawDiagnostics(ctx, view);
       }
 
       animId = requestAnimationFrame(render);
@@ -1669,6 +1697,46 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.stroke();
       ctx.restore();
     }
+  };
+
+  /**
+   * Frame budget and entity counts, toggled with F3.
+   *
+   * Simulation and render are timed separately because they fail for different
+   * reasons and are fixed in different places; a single "FPS" number hides
+   * which one is actually costing you the frame.
+   */
+  const drawDiagnostics = (ctx: CanvasRenderingContext2D, view: ViewMetrics) => {
+    const lines = [
+      `${profiler.fps.toFixed(0)} fps   frame ${profiler.frame.average.toFixed(2)}ms (p95 ${profiler.frame.p95.toFixed(2)})`,
+      `sim ${profiler.simulation.average.toFixed(2)}ms (p95 ${profiler.simulation.p95.toFixed(2)})   steps ${profiler.stepsLastFrame}`,
+      `draw ${profiler.render.average.toFixed(2)}ms (p95 ${profiler.render.p95.toFixed(2)})`,
+      Object.entries(profiler.counts)
+        .map(([label, value]) => `${label} ${value}`)
+        .join('   '),
+      `zoom ${view.zoom.toFixed(2)}   dpr ${view.dpr}   view ${Math.round(view.worldW)}x${Math.round(view.worldH)}`,
+    ];
+
+    ctx.save();
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    // Sits below the top HUD bar so the two do not overlap.
+    const top = 62;
+    const width = Math.max(...lines.map(l => ctx.measureText(l).width)) + 20;
+    const height = lines.length * 16 + 16;
+
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.82)';
+    ctx.fillRect(10, top, width, height);
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(10, top, width, height);
+
+    ctx.fillStyle = '#e2e8f0';
+    lines.forEach((line, i) => ctx.fillText(line, 20, top + 10 + i * 16));
+    ctx.restore();
   };
 
   const drawFloatingNumbers = (ctx: CanvasRenderingContext2D, numbers: any[]) => {

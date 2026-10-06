@@ -15,6 +15,7 @@ import { BrawlHUD } from './components/BrawlHUD';
 import { StarPlayerModal } from './components/StarPlayerModal';
 import { GameLoop } from './core/loop';
 import { seedFromString } from './core/rng';
+import { profiler } from './core/profiler';
 
 /**
  * How often React is allowed to re-render the HUD.
@@ -279,7 +280,9 @@ export const App: React.FC = () => {
     // everything through walls on the next frame.
     const loop = new GameLoop({
       update: dt => {
+        profiler.simulation.begin();
         engine.update(dt);
+        profiler.simulation.end();
 
         hudAccumulator += dt;
         if (hudAccumulator >= HUD_REFRESH_INTERVAL) {
@@ -300,6 +303,7 @@ export const App: React.FC = () => {
       },
       render: () => {
         // The canvas owns its own render loop and pulls state directly.
+        profiler.stepsLastFrame = loop.lastStepCount;
       },
     });
 
