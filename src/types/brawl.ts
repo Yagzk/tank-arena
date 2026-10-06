@@ -346,13 +346,26 @@ export interface FirePatch {
 
 export interface VisualEffect {
   id: string;
-  type: 'explosion' | 'shockwave' | 'primo_slam' | 'smoke_poof' | 'debris' | 'dash' | 'band_aid';
+  type:
+    | 'explosion'
+    | 'shockwave'
+    | 'primo_slam'
+    | 'smoke_poof'
+    | 'debris'
+    | 'dash'
+    | 'band_aid'
+    | 'hit_spark'
+    | 'muzzle_flash';
   x: number;
   y: number;
   radius: number;
   color: string;
   duration: number;
   progress: number;
+  /** Facing, for effects that read directionally (sparks, muzzle flashes). */
+  angle?: number;
+  /** 0..1 weight driving spark count, scale and camera shake. */
+  intensity?: number;
 }
 
 export interface PowerCubeBox {

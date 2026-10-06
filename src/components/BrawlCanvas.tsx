@@ -389,9 +389,25 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       if (snap) {
         // Trigger screen shake on recent high-impact visual effects
         if (snap.visualEffects && snap.visualEffects.length > 0) {
-          const freshEffect = snap.visualEffects.find(fx => fx.progress < 0.1);
-          if (freshEffect && screenShakeRef.current.timer <= 0) {
-            screenShakeRef.current = { intensity: 8, timer: 0.22 };
+          // Shake strength follows the effect that caused it. Every effect used
+          // to produce the same jolt, so a pistol round shook the camera as hard
+          // as El Primo landing on it.
+          let strongest = 0;
+          for (const fx of snap.visualEffects) {
+            if (fx.progress > 0.12) continue;
+            const weight =
+              fx.type === 'hit_spark' || fx.type === 'muzzle_flash'
+                ? (fx.intensity ?? 0.3) * 2.2
+                : 9;
+            if (weight > strongest) strongest = weight;
+          }
+          if (strongest > screenShakeRef.current.intensity || screenShakeRef.current.timer <= 0) {
+            if (strongest > 0) {
+              screenShakeRef.current = {
+                intensity: strongest,
+                timer: strongest > 5 ? 0.22 : 0.09,
+              };
+            }
           }
         }
 
@@ -662,6 +678,61 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     effects.forEach(fx => {
       ctx.save();
       ctx.translate(fx.x, fx.y);
+
+      if (fx.type === 'hit_spark') {
+        // Short cone of sparks thrown along the projectile's heading, plus a
+        // bright core that collapses fast. Reads as a hit even in a crowd.
+        const p = fx.progress || 0;
+        const fade = Math.max(0, 1 - p);
+        const weight = fx.intensity ?? 0.5;
+        const heading = fx.angle ?? 0;
+
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, fx.radius * 0.42 * (1 - p * 0.7), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = fx.color || '#fde68a';
+        ctx.lineWidth = 2 + weight * 2;
+        ctx.lineCap = 'round';
+        const sparkCount = 3 + Math.round(weight * 5);
+        for (let i = 0; i < sparkCount; i++) {
+          const spreadAngle = heading + ((i / (sparkCount - 1)) - 0.5) * 1.5;
+          const reach = fx.radius * (0.5 + weight) * (0.35 + p * 0.9);
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(spreadAngle) * fx.radius * 0.2, Math.sin(spreadAngle) * fx.radius * 0.2);
+          ctx.lineTo(Math.cos(spreadAngle) * reach, Math.sin(spreadAngle) * reach);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+        return;
+      }
+
+      if (fx.type === 'muzzle_flash') {
+        const p = fx.progress || 0;
+        const fade = Math.max(0, 1 - p);
+        ctx.rotate(fx.angle ?? 0);
+        ctx.globalAlpha = fade * 0.9;
+
+        ctx.fillStyle = '#fffbeb';
+        ctx.beginPath();
+        ctx.ellipse(fx.radius * 0.35, 0, fx.radius * (0.55 + p * 0.5), fx.radius * 0.3 * fade, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = fx.color || '#fbbf24';
+        ctx.globalAlpha = fade * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(0, -fx.radius * 0.34);
+        ctx.lineTo(fx.radius * 1.25, 0);
+        ctx.lineTo(0, fx.radius * 0.34);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+        return;
+      }
 
       if (fx.type === 'primo_slam') {
         // El Primo Earthquake Crater

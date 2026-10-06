@@ -1,12 +1,20 @@
 import { BrawlerEntity, BrawlPlayerInput, BrawlWall, Bush, GemDrop, PowerCubeDrop, PowerCubeBox } from '../types/brawl';
 import { dist } from '../core/math';
 import { hasLineOfSight } from '../core/collision';
+import { NavGrid } from '../core/navGrid';
 
 export class BrawlBot {
   private changeMoveTimer: number = 0;
   private currentMoveX: number = 0;
   private currentMoveY: number = 0;
   private attackCooldown: number = 0;
+
+  /** Distance field toward this bot's current objective. */
+  private field: Int32Array | null = null;
+  private repathTimer: number = 0;
+  private fieldTargetX: number = 0;
+  private fieldTargetY: number = 0;
+  private readonly steer = { x: 0, y: 0 };
 
   public update(
     bot: BrawlerEntity,
@@ -16,10 +24,12 @@ export class BrawlBot {
     boxes: PowerCubeBox[],
     powerCubes: PowerCubeDrop[],
     gems: GemDrop[],
-    dt: number
+    dt: number,
+    nav: NavGrid
   ): BrawlPlayerInput {
     this.changeMoveTimer -= dt;
     this.attackCooldown -= dt;
+    this.repathTimer -= dt;
 
     // Find nearest living enemy
     const enemies = allBrawlers.filter(b => b.id !== bot.id && b.isAlive && (b.team !== bot.team || bot.team === -1));
@@ -41,6 +51,7 @@ export class BrawlBot {
     }
 
     // Aim calculation
+    let canSeeTarget = false;
     let aimAngle = bot.angle;
     let shouldAttack = false;
     let shouldSuper = false;
@@ -83,7 +94,7 @@ export class BrawlBot {
       // Bots used to fire whenever a target was in range, including straight
       // into the wall they were standing behind. Gate the trigger on actually
       // being able to see what they are shooting at.
-      const canSeeTarget = hasLineOfSight(bot.x, bot.y, targetX, targetY, walls);
+      canSeeTarget = hasLineOfSight(bot.x, bot.y, targetX, targetY, walls);
 
       if (targetDist <= maxRange && canSeeTarget && bot.ammo >= 1 && this.attackCooldown <= 0) {
         shouldAttack = true;
@@ -176,6 +187,14 @@ export class BrawlBot {
         }
       }
 
+    // Pathfinding runs every tick rather than on the decision timer: a route
+    // is only useful if the body keeps following it between decisions. When the
+    // objective is in plain sight the straight line is both shorter and
+    // smoother, so the flow field is only consulted around obstacles.
+    if (hasTarget && !canSeeTarget) {
+      this.followRoute(bot, nav, targetX, targetY);
+    }
+
     return {
       moveX: this.currentMoveX,
       moveY: this.currentMoveY,
@@ -186,5 +205,33 @@ export class BrawlBot {
       superTargetX: targetX,
       superTargetY: targetY,
     };
+  }
+
+  /**
+   * Steers along the flow field toward (tx, ty).
+   *
+   * The field is recomputed on a timer, and immediately whenever the objective
+   * has moved far enough that the old route would send the bot to where the
+   * target used to be. Flooding the whole grid is cheap — a few thousand cells —
+   * so this stays well inside budget even with ten bots.
+   */
+  private followRoute(bot: BrawlerEntity, nav: NavGrid, tx: number, ty: number) {
+    if (!this.field) this.field = nav.createField();
+
+    const targetMoved = dist(tx, ty, this.fieldTargetX, this.fieldTargetY) > 110;
+    if (this.repathTimer <= 0 || targetMoved) {
+      this.repathTimer = 0.4;
+      this.fieldTargetX = tx;
+      this.fieldTargetY = ty;
+      nav.computeDistanceField(tx, ty, this.field);
+    }
+
+    // When no neighbouring cell is closer the bot is either standing on the
+    // goal or the objective is walled off entirely. Either way, leave the
+    // decision layer's heading alone rather than freezing in place.
+    if (nav.sampleDirection(bot.x, bot.y, this.field, this.steer)) {
+      this.currentMoveX = this.steer.x;
+      this.currentMoveY = this.steer.y;
+    }
   }
 }

@@ -24,6 +24,7 @@ import { circleRectCollision, circleIntersect, sweepCircleVsRect, sweepCircleVsC
 import { dist, clamp, moveTowards, smoothstep } from '../core/math';
 import { Rng } from '../core/rng';
 import { SpatialHash } from '../core/spatialHash';
+import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
 
 export interface BrawlSoundEvent {
@@ -89,6 +90,10 @@ export class BrawlEngine {
   private wallGridDirty = true;
   /** Reused sweep result, so collision queries allocate nothing per tick. */
   private readonly sweep = createSweepHit();
+  /** Navigation mesh for bots, rebuilt when the level geometry changes. */
+  private navGrid = new NavGrid(MAP_WIDTH, MAP_HEIGHT, 40);
+  private navWallCount = -1;
+  private navBoxCount = -1;
 
   constructor() {
     const map = generateBrawlMap('showdown');
@@ -234,6 +239,7 @@ export class BrawlEngine {
 
     this.matchTimer += dt;
 
+    this.ensureNavGrid();
     this.updateBrawlers(dt);
     this.updateProjectiles(dt);
     this.updateThornFields(dt);
@@ -434,7 +440,8 @@ export class BrawlEngine {
           this.boxes,
           this.powerCubes,
           this.gems,
-          dt
+          dt,
+          this.navGrid
         );
         this.playerInputs[b.id] = input;
       }
@@ -731,6 +738,19 @@ export class BrawlEngine {
   private executeAttack(b: BrawlerEntity, input: BrawlPlayerInput) {
     const cfg = BRAWLERS[b.brawlerId];
     const dmgMultiplier = 1 + b.powerCubes * 0.1;
+
+    // Flash at the barrel so firing has a visible origin, not just projectiles
+    // appearing a few pixels ahead of the body.
+    this.addEffect(
+      'muzzle_flash',
+      b.x + Math.cos(input.aimAngle) * 24,
+      b.y + Math.sin(input.aimAngle) * 24,
+      17,
+      cfg.color,
+      0.1,
+      input.aimAngle,
+      0.45
+    );
 
     switch (b.brawlerId) {
       case 'shelly': {
@@ -1324,6 +1344,7 @@ export class BrawlEngine {
           continue; // carries on through the hole it just made
         }
         toRemove.add(p.id);
+        this.addEffect('hit_spark', hitX, hitY, 11, '#cbd5e1', 0.16, Math.atan2(p.vy, p.vx), 0.3);
         this.detonateProjectile(p, hitX, hitY);
         continue;
       }
@@ -1348,6 +1369,30 @@ export class BrawlEngine {
       if (hitKind === 'brawler' && hitTarget) {
         const effectiveDmg = this.applyDamageFalloff(p, p.damage);
         this.damageBrawler(hitTarget, effectiveDmg, p.ownerId);
+
+        // Impact spark, scaled by how hard the shot landed relative to the
+        // target's health pool, so a chip hit and a near-execution read
+        // differently at a glance.
+        const weight = clamp(effectiveDmg / Math.max(1, hitTarget.maxHp * 0.3), 0.25, 1);
+        this.addEffect(
+          'hit_spark',
+          hitX,
+          hitY,
+          14 + 22 * weight,
+          p.color,
+          0.22,
+          Math.atan2(p.vy, p.vx),
+          weight
+        );
+
+        // Every connecting shot nudges the target. Without it, taking fire read
+        // as a number appearing out of nowhere.
+        if (!p.knockbackForce) {
+          const nudge = 110 * weight;
+          const speed = Math.hypot(p.vx, p.vy) || 1;
+          hitTarget.knockbackVx += (p.vx / speed) * nudge;
+          hitTarget.knockbackVy += (p.vy / speed) * nudge;
+        }
 
         // Shelly's Super slows whatever it catches.
         if (p.brawlerId === 'shelly' && p.isSuper) {
@@ -1452,6 +1497,20 @@ export class BrawlEngine {
         else b.vy = 0;
       }
     }
+  }
+
+  /**
+   * Rebuilds the bot navigation grid when the level changes shape. Walls
+   * and boxes are both destructible, so a route that was blocked a second
+   * ago may now be open.
+   */
+  private ensureNavGrid() {
+    if (this.walls.length === this.navWallCount && this.boxes.length === this.navBoxCount) {
+      return;
+    }
+    this.navGrid.rebuild([this.walls, this.boxes], BRAWLER_RADIUS);
+    this.navWallCount = this.walls.length;
+    this.navBoxCount = this.boxes.length;
   }
 
   /** Rebuilds the static broadphase when the wall set has changed. */
@@ -1759,6 +1818,37 @@ export class BrawlEngine {
         this.countdownTimer = 15.0;
       }
     }
+  }
+
+  /**
+   * Queues a cosmetic effect. Impact feedback was the clearest thing missing
+   * from combat: a shot that connected produced a damage number and nothing
+   * else, so hits and misses felt identical.
+   */
+  private addEffect(
+    type: VisualEffect['type'],
+    x: number,
+    y: number,
+    radius: number,
+    color: string,
+    duration: number,
+    angle?: number,
+    intensity?: number
+  ) {
+    this.visualEffects.push({
+      id: `fx-${this.nextEntityId++}`,
+      type,
+      x,
+      y,
+      radius,
+      color,
+      duration,
+      progress: 0,
+      angle,
+      intensity,
+    });
+    // Cosmetic only — never let it grow without bound on a busy tick.
+    if (this.visualEffects.length > 96) this.visualEffects.shift();
   }
 
   private addFloatingNumber(text: string, x: number, y: number, color: string) {
