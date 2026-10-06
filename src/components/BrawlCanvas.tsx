@@ -15,6 +15,8 @@ import {
 } from '../render/characterArt';
 import { CHARACTER_STYLES } from '../render/characterStyles';
 import { SnapshotInterpolator } from '../net/interpolation';
+import { TouchControls } from '../input/touchControls';
+import { getInputMode, onInputModeChange } from '../input/inputMode';
 import { clamp } from '../core/math';
 
 /**
@@ -90,22 +92,25 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
   // Mobile Touch Joysticks State
   const [isTouchDevice, setIsTouchDevice] = useState<boolean>(false);
-  const moveJoystickRef = useRef<{ active: boolean; startX: number; startY: number; curX: number; curY: number }>({
-    active: false,
-    startX: 0,
-    startY: 0,
-    curX: 0,
-    curY: 0,
+  /**
+   * Twin-stick touch input. Aiming and firing are separate: dragging lines up a
+   * shot and releasing takes it, the way the genre expects on a phone.
+   */
+  const touchRef = useRef<TouchControls>(new TouchControls());
+
+  /** Remembers the last committed facing so the body does not snap back to a
+   *  default heading between shots. */
+  const lastAimAngleRef = useRef<number>(0);
+
+  /** Previous-frame values, for detecting the moments worth a haptic pulse. */
+  const hapticStateRef = useRef<{ hp: number; superReady: boolean }>({
+    hp: Infinity,
+    superReady: false,
   });
-  const aimJoystickRef = useRef<{ active: boolean; startX: number; startY: number; curX: number; curY: number }>({
-    active: false,
-    startX: 0,
-    startY: 0,
-    curX: 0,
-    curY: 0,
-  });
-  const superTouchRef = useRef<boolean>(false);
-  const gadgetTouchRef = useRef<boolean>(false);
+
+  /** Mirrors the touch-device flag for the input loop, whose effect runs once
+   *  and would otherwise close over the initial value forever. */
+  const isTouchDeviceRef = useRef<boolean>(false);
 
   // Stable references
   const snapshotRef = useRef<BrawlSnapshot | null>(snapshot);
@@ -150,12 +155,18 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     worldH: 1,
   });
 
-  // Touch Device Detection. Character art is generated in code, so there is
-  // nothing to preload.
+  // Follows how the player is actually driving the game, so a touchscreen
+  // laptop used with a mouse keeps the desktop controls and switches the
+  // moment a finger touches the screen.
   useEffect(() => {
-    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-      setIsTouchDevice(true);
-    }
+    const apply = (mode: 'pointer' | 'touch') => {
+      const touch = mode === 'touch';
+      isTouchDeviceRef.current = touch;
+      setIsTouchDevice(touch);
+      if (!touch) touchRef.current.reset();
+    };
+    apply(getInputMode());
+    return onInputModeChange(apply);
   }, []);
 
   // Window Resize Handling for Crisp Canvas DPI
@@ -180,6 +191,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       const design = cssW >= cssH ? DESIGN_VIEW_LANDSCAPE : DESIGN_VIEW_PORTRAIT;
       // Area-based so ultrawide and tall phones both land somewhere sensible.
       const zoom = clamp(Math.sqrt((cssW * cssH) / (design.w * design.h)), 0.75, 2.2);
+
+      touchRef.current.setViewport(cssW, cssH);
 
       viewRef.current = {
         w: cssW,
@@ -282,60 +295,95 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       if (keys['keya'] || keys['a'] || keys['arrowleft']) moveX -= 1;
       if (keys['keyd'] || keys['d'] || keys['arrowright']) moveX += 1;
 
-      // Mobile Touch Move Joystick override
-      if (moveJoystickRef.current.active) {
-        const dx = moveJoystickRef.current.curX - moveJoystickRef.current.startX;
-        const dy = moveJoystickRef.current.curY - moveJoystickRef.current.startY;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 10) {
-          moveX = dx / dist;
-          moveY = dy / dist;
-        }
+      const touch = touchRef.current;
+
+      // Touch movement overrides the keyboard. Magnitude is carried through
+      // rather than normalised away, so a half-deflected stick walks.
+      if (touch.move.magnitude > 0) {
+        moveX = touch.move.dirX * touch.move.magnitude;
+        moveY = touch.move.dirY * touch.move.magnitude;
       }
 
-      // Aim angle
-      let aimAngle = 0;
+      let aimAngle = lastAimAngleRef.current;
+      let isSuperAttack = false;
+      let isNormalAttack = false;
+
       if (myBrawler) {
-        if (aimJoystickRef.current.active) {
-          const dx = aimJoystickRef.current.curX - aimJoystickRef.current.startX;
-          const dy = aimJoystickRef.current.curY - aimJoystickRef.current.startY;
-          if (Math.hypot(dx, dy) > 10) {
-            aimAngle = Math.atan2(dy, dx);
+        const cfg = BRAWLERS[myBrawler.brawlerId] ?? BRAWLERS.mira;
+
+        /** Nearest enemy a quick-fire should snap to, if any is close enough. */
+        const autoAimTarget = () => {
+          let best: BrawlerEntity | null = null;
+          let bestDist = cfg.range * 1.35;
+          for (const other of snap?.brawlers ?? []) {
+            if (other.id === myId || !other.isAlive || other.isClone) continue;
+            if (snap?.mode === 'gem_grab' && other.team === myBrawler.team) continue;
+            if (other.invisibilityTimer > 0) continue;
+            if (other.isInBush && !other.isVisibleToEnemies) continue;
+            const d = Math.hypot(other.x - myBrawler.x, other.y - myBrawler.y);
+            if (d < bestDist) {
+              bestDist = d;
+              best = other;
+            }
           }
-        } else {
+          return best;
+        };
+
+        if (touch.isAiming && touch.action.magnitude > 0) {
+          // Aiming with a stick: face the stick, and project the Super's
+          // landing point out along it by how far the stick is pushed.
+          aimAngle = Math.atan2(touch.action.dirY, touch.action.dirX);
+          const reach = cfg.range * (0.35 + touch.action.magnitude * 0.65);
+          mouseRef.current.worldX = myBrawler.x + touch.action.dirX * reach;
+          mouseRef.current.worldY = myBrawler.y + touch.action.dirY * reach;
+        } else if (!isTouchDeviceRef.current) {
           aimAngle = Math.atan2(
             mouseRef.current.worldY - myBrawler.y,
             mouseRef.current.worldX - myBrawler.x
           );
         }
+
+        const pulse = touch.consumePulse();
+        if (pulse) {
+          if (pulse.aimed) {
+            aimAngle = Math.atan2(pulse.dirY, pulse.dirX);
+            const reach = cfg.range * (0.35 + pulse.magnitude * 0.65);
+            mouseRef.current.worldX = myBrawler.x + pulse.dirX * reach;
+            mouseRef.current.worldY = myBrawler.y + pulse.dirY * reach;
+          } else {
+            // A tap is a quick-fire: send it at whoever is closest rather than
+            // wherever the thumb happened to be.
+            const target = autoAimTarget();
+            if (target) {
+              aimAngle = Math.atan2(target.y - myBrawler.y, target.x - myBrawler.x);
+              mouseRef.current.worldX = target.x;
+              mouseRef.current.worldY = target.y;
+            }
+          }
+
+          if (pulse.kind === 'super') {
+            if (myBrawler.superCharge >= 100) isSuperAttack = true;
+          } else {
+            isNormalAttack = true;
+          }
+        }
+
+        // Desktop: hold to fire, Space / right-click arms the Super.
+        if (!isTouchDeviceRef.current) {
+          if (isSuperAimingRef.current && mouseRef.current.isDown) {
+            if (myBrawler.superCharge >= 100) {
+              isSuperAttack = true;
+              isSuperAimingRef.current = false;
+            }
+          } else if (mouseRef.current.isDown) {
+            isNormalAttack = true;
+          }
+        }
+
+        lastAimAngleRef.current = aimAngle;
       }
 
-      const isMouseFiring = mouseRef.current.isDown;
-      const isTouchFiring =
-        aimJoystickRef.current.active &&
-        Math.hypot(
-          aimJoystickRef.current.curX - aimJoystickRef.current.startX,
-          aimJoystickRef.current.curY - aimJoystickRef.current.startY
-        ) > 25;
-
-      let isSuperAttack = false;
-      let isNormalAttack = false;
-
-      // If Super Aiming Mode is active, clicking fires the Super!
-      if (isSuperAimingRef.current && (isMouseFiring || isTouchFiring || superTouchRef.current)) {
-        if (myBrawler && myBrawler.superCharge >= 100) {
-          isSuperAttack = true;
-          isSuperAimingRef.current = false; // Reset after launching
-        }
-      } else {
-        isNormalAttack = isMouseFiring || isTouchFiring;
-        if (superTouchRef.current && myBrawler && myBrawler.superCharge >= 100) {
-          isSuperAttack = true;
-        }
-      }
-
-      const isGadget = !!(keys['keye'] || keys['e'] || gadgetTouchRef.current);
-      if (gadgetTouchRef.current) gadgetTouchRef.current = false;
+      const isGadget = !!(keys['keye'] || keys['e']) || touch.consumeGadget();
 
       const input: BrawlPlayerInput = {
         moveX,
@@ -389,10 +437,29 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         // canvas, so the edge of the arena lines up at any zoom level.
         const halfW = Math.min(view.worldW / 2, MAP_WIDTH / 2);
         const halfH = Math.min(view.worldH / 2, MAP_HEIGHT / 2);
+        // On a phone the bottom of the screen is thumbs and buttons, so the
+        // camera sits a little low and leaves the character above that band.
+        const controlBias = isTouchDeviceRef.current ? view.worldH * 0.1 : 0;
         const targetX = clamp(myBrawler.x, halfW, MAP_WIDTH - halfW);
-        const targetY = clamp(myBrawler.y, halfH, MAP_HEIGHT - halfH);
+        const targetY = clamp(myBrawler.y + controlBias, halfH, MAP_HEIGHT - halfH);
         cameraRef.current.x += (targetX - cameraRef.current.x) * 0.12;
         cameraRef.current.y += (targetY - cameraRef.current.y) * 0.12;
+      }
+
+      // Haptics. A phone can tell you that you are being hit without you
+      // having to read a health bar, which is most of why mobile combat reads
+      // so clearly. A harmless no-op where the API is absent.
+      if (myBrawler && isTouchDeviceRef.current && typeof navigator.vibrate === 'function') {
+        const haptic = hapticStateRef.current;
+        if (myBrawler.hp < haptic.hp - 1) {
+          navigator.vibrate(18);
+        }
+        const superReady = myBrawler.superCharge >= 100;
+        if (superReady && !haptic.superReady) {
+          navigator.vibrate([30, 40, 30]);
+        }
+        haptic.hp = myBrawler.hp;
+        haptic.superReady = superReady;
       }
 
       // Screen Shake calculation
@@ -1204,6 +1271,37 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     ctx.restore(); // Restore body transform
 
+    // 4b. Ammo, drawn under the local character rather than only in a corner
+    //     of the screen. Reading your own ammo should never mean looking away
+    //     from the fight.
+    if (isMe) {
+      const pipWidth = 13;
+      const pipGap = 3;
+      const totalWidth = b.maxAmmo * pipWidth + (b.maxAmmo - 1) * pipGap;
+      const pipY = 30;
+      const whole = Math.floor(b.ammo);
+      const refilling = b.ammo < b.maxAmmo ? b.reloadTimer / (cfg.reloadTime || 1) : 0;
+
+      for (let slot = 0; slot < b.maxAmmo; slot++) {
+        const px = -totalWidth / 2 + slot * (pipWidth + pipGap);
+        // Full slots read solid; the one currently refilling fills left to
+        // right, so the wait is legible at a glance.
+        const fill = slot < whole ? 1 : slot === whole ? Math.min(1, refilling) : 0;
+
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+        ctx.beginPath();
+        ctx.roundRect(px, pipY, pipWidth, 5, 2.5);
+        ctx.fill();
+
+        if (fill > 0) {
+          ctx.fillStyle = fill >= 1 ? '#fbbf24' : '#a16207';
+          ctx.beginPath();
+          ctx.roundRect(px, pipY, pipWidth * fill, 5, 2.5);
+          ctx.fill();
+        }
+      }
+    }
+
     // 5. Star Power & Status Trails:
     if (b.brawlerId === 'rivet' && isMoving) {
       // Colt Slick Boots: Golden speed trail
@@ -1451,186 +1549,128 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   };
 
   // Authentic Nova Arena Aiming Reticle (Normal Mode vs Golden Super Mode)
+  /**
+   * Characters whose Super lands on a chosen spot rather than firing along a
+   * line. These preview as a target circle; everyone else previews as the
+   * actual spread of what they are about to fire.
+   */
+  const AREA_SUPERS: Partial<Record<BrawlerId, number>> = {
+    fuse: 150,
+    thorn: 135,
+    boulder: 125,
+  };
+
+  /**
+   * Ground preview of the shot being lined up.
+   *
+   * The old reticle was a fixed pair of dashed rays that showed neither range
+   * nor spread, so there was no way to know whether a target was actually
+   * inside the attack without firing. This draws the real shape: the cone a
+   * scattergun covers, the lane a rifle fires down, or the blast radius an area
+   * Super will drop — all at true scale, so the preview is the shot.
+   */
   const drawAimReticle = (
     ctx: CanvasRenderingContext2D,
     b: BrawlerEntity,
-    isSuperMode: boolean
+    isSuperAiming: boolean
   ) => {
-    const cfg = BRAWLERS[b.brawlerId];
+    const touch = touchRef.current;
+    const aimingSuper = isSuperAiming || (touch.isAiming && touch.actionKind === 'super');
+
+    // On a phone the preview belongs to the stick; on desktop the cursor is
+    // always aiming at something, so a quiet preview is always useful.
+    const engaged = isTouchDeviceRef.current ? touch.isAiming : true;
+    if (!engaged) return;
+
+    const cfg = BRAWLERS[b.brawlerId] ?? BRAWLERS.mira;
+    const ready = b.superCharge >= 100;
+    const tint = aimingSuper && ready ? '#facc15' : cfg.color;
+    const strength = isTouchDeviceRef.current ? 1 : 0.55;
+
     ctx.save();
+    ctx.translate(b.x, b.y);
 
-    if (isSuperMode && b.superCharge >= 100) {
-      // === GOLDEN SUPER AIMING MODE ===
-      ctx.strokeStyle = '#facc15';
-      ctx.fillStyle = '#facc15';
-      ctx.shadowColor = '#eab308';
-      ctx.shadowBlur = 16;
+    const areaRadius = aimingSuper && ready ? AREA_SUPERS[b.brawlerId] : undefined;
+
+    if (areaRadius !== undefined) {
+      // Landing-spot preview: a line out to the target and the blast it covers.
+      const targetX = mouseRef.current.worldX - b.x;
+      const targetY = mouseRef.current.worldY - b.y;
+      const reach = Math.min(Math.hypot(targetX, targetY), cfg.range);
+      const ang = Math.atan2(targetY, targetX);
+      const px = Math.cos(ang) * reach;
+      const py = Math.sin(ang) * reach;
+
+      ctx.globalAlpha = 0.55 * strength;
+      ctx.strokeStyle = tint;
       ctx.lineWidth = 3;
+      ctx.setLineDash([12, 10]);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang) * 26, Math.sin(ang) * 26);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-      if (b.brawlerId === 'boulder') {
-        const targetX = mouseRef.current.worldX;
-        const targetY = mouseRef.current.worldY;
-        const d = Math.min(380, Math.hypot(targetX - b.x, targetY - b.y));
-        const ang = Math.atan2(targetY - b.y, targetX - b.x);
-        const landX = b.x + Math.cos(ang) * d;
-        const landY = b.y + Math.sin(ang) * d;
+      ctx.globalAlpha = 0.2 * strength;
+      ctx.fillStyle = tint;
+      ctx.beginPath();
+      ctx.arc(px, py, areaRadius, 0, Math.PI * 2);
+      ctx.fill();
 
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath();
-        ctx.moveTo(b.x, b.y);
-        ctx.lineTo(landX, landY);
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(234, 179, 8, 0.25)';
-        ctx.beginPath();
-        ctx.arc(landX, landY, 70, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('💥', landX, landY);
-      } else if (b.brawlerId === 'fuse') {
-        const targetX = mouseRef.current.worldX;
-        const targetY = mouseRef.current.worldY;
-
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath();
-        ctx.moveTo(b.x, b.y);
-        ctx.lineTo(targetX, targetY);
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
-        ctx.strokeStyle = '#ef4444';
-        ctx.beginPath();
-        ctx.arc(targetX, targetY, 85, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.font = 'bold 22px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🎯', targetX, targetY);
-      } else if (b.brawlerId === 'thorn') {
-        const targetX = mouseRef.current.worldX;
-        const targetY = mouseRef.current.worldY;
-
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath();
-        ctx.moveTo(b.x, b.y);
-        ctx.lineTo(targetX, targetY);
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
-        ctx.strokeStyle = '#10b981';
-        ctx.beginPath();
-        ctx.arc(targetX, targetY, 90, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      } else if (b.brawlerId === 'mira') {
-        ctx.translate(b.x, b.y);
-        ctx.rotate(b.aimAngle);
-        ctx.beginPath();
-        ctx.moveTo(25, 0);
-        ctx.lineTo(400, -400 * Math.sin(0.28));
-        ctx.moveTo(25, 0);
-        ctx.lineTo(400, 400 * Math.sin(0.28));
-        ctx.stroke();
-
-        ctx.fillStyle = 'rgba(232, 121, 249, 0.2)';
-        ctx.beginPath();
-        ctx.moveTo(25, 0);
-        ctx.lineTo(400, -400 * Math.sin(0.28));
-        ctx.lineTo(400, 400 * Math.sin(0.28));
-        ctx.closePath();
-        ctx.fill();
-      } else if (b.brawlerId === 'rivet') {
-        ctx.translate(b.x, b.y);
-        ctx.rotate(b.aimAngle);
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(25, -6);
-        ctx.lineTo(580, -6);
-        ctx.moveTo(25, 6);
-        ctx.lineTo(580, 6);
-        ctx.stroke();
-      } else if (b.brawlerId === 'wisp') {
-        ctx.translate(b.x, b.y);
-        ctx.strokeStyle = '#06b6d4';
-        ctx.fillStyle = 'rgba(6, 182, 212, 0.25)';
-        ctx.beginPath();
-        ctx.arc(0, 0, 65, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
+      ctx.globalAlpha = 0.85 * strength;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(px, py, areaRadius, 0, Math.PI * 2);
+      ctx.stroke();
     } else {
-      // === NORMAL ATTACK AIMING MODE ===
-      ctx.translate(b.x, b.y);
-      ctx.rotate(b.aimAngle);
+      // Cone or lane preview at the attack's true range and spread.
+      const angle = b.aimAngle;
+      const range = aimingSuper && ready ? cfg.range * 1.15 : cfg.range;
+      const halfSpread = Math.max(cfg.spreadAngle * 0.5, 0.035);
 
-      const reticleColor = 'rgba(56, 189, 248, 0.6)';
-      ctx.strokeStyle = reticleColor;
+      ctx.rotate(angle);
+      ctx.globalAlpha = 0.17 * strength;
+      ctx.fillStyle = tint;
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.arc(0, 0, range, -halfSpread, halfSpread);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.globalAlpha = 0.7 * strength;
+      ctx.strokeStyle = tint;
       ctx.lineWidth = 2.5;
-      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(18, 0);
+      ctx.lineTo(Math.cos(-halfSpread) * range, Math.sin(-halfSpread) * range);
+      ctx.moveTo(18, 0);
+      ctx.lineTo(Math.cos(halfSpread) * range, Math.sin(halfSpread) * range);
+      ctx.stroke();
 
-      if (b.brawlerId === 'mira') {
-        const halfAngle = cfg.spreadAngle || 0.28;
-        ctx.beginPath();
-        ctx.moveTo(25, 0);
-        ctx.lineTo(cfg.range, -cfg.range * Math.sin(halfAngle));
-        ctx.moveTo(25, 0);
-        ctx.lineTo(cfg.range, cfg.range * Math.sin(halfAngle));
-        ctx.stroke();
-
-        ctx.setLineDash([4, 6]);
-        ctx.beginPath();
-        ctx.moveTo(25, 0);
-        ctx.lineTo(cfg.range, 0);
-        ctx.stroke();
-      } else if (b.brawlerId === 'rivet') {
-        ctx.beginPath();
-        ctx.moveTo(25, -4);
-        ctx.lineTo(cfg.range, -4);
-        ctx.moveTo(25, 4);
-        ctx.lineTo(cfg.range, 4);
-        ctx.stroke();
-      } else if (b.brawlerId === 'fuse') {
-        ctx.beginPath();
-        ctx.moveTo(25, 0);
-        ctx.lineTo(cfg.range, 0);
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.arc(cfg.range, 0, 18, 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (b.brawlerId === 'thorn') {
-        ctx.beginPath();
-        ctx.moveTo(25, 0);
-        ctx.lineTo(cfg.range, 0);
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.arc(cfg.range, 0, 14, 0, Math.PI * 2);
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(25, 0);
-        ctx.lineTo(cfg.range, 0);
-        ctx.stroke();
-      }
+      // Range marker, so the edge of the attack is unambiguous.
+      ctx.globalAlpha = 0.5 * strength;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, range, -halfSpread, halfSpread);
+      ctx.stroke();
     }
 
     ctx.restore();
+
+    // Armed-Super halo at the feet.
+    if (aimingSuper && ready) {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(0, 16, 32, 15, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   };
 
-  // Floating Damage & Healing Numbers
   const drawFloatingNumbers = (ctx: CanvasRenderingContext2D, numbers: any[]) => {
     numbers.forEach(fn => {
       ctx.save();
@@ -1646,191 +1686,164 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   };
 
   // Mobile Touch Virtual Joysticks & Gadget Button (Screen space overlay)
+  /**
+   * On-screen controls, drawn in screen space over the world.
+   *
+   * Both sticks are floating, so the base is only drawn once a finger is down —
+   * a permanently visible pad would just be furniture the player has to aim
+   * around. The action stick additionally shows the shot it is lining up; see
+   * `drawAimPreview`, which draws the same shape on the ground.
+   */
   const drawMobileTouchControls = (
     ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    myBrawler?: BrawlerEntity,
-    isSuperMode: boolean = false
+    viewW: number,
+    viewH: number,
+    myBrawler: BrawlerEntity | undefined,
+    _isSuperAiming: boolean
   ) => {
-    // 1. Movement Joystick Base (Bottom Left)
-    const mBaseX = 110;
-    const mBaseY = h - 110;
-    const mRadius = 65;
+    const touch = touchRef.current;
+    const layout = touch.getLayout();
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(mBaseX, mBaseY, mRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    const stickBase = (x: number, y: number, radius: number, color: string) => {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.55;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    };
 
-    // Movement Stick
-    let mStickX = mBaseX;
-    let mStickY = mBaseY;
-    if (moveJoystickRef.current.active) {
-      mStickX = moveJoystickRef.current.curX;
-      mStickY = moveJoystickRef.current.curY;
+    const stickKnob = (x: number, y: number, radius: number, color: string) => {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#f8fafc';
+      ctx.stroke();
+    };
+
+    // Movement stick.
+    if (touch.move.active) {
+      stickBase(touch.move.originX, touch.move.originY, 60, '#38bdf8');
+      const reach = 60 * touch.move.magnitude;
+      stickKnob(
+        touch.move.originX + touch.move.dirX * reach,
+        touch.move.originY + touch.move.dirY * reach,
+        26,
+        '#0ea5e9'
+      );
     }
-    ctx.fillStyle = '#38bdf8';
-    ctx.beginPath();
-    ctx.arc(mStickX, mStickY, 28, 0, Math.PI * 2);
-    ctx.fill();
 
-    // 2. Attack Joystick Base (Bottom Right)
-    const aBaseX = w - 110;
-    const aBaseY = h - 110;
-
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
-    ctx.strokeStyle = isSuperMode ? '#eab308' : '#ef4444';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(aBaseX, aBaseY, mRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // Attack Stick
-    let aStickX = aBaseX;
-    let aStickY = aBaseY;
-    if (aimJoystickRef.current.active) {
-      aStickX = aimJoystickRef.current.curX;
-      aStickY = aimJoystickRef.current.curY;
+    // Action stick.
+    if (touch.action.active) {
+      const isSuper = touch.actionKind === 'super';
+      const tint = isSuper ? '#facc15' : '#f87171';
+      stickBase(touch.action.originX, touch.action.originY, 66, tint);
+      const reach = 66 * touch.action.magnitude;
+      stickKnob(
+        touch.action.originX + touch.action.dirX * reach,
+        touch.action.originY + touch.action.dirY * reach,
+        28,
+        isSuper ? '#eab308' : '#ef4444'
+      );
     }
-    ctx.fillStyle = isSuperMode ? '#eab308' : '#ef4444';
+
+    // Super button, filled clockwise as the Super charges.
+    const charge = myBrawler ? Math.min(1, myBrawler.superCharge / 100) : 0;
+    const ready = charge >= 1;
+
     ctx.beginPath();
-    ctx.arc(aStickX, aStickY, 28, 0, Math.PI * 2);
+    ctx.arc(layout.superX, layout.superY, layout.superRadius, 0, Math.PI * 2);
+    ctx.fillStyle = ready ? 'rgba(234, 179, 8, 0.9)' : 'rgba(30, 41, 59, 0.85)';
     ctx.fill();
-
-    // 3. Glowing SUPER Button
-    const isSuperReady = (myBrawler?.superCharge || 0) >= 100;
-    const sBtnX = w - 190;
-    const sBtnY = h - 160;
-
-    ctx.save();
-    ctx.fillStyle = isSuperMode ? '#fef08a' : isSuperReady ? '#eab308' : '#334155';
-    ctx.shadowColor = isSuperReady ? '#eab308' : 'transparent';
-    ctx.shadowBlur = isSuperReady ? 22 : 0;
-    ctx.beginPath();
-    ctx.arc(sBtnX, sBtnY, 34, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = isSuperMode ? 3.5 : 1.5;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = ready ? '#fde047' : '#475569';
     ctx.stroke();
 
-    ctx.fillStyle = isSuperMode ? '#000000' : '#ffffff';
+    if (!ready) {
+      ctx.beginPath();
+      ctx.arc(
+        layout.superX,
+        layout.superY,
+        layout.superRadius - 2,
+        -Math.PI / 2,
+        -Math.PI / 2 + Math.PI * 2 * charge
+      );
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#eab308';
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = ready ? '#422006' : '#94a3b8';
     ctx.font = 'bold 22px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('💀', sBtnX, sBtnY);
-    ctx.restore();
+    ctx.fillText('★', layout.superX, layout.superY + 1);
 
-    // 4. GREEN GADGET BUTTON
-    const gCharges = myBrawler?.gadgetCharges || 0;
-    const gBtnX = w - 190;
-    const gBtnY = h - 80;
+    // Gadget button.
+    const charges = myBrawler?.gadgetCharges ?? 0;
+    const gadgetReady = charges > 0 && (myBrawler?.gadgetCooldown ?? 1) <= 0;
 
-    ctx.save();
-    ctx.fillStyle = gCharges > 0 ? '#16a34a' : '#334155';
-    ctx.shadowColor = gCharges > 0 ? '#22c55e' : 'transparent';
-    ctx.shadowBlur = gCharges > 0 ? 14 : 0;
     ctx.beginPath();
-    ctx.arc(gBtnX, gBtnY, 28, 0, Math.PI * 2);
+    ctx.arc(layout.gadgetX, layout.gadgetY, layout.gadgetRadius, 0, Math.PI * 2);
+    ctx.fillStyle = gadgetReady ? 'rgba(34, 197, 94, 0.85)' : 'rgba(30, 41, 59, 0.8)';
     ctx.fill();
-
-    ctx.strokeStyle = '#86efac';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = gadgetReady ? '#4ade80' : '#475569';
     ctx.stroke();
 
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = gadgetReady ? '#052e16' : '#94a3b8';
     ctx.font = 'bold 15px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`⚡ ${gCharges}`, gBtnX, gBtnY);
-    ctx.restore();
+    ctx.fillText(`x${charges}`, layout.gadgetX, layout.gadgetY + 1);
+
+    void viewW;
+    void viewH;
   };
 
-  // Touch Event Handlers
+  /*
+   * Touches are routed by identifier, not by where they currently are. The
+   * previous handlers compared the live position against the screen midpoint on
+   * every move, so dragging an aim leftwards across the middle silently took
+   * over the movement stick mid-fight.
+   */
+  const toLocal = (t: React.Touch, rect: DOMRect) => ({
+    x: t.clientX - rect.left,
+    y: t.clientY - rect.top,
+  });
+
   const handleTouchStart = (e: React.TouchEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-
     for (let i = 0; i < e.changedTouches.length; i++) {
       const t = e.changedTouches[i];
-      const tx = t.clientX - rect.left;
-      const ty = t.clientY - rect.top;
-
-      // Left half = Move Joystick
-      if (tx < rect.width / 2) {
-        moveJoystickRef.current = {
-          active: true,
-          startX: tx,
-          startY: ty,
-          curX: tx,
-          curY: ty,
-        };
-      } else {
-        // Right half: Check if Super button tapped
-        const sBtnX = rect.width - 190;
-        const sBtnY = rect.height - 160;
-        const gBtnX = rect.width - 190;
-        const gBtnY = rect.height - 80;
-
-        if (Math.hypot(tx - sBtnX, ty - sBtnY) < 42) {
-          const snap = snapshotRef.current;
-          const myBrawler = snap?.brawlers.find(b => b.id === myPlayerIdRef.current);
-          if (myBrawler && myBrawler.superCharge >= 100) {
-            isSuperAimingRef.current = !isSuperAimingRef.current;
-          }
-        } else if (Math.hypot(tx - gBtnX, ty - gBtnY) < 35) {
-          gadgetTouchRef.current = true;
-        } else {
-          // Attack Joystick
-          aimJoystickRef.current = {
-            active: true,
-            startX: tx,
-            startY: ty,
-            curX: tx,
-            curY: ty,
-          };
-        }
-      }
+      const { x, y } = toLocal(t, rect);
+      touchRef.current.onTouchStart(t.identifier, x, y, rect.width);
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-
     for (let i = 0; i < e.changedTouches.length; i++) {
       const t = e.changedTouches[i];
-      const tx = t.clientX - rect.left;
-      const ty = t.clientY - rect.top;
-
-      if (tx < rect.width / 2 && moveJoystickRef.current.active) {
-        moveJoystickRef.current.curX = tx;
-        moveJoystickRef.current.curY = ty;
-      } else if (aimJoystickRef.current.active) {
-        aimJoystickRef.current.curX = tx;
-        aimJoystickRef.current.curY = ty;
-      }
+      const { x, y } = toLocal(t, rect);
+      touchRef.current.onTouchMove(t.identifier, x, y);
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-
     for (let i = 0; i < e.changedTouches.length; i++) {
       const t = e.changedTouches[i];
-      const tx = t.clientX - rect.left;
-
-      if (tx < rect.width / 2) {
-        moveJoystickRef.current.active = false;
-      } else {
-        aimJoystickRef.current.active = false;
-      }
+      const { x, y } = toLocal(t, rect);
+      touchRef.current.onTouchEnd(t.identifier, x, y);
     }
   };
 
@@ -1844,6 +1857,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         className="w-full h-full object-cover block cursor-crosshair"
       />
     </div>

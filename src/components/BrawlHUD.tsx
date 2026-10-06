@@ -1,4 +1,5 @@
 import React from 'react';
+import { getInputMode, onInputModeChange } from '../input/inputMode';
 import { BrawlSnapshot, BRAWLERS, BrawlerEntity } from '../types/brawl';
 import { MAP_WIDTH, MAP_HEIGHT } from '../game/brawlMaps';
 import { Volume2, VolumeX, RotateCcw, Radio } from 'lucide-react';
@@ -10,6 +11,58 @@ interface BrawlHUDProps {
   onToggleMute: () => void;
   onLeaveGame: () => void;
   onSendEmote: (emote: string) => void;
+}
+
+/**
+ * Tap-to-open emote wheel, for touch layouts where a permanently open row of
+ * buttons would sit under the player's movement thumb.
+ */
+const EmoteWheel: React.FC<{ onSendEmote: (emote: string) => void }> = ({ onSendEmote }) => {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <div className="flex items-center gap-1.5 pointer-events-auto">
+      <button
+        onClick={() => setOpen(value => !value)}
+        className="w-11 h-11 rounded-2xl bg-slate-900/85 backdrop-blur border border-slate-700/80 text-xl shadow-xl active:scale-90 transition"
+        aria-label="Emoji"
+      >
+        {open ? '✕' : '😂'}
+      </button>
+
+      {open && (
+        <div className="flex items-center gap-1 bg-slate-900/90 backdrop-blur border border-slate-700/80 p-1 rounded-2xl shadow-xl">
+          {['👑', '😂', '💀', '🔥', '🎯'].map(emo => (
+            <button
+              key={emo}
+              onClick={() => {
+                onSendEmote(emo);
+                setOpen(false);
+              }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-xl active:scale-90 transition"
+            >
+              {emo}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Detects a touch device once, on mount.
+ *
+ * The HUD serves two quite different players. On a phone the canvas already
+ * draws the sticks, the Super and the gadget, so repeating them in the DOM both
+ * clutters the screen and puts dead buttons under the player's thumbs. On a
+ * desktop there is room for the detail and no on-screen controls to collide
+ * with, so that layout stays exactly as it was.
+ */
+function useIsTouchDevice(): boolean {
+  const [isTouch, setIsTouch] = React.useState(() => getInputMode() === 'touch');
+  React.useEffect(() => onInputModeChange(mode => setIsTouch(mode === 'touch')), []);
+  return isTouch;
 }
 
 export const BrawlHUD: React.FC<BrawlHUDProps> = ({
@@ -34,8 +87,10 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
 
   const isSuperReady = (myBrawler?.superCharge || 0) >= 100;
 
+  const isTouch = useIsTouchDevice();
+
   return (
-    <div className="absolute inset-0 pointer-events-none p-4 flex flex-col justify-between select-none">
+    <div className="absolute inset-0 pointer-events-none p-2 sm:p-4 flex flex-col justify-between select-none">
       {/* ================= TOP BAR ================= */}
       <div className="flex items-start justify-between w-full max-w-7xl mx-auto">
         {/* Left: Exit & Sound Buttons */}
@@ -133,7 +188,13 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
 
       {/* ================= BOTTOM BAR ================= */}
       <div className="flex items-end justify-between w-full max-w-5xl mx-auto">
-        {/* Left: Emote Wheel / Pins */}
+        {/* Left: Emote Wheel / Pins.
+            On a phone the open row sat directly under the movement thumb,
+            so hitting it was usually an accident. Touch gets a single
+            tap-to-open button instead. */}
+        {isTouch ? (
+          <EmoteWheel onSendEmote={onSendEmote} />
+        ) : (
         <div className="flex items-center gap-1.5 pointer-events-auto bg-slate-900/85 backdrop-blur border border-slate-700/80 p-1.5 rounded-2xl shadow-xl">
           {['👑', '😂', '💀', '🔥', '🎯'].map(emo => (
             <button
@@ -145,9 +206,12 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
             </button>
           ))}
         </div>
+        )}
 
-        {/* Center: Health, Ammo & Super Controls */}
-        {myBrawler && cfg && (
+        {/* Center: Health, Ammo & Super Controls.
+            Hidden on touch: the canvas draws health and ammo under the
+            character, which is where the player is already looking. */}
+        {myBrawler && cfg && !isTouch && (
           <div className="flex flex-col items-center gap-2 pointer-events-auto">
             {/* Health Bar */}
             <div className="w-64 bg-slate-950/90 border-2 border-slate-700 rounded-2xl p-1 shadow-2xl relative">
@@ -243,8 +307,10 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
           </div>
         )}
 
-        {/* Right: Gadget & Super Buttons */}
-        {myBrawler && (
+        {/* Right: Gadget & Super Buttons.
+            On touch the canvas draws these where the thumb already is,
+            and they support drag-to-aim, which a DOM button cannot. */}
+        {myBrawler && !isTouch && (
           <div className="flex items-end gap-3 pointer-events-auto">
             {/* Gadget Button (Green) */}
             <div className="flex flex-col items-center">
