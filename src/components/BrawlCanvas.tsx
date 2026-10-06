@@ -8,17 +8,50 @@ import {
 } from '../types/brawl';
 import { MAP_WIDTH, MAP_HEIGHT } from '../game/brawlMaps';
 import { assetLoader } from '../game/assetLoader';
+import { clamp } from '../core/math';
+
+/**
+ * How much of the world the camera should cover, in world units.
+ *
+ * The canvas used to draw the world at 1:1 with no zoom, so a 1920-wide
+ * monitor saw 1920 world units and a phone saw 375 — the desktop player had
+ * five times the field of view, and brawlers were 62 px tall on a 1080p
+ * screen. Zoom is now derived from the viewport area so every device sees a
+ * comparable slice of the arena at a readable size.
+ */
+const DESIGN_VIEW_LANDSCAPE = { w: 1280, h: 720 };
+const DESIGN_VIEW_PORTRAIT = { w: 640, h: 1100 };
+
+interface ViewMetrics {
+  /** Viewport size in CSS pixels. */
+  w: number;
+  h: number;
+  /** Backing-store scale, so the canvas is crisp on high-density screens. */
+  dpr: number;
+  /** World-units-to-CSS-pixels factor. */
+  zoom: number;
+  /** Visible world extent, derived from the above. */
+  worldW: number;
+  worldH: number;
+}
 
 interface BrawlCanvasProps {
   snapshot: BrawlSnapshot | null;
   myPlayerId: string;
   onSendInput: (input: BrawlPlayerInput) => void;
+  /**
+   * Pulls the live simulation state. The canvas draws every frame, but React
+   * only re-renders the HUD a few times a second, so the renderer reads the
+   * engine directly instead of waiting for a prop update.
+   */
+  getSnapshot?: () => BrawlSnapshot | null;
 }
 
 export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   snapshot,
   myPlayerId,
   onSendInput,
+  getSnapshot,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -74,6 +107,17 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   myPlayerIdRef.current = myPlayerId;
   const onSendInputRef = useRef<(input: BrawlPlayerInput) => void>(onSendInput);
   onSendInputRef.current = onSendInput;
+  const getSnapshotRef = useRef<(() => BrawlSnapshot | null) | undefined>(getSnapshot);
+  getSnapshotRef.current = getSnapshot;
+
+  const viewRef = useRef<ViewMetrics>({
+    w: 1,
+    h: 1,
+    dpr: 1,
+    zoom: 1,
+    worldW: 1,
+    worldH: 1,
+  });
 
   // Initialize Assets & Touch Device Detection
   useEffect(() => {
@@ -86,10 +130,34 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   // Window Resize Handling for Crisp Canvas DPI
   useEffect(() => {
     const handleResize = () => {
-      if (canvasRef.current && containerRef.current) {
-        canvasRef.current.width = containerRef.current.clientWidth || window.innerWidth;
-        canvasRef.current.height = containerRef.current.clientHeight || window.innerHeight;
-      }
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container) return;
+
+      const cssW = container.clientWidth || window.innerWidth;
+      const cssH = container.clientHeight || window.innerHeight;
+
+      // Cap the backing store at 2x: beyond that the extra pixels cost more
+      // than they show.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+
+      const design = cssW >= cssH ? DESIGN_VIEW_LANDSCAPE : DESIGN_VIEW_PORTRAIT;
+      // Area-based so ultrawide and tall phones both land somewhere sensible.
+      const zoom = clamp(Math.sqrt((cssW * cssH) / (design.w * design.h)), 0.75, 2.2);
+
+      viewRef.current = {
+        w: cssW,
+        h: cssH,
+        dpr,
+        zoom,
+        worldW: cssW / zoom,
+        worldH: cssH / zoom,
+      };
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -131,8 +199,9 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
       // Calculate world coordinates through camera transform
       const cam = cameraRef.current;
-      mouseRef.current.worldX = sx - canvas.width / 2 + cam.x;
-      mouseRef.current.worldY = sy - canvas.height / 2 + cam.y;
+      const view = viewRef.current;
+      mouseRef.current.worldX = (sx - view.w / 2) / view.zoom + cam.x;
+      mouseRef.current.worldY = (sy - view.h / 2) / view.zoom + cam.y;
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -273,14 +342,21 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const snap = snapshotRef.current;
+      // Prefer the live engine state; fall back to the prop for network
+      // clients, which only ever receive snapshots.
+      const snap = getSnapshotRef.current?.() ?? snapshotRef.current;
       const myId = myPlayerIdRef.current;
       const myBrawler = snap?.brawlers.find(b => b.id === myId);
 
       // Smooth Camera tracking
+      const view = viewRef.current;
       if (myBrawler) {
-        const targetX = Math.max(canvas.width / 2, Math.min(MAP_WIDTH - canvas.width / 2, myBrawler.x));
-        const targetY = Math.max(canvas.height / 2, Math.min(MAP_HEIGHT - canvas.height / 2, myBrawler.y));
+        // Clamp against the visible world extent, not the pixel size of the
+        // canvas, so the edge of the arena lines up at any zoom level.
+        const halfW = Math.min(view.worldW / 2, MAP_WIDTH / 2);
+        const halfH = Math.min(view.worldH / 2, MAP_HEIGHT / 2);
+        const targetX = clamp(myBrawler.x, halfW, MAP_WIDTH - halfW);
+        const targetY = clamp(myBrawler.y, halfH, MAP_HEIGHT - halfH);
         cameraRef.current.x += (targetX - cameraRef.current.x) * 0.12;
         cameraRef.current.y += (targetY - cameraRef.current.y) * 0.12;
       }
@@ -298,9 +374,14 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       const cam = cameraRef.current;
 
       // 1. CLEAR & SAVE WORLD MATRIX
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Everything below works in CSS pixels; the device-pixel-ratio scale is
+      // applied once here so drawing code never has to know about it.
+      ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+      ctx.clearRect(0, 0, view.w, view.h);
       ctx.save();
-      ctx.translate(canvas.width / 2 - cam.x + shakeX, canvas.height / 2 - cam.y + shakeY);
+      ctx.translate(view.w / 2, view.h / 2);
+      ctx.scale(view.zoom, view.zoom);
+      ctx.translate(-cam.x + shakeX, -cam.y + shakeY);
 
       // 2. DRAW GROUND & TILES
       drawGroundTiles(ctx);
@@ -374,8 +455,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       if (isTouchDevice) {
         drawMobileTouchControls(
           ctx,
-          canvas.width,
-          canvas.height,
+          view.w,
+          view.h,
           snap?.brawlers.find(b => b.id === myId),
           isSuperAimingRef.current
         );

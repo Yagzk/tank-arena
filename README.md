@@ -57,3 +57,32 @@ Brawl Stars mekanikleriyle birebir tasarlanmış, **4 ila 10 oyuncu** destekleye
   - Sol Altta: Mavi Hareket Joystick'i
   - Sağ Altta: Kırmızı Saldırı Joystick'i (Sürükleyip bırakarak ateş)
   - Sarı Kuru Kafa: **ULTİ Butonu**
+
+---
+
+## 🧱 Mimari (Teknik)
+
+Simülasyon, render ve ağ katmanları ayrıldı. Çekirdek `src/core/` altında, oyundan bağımsız ve tekrar kullanılabilir:
+
+| Modül | Sorumluluk |
+|---|---|
+| `core/loop.ts` | **Sabit timestep** döngü (60 Hz) + render interpolasyonu. Oyun artık 60 Hz ve 144 Hz ekranda birebir aynı oynuyor; arka plana atılan sekme dünyayı ileri sarmıyor. |
+| `core/collision.ts` | **Swept (sürekli) çarpışma**. Hareketli çember ↔ AABB / çember / köşe. Mermi ne kadar hızlı olursa olsun hedefin veya duvarın içinden geçemiyor. |
+| `core/spatialHash.ts` | Uniform grid broadphase. Çarpışma sorguları yalnızca ilgili hücreleri geziyor. |
+| `core/rng.ts` | Tohumlu PRNG (mulberry32). Simülasyon `Math.random()` çağırmıyor; aynı tohum + aynı input = aynı maç. |
+| `core/math.ts` | Tahsisat üretmeyen vektör/açı/easing yardımcıları. |
+
+### Bu sürümde düzeltilen davranışlar
+
+- **Mermi tünellemesi:** `v * dt` ile zıplayıp sonra kesişim arayan eski yöntem, 800 px/s mermilerin 22 px yarıçaplı gövdelerin ve 35 px duvarların içinden geçmesine yol açıyordu.
+- **Seri atışta nişan kilidi:** `burstAimAngle` yazılıp hiç okunmuyordu; Colt ve Leon'un serisi fareyle birlikte süpürüyordu.
+- **Kendine hasar:** El Primo süper inişinde kendine 1300, Brock gadget'ında kendine patlama hasarı veriyordu. Spike kendi Diken Tarlasında, Brock kendi alevinde yanıyordu.
+- **Yanma hasarı öldüremiyordu** (`Math.max(1, ...)`).
+- **Gem Grab spawn/takım uyuşmazlığı:** oyuncuların yarısı rakip üste doğuyordu.
+- **Süper şarjı** vuruş başına sabit yerine **verilen hasara oranlı**: Shelly'nin tek tetik çekişi süperin %52'sini doldurmuyor artık.
+- **Can yenilenmesi** %13/sn → %6/sn (4 sn sonra).
+- **Cephane** kesirli sayaç yerine slot slot doluyor; atışlar arasında ayrı bir bekleme süresi var.
+- **Hareket** ani hız yerine ivme/yavaşlama eğrisiyle; duvar boyunca kayma eksen bazında çözülüyor.
+- **Kamera** sanal çözünürlükle ölçekleniyor ve `devicePixelRatio` uygulanıyor — her cihaz arenanın benzer bir dilimini net görüyor.
+- **Botlar** görüş hattı olmadan ateş etmiyor.
+- React artık saniyede 60 kez değil, HUD için ~12 kez render ediliyor; canvas motoru doğrudan okuyor.

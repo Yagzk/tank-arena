@@ -20,7 +20,10 @@ import {
   BrawlGameMode,
 } from '../types/brawl';
 import { generateBrawlMap, MAP_WIDTH, MAP_HEIGHT } from './brawlMaps';
-import { circleRectCollision, circleIntersect, dist } from './physics';
+import { circleRectCollision, circleIntersect, sweepCircleVsRect, sweepCircleVsCircle, createSweepHit } from '../core/collision';
+import { dist, clamp, moveTowards, smoothstep } from '../core/math';
+import { Rng } from '../core/rng';
+import { SpatialHash } from '../core/spatialHash';
 import { BrawlBot } from './brawlBot';
 
 export interface BrawlSoundEvent {
@@ -41,6 +44,9 @@ export interface BrawlSoundEvent {
     | 'band_aid'
     | 'colt_reload';
 }
+
+/** Collision radius shared by every brawler body. */
+const BRAWLER_RADIUS = 22;
 
 export class BrawlEngine {
   public phase: BrawlSnapshot['phase'] = 'waiting';
@@ -74,6 +80,16 @@ export class BrawlEngine {
   private nextEntityId: number = 1;
   private prevSuperReadyState: Record<string, boolean> = {};
 
+  /** Seeded RNG. The simulation never calls this.rng.next(), so a match replays
+   *  identically from the same seed and peers cannot silently drift apart. */
+  private rng = new Rng(0x5eed);
+  /** Broadphase over static geometry, rebuilt only when walls actually change. */
+  private wallGrid = new SpatialHash(MAP_WIDTH, MAP_HEIGHT);
+  private wallGridCount = -1;
+  private wallGridDirty = true;
+  /** Reused sweep result, so collision queries allocate nothing per tick. */
+  private readonly sweep = createSweepHit();
+
   constructor() {
     const map = generateBrawlMap('showdown');
     this.walls = map.walls;
@@ -81,7 +97,13 @@ export class BrawlEngine {
     this.boxes = map.boxes;
   }
 
-  public initMatch(players: PlayerInfo[], mode: BrawlGameMode = 'showdown') {
+  public initMatch(
+    players: PlayerInfo[],
+    mode: BrawlGameMode = 'showdown',
+    seed: number = Date.now() & 0xffffffff
+  ) {
+    this.rng = new Rng(seed);
+    this.wallGridDirty = true;
     this.mode = mode;
     this.phase = 'starting';
     this.matchTimer = 0;
@@ -113,8 +135,16 @@ export class BrawlEngine {
     // Initialize brawlers (up to 10 players)
     this.brawlers = players.map((p, idx) => {
       const cfg = BRAWLERS[p.brawler || 'shelly'];
-      const spawn = map.spawns[idx % map.spawns.length];
-      const team = mode === 'gem_grab' ? (idx % 2) : idx;
+      const team = mode === 'gem_grab' ? idx % 2 : idx;
+      // Gem Grab spawn points are grouped by team (first half blue, second
+      // half red). Indexing them by raw player order dropped half the lobby
+      // into the enemy base on round start.
+      const half = Math.ceil(map.spawns.length / 2);
+      const spawnIndex =
+        mode === 'gem_grab'
+          ? Math.min(map.spawns.length - 1, (team === 0 ? 0 : half) + Math.floor(idx / 2))
+          : idx % map.spawns.length;
+      const spawn = map.spawns[spawnIndex];
 
       if (p.isBot) {
         this.botControllers[p.id] = new BrawlBot();
@@ -139,6 +169,10 @@ export class BrawlEngine {
         maxHp: cfg.maxHp,
         ammo: 3,
         maxAmmo: 3,
+        reloadTimer: 0,
+        attackCooldown: 0,
+        prevX: spawn.x,
+        prevY: spawn.y,
         superCharge: 0,
         isAlive: true,
         powerCubes: 0,
@@ -221,17 +255,35 @@ export class BrawlEngine {
 
       const cfg = BRAWLERS[b.brawlerId];
 
-      // Ammo Reload (1 ammo every cfg.reloadTime seconds)
+      // Remember where the body was so the renderer can interpolate between
+      // simulation ticks instead of snapping once every 1/60 s.
+      b.prevX = b.x;
+      b.prevY = b.y;
+
+      // Ammo refills one whole slot at a time. The old fractional counter let
+      // you fire the instant the bar ticked over, so the ammo display never
+      // matched what the brawler could actually do.
       if (b.ammo < b.maxAmmo) {
-        b.ammo = Math.min(b.maxAmmo, b.ammo + dt / cfg.reloadTime);
+        b.reloadTimer += dt;
+        while (b.reloadTimer >= cfg.reloadTime && b.ammo < b.maxAmmo) {
+          b.reloadTimer -= cfg.reloadTime;
+          b.ammo += 1;
+        }
+        if (b.ammo >= b.maxAmmo) b.reloadTimer = 0;
+      } else {
+        b.reloadTimer = 0;
       }
+
+      if (b.attackCooldown > 0) b.attackCooldown -= dt;
 
       // Natural Health Regeneration (+13% HP/sec after 3s out of combat)
       b.timeSinceLastDamage += dt;
       b.timeSinceLastAttack += dt;
-      if (b.timeSinceLastDamage >= 3.0 && b.timeSinceLastAttack >= 3.0) {
+      // 13%/s healed a full bar in under eight seconds, which made chip
+      // damage pointless and turned every fight into a disengage race.
+      if (b.timeSinceLastDamage >= 4.0 && b.timeSinceLastAttack >= 4.0) {
         if (b.hp < b.maxHp) {
-          b.hp = Math.min(b.maxHp, b.hp + b.maxHp * 0.13 * dt);
+          b.hp = Math.min(b.maxHp, b.hp + b.maxHp * 0.06 * dt);
         }
       }
 
@@ -254,8 +306,9 @@ export class BrawlEngine {
         b.burnTimer -= dt;
         const burnDmg = Math.round(b.burnDamagePerSec * dt);
         if (burnDmg > 0) {
-          b.hp = Math.max(1, b.hp - burnDmg);
-          if (Math.random() < 0.2) {
+          // Clamping to 1 HP meant burn damage could never finish anyone off.
+          this.damageBrawler(b, burnDmg, 'burn', false);
+          if (this.rng.next() < 0.2) {
             this.addFloatingNumber(`-${Math.round(b.burnDamagePerSec)} ATEŞ`, b.x, b.y - 18, '#f97316');
           }
         }
@@ -408,38 +461,36 @@ export class BrawlEngine {
       if (b.speedBoostTimer > 0) speed *= 1.3; // Leon Smoke Trails (+30%)
       if (b.meteorRushTimer > 0) speed *= 1.32; // El Primo Meteor Rush (+32%)
 
-      if (input.moveX !== 0 || input.moveY !== 0) {
-        const len = Math.hypot(input.moveX, input.moveY) || 1;
-        const normX = input.moveX / len;
-        const normY = input.moveY / len;
-
-        b.vx = normX * speed;
-        b.vy = normY * speed;
-        b.x += normX * speed * dt;
-        b.y += normY * speed * dt;
-        b.angle = Math.atan2(normY, normX);
-      } else {
-        b.vx = 0;
-        b.vy = 0;
+      // Velocity ramps toward the input rather than snapping to it. Instant
+      // full-speed starts and dead stops are why movement felt like sliding
+      // a cursor around instead of driving a character.
+      let targetVx = 0;
+      let targetVy = 0;
+      const inputLen = Math.hypot(input.moveX, input.moveY);
+      const isPushing = inputLen > 0.001;
+      if (isPushing) {
+        const scale = Math.min(1, inputLen) / inputLen;
+        targetVx = input.moveX * scale * speed;
+        targetVy = input.moveY * scale * speed;
       }
 
-      // Wall Collisions
-      for (const wall of this.walls) {
-        const col = circleRectCollision({ x: b.x, y: b.y, radius: brawlerRadius }, wall);
-        if (col.collided) {
-          b.x += col.nx * col.depth;
-          b.y += col.ny * col.depth;
-        }
+      // Stopping is sharper than starting: turns stay responsive while the
+      // body still carries weight.
+      const accelStep = cfg.acceleration * (isPushing ? 1 : 1.9) * dt;
+      b.vx = moveTowards(b.vx, targetVx, accelStep);
+      b.vy = moveTowards(b.vy, targetVy, accelStep);
+
+      if (Math.abs(b.vx) > 1 || Math.abs(b.vy) > 1) {
+        b.angle = Math.atan2(b.vy, b.vx);
       }
 
-      // Box Collisions
-      for (const box of this.boxes) {
-        const col = circleRectCollision({ x: b.x, y: b.y, radius: brawlerRadius }, box);
-        if (col.collided) {
-          b.x += col.nx * col.depth;
-          b.y += col.ny * col.depth;
-        }
-      }
+      // Integrate and resolve one axis at a time so a blocked axis does not
+      // cancel the other — that is what makes sliding along cover smooth
+      // instead of sticky.
+      b.x += b.vx * dt;
+      this.resolveAgainstGeometry(b, BRAWLER_RADIUS, true);
+      b.y += b.vy * dt;
+      this.resolveAgainstGeometry(b, BRAWLER_RADIUS, false);
 
       // Brawler vs Brawler soft push
       for (const other of this.brawlers) {
@@ -492,8 +543,16 @@ export class BrawlEngine {
         b.timeSinceLastAttack = 0;
         if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking cancels stealth
         this.executeSuper(b, input);
-      } else if (input.attack && b.ammo >= 1 && b.burstRemaining <= 0) {
+      } else if (
+        input.attack &&
+        b.ammo >= 1 &&
+        b.attackCooldown <= 0 &&
+        b.burstRemaining <= 0
+      ) {
         b.ammo -= 1;
+        // A fixed post-attack delay, separate from ammo, stops a full clip
+        // from leaving the barrel inside a couple of frames.
+        b.attackCooldown = cfg.attackCooldown;
         b.timeSinceLastAttack = 0;
         if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking cancels stealth
         this.executeAttack(b, input);
@@ -623,6 +682,10 @@ export class BrawlEngine {
           maxHp: b.maxHp,
           ammo: 0,
           maxAmmo: 3,
+          reloadTimer: 0,
+          attackCooldown: 0,
+          prevX: b.x + 20,
+          prevY: b.y + 20,
           superCharge: 0,
           isAlive: true,
           powerCubes: b.powerCubes,
@@ -800,8 +863,8 @@ export class BrawlEngine {
     if (b.brawlerId === 'colt') {
       if (b.burstIsSuper) {
         // Colt Super: Bullet Storm (12 giant piercing bullets)
-        const spread = (Math.random() - 0.5) * 0.05;
-        const ang = b.aimAngle + spread;
+        const spread = (this.rng.next() - 0.5) * 0.05;
+        const ang = b.burstAimAngle + spread;
         this.projectiles.push({
           id: `proj-${this.nextEntityId++}`,
           ownerId: b.id,
@@ -823,8 +886,8 @@ export class BrawlEngine {
         if (b.burstShotIndex % 3 === 0) this.onSoundTriggered?.({ type: 'colt_attack' });
       } else {
         // Colt Basic: Six-Shooters (6 rapid bullets)
-        const spread = (Math.random() - 0.5) * 0.04;
-        const ang = b.aimAngle + spread;
+        const spread = (this.rng.next() - 0.5) * 0.04;
+        const ang = b.burstAimAngle + spread;
         this.projectiles.push({
           id: `proj-${this.nextEntityId++}`,
           ownerId: b.id,
@@ -847,7 +910,7 @@ export class BrawlEngine {
     } else if (b.brawlerId === 'el_primo') {
       // El Primo Fists of Fury (alternating left/right punches)
       const offset = (b.burstShotIndex % 2 === 0 ? 1 : -1) * 0.14;
-      const ang = b.aimAngle + offset;
+      const ang = b.burstAimAngle + offset;
       this.projectiles.push({
         id: `proj-${this.nextEntityId++}`,
         ownerId: b.id,
@@ -869,7 +932,7 @@ export class BrawlEngine {
     } else if (b.brawlerId === 'leon') {
       // Leon Spinner Blades (sweeping arc from left to right)
       const offset = ((b.burstShotIndex / 3) - 0.5) * 0.28;
-      const ang = b.aimAngle + offset;
+      const ang = b.burstAimAngle + offset;
       this.projectiles.push({
         id: `proj-${this.nextEntityId++}`,
         ownerId: b.id,
@@ -890,8 +953,8 @@ export class BrawlEngine {
       });
     } else if (b.brawlerId === 'brock' && b.burstIsSuper) {
       // Brock Super: Rocket Rain (9 artillery rockets)
-      const rx = b.burstTargetX + (Math.random() - 0.5) * 170;
-      const ry = b.burstTargetY + (Math.random() - 0.5) * 170;
+      const rx = b.burstTargetX + (this.rng.next() - 0.5) * 170;
+      const ry = b.burstTargetY + (this.rng.next() - 0.5) * 170;
       this.triggerExplosionAt(rx, ry, b.id, b.team, Math.round(950 * dmgMultiplier), 85, true);
       this.onSoundTriggered?.({ type: 'brock_rocket' });
     }
@@ -1068,6 +1131,9 @@ export class BrawlEngine {
     // Damage and knockback enemies
     for (const b of this.brawlers) {
       if (!b.isAlive || b.isJumping) continue;
+      // El Primo's landing used to take 1300 off his own health bar, and
+      // Brock's Rocket Laces blew him up on the way out.
+      if (b.id === ownerId) continue;
       if (b.team === team && this.mode === 'gem_grab') continue;
 
       const d = dist(x, y, b.x, b.y);
@@ -1135,11 +1201,22 @@ export class BrawlEngine {
     }
   }
 
+  /**
+   * Advances every projectile using continuous collision detection.
+   *
+   * The previous version moved a projectile by `v * dt` and then tested for
+   * overlap. Colt's bullets travel 800 px/s, so at 1/60 s they jump ~13 px per
+   * tick — and far more on a dropped frame — while bodies are 44 px across and
+   * the thinnest walls are 35 px. Shots therefore passed straight through both.
+   * Here we ask instead where along the step the *first* contact happened, so a
+   * projectile can never skip over anything regardless of its speed.
+   */
   private updateProjectiles(dt: number) {
+    this.ensureWallGrid();
     const toRemove = new Set<string>();
 
     for (const p of this.projectiles) {
-      // Spike Curveball Trajectory Physics
+      // Spike's needles curve as they fly.
       if (p.isCurvingNeedle) {
         const curAng = Math.atan2(p.vy, p.vx) + 2.5 * dt;
         const spd = Math.hypot(p.vx, p.vy);
@@ -1147,130 +1224,242 @@ export class BrawlEngine {
         p.vy = Math.sin(curAng) * spd;
       }
 
-      const stepX = p.vx * dt;
-      const stepY = p.vy * dt;
-      p.x += stepX;
-      p.y += stepY;
-      p.traveled += Math.hypot(stepX, stepY);
+      let stepX = p.vx * dt;
+      let stepY = p.vy * dt;
+      const stepLen = Math.hypot(stepX, stepY);
 
-      if (p.traveled >= p.maxRange) {
-        toRemove.add(p.id);
-        if (p.burstNeedlesOnEnd) {
-          this.burstSpikeNeedles(p.x, p.y, p.ownerId, p.team, Math.round(p.damage * 0.6));
+      // Clip the step at maximum range so a fast projectile expires exactly
+      // where its range ends, not up to a whole tick past it.
+      const remaining = p.maxRange - p.traveled;
+      let expiresThisStep = false;
+      if (stepLen >= remaining) {
+        const k = remaining / (stepLen || 1);
+        stepX *= k;
+        stepY *= k;
+        expiresThisStep = true;
+      }
+
+      // ---- find the earliest contact along the step --------------------
+      let bestT = 1;
+      let hitKind: 'none' | 'wall' | 'box' | 'brawler' = 'none';
+      let hitWallIndex = -1;
+      let hitBoxIndex = -1;
+      let hitTarget: BrawlerEntity | null = null;
+      let hitX = p.x + stepX;
+      let hitY = p.y + stepY;
+
+      if (!p.piercesWalls) {
+        const nearWalls = this.wallGrid.querySweep(p.x, p.y, stepX, stepY, p.radius);
+        for (let i = 0; i < nearWalls.length; i++) {
+          const wall = this.walls[nearWalls[i]];
+          if (!wall) continue;
+          sweepCircleVsRect(p.x, p.y, p.radius, stepX, stepY, wall, this.sweep);
+          if (this.sweep.hit && this.sweep.t < bestT) {
+            bestT = this.sweep.t;
+            hitKind = 'wall';
+            hitWallIndex = nearWalls[i];
+            hitX = this.sweep.x;
+            hitY = this.sweep.y;
+          }
         }
-        if (p.spawnFireOnEnd) {
-          this.triggerExplosionAt(p.x, p.y, p.ownerId, p.team, p.damage, 65, true);
+      }
+
+      for (let i = 0; i < this.boxes.length; i++) {
+        sweepCircleVsRect(p.x, p.y, p.radius, stepX, stepY, this.boxes[i], this.sweep);
+        if (this.sweep.hit && this.sweep.t < bestT) {
+          bestT = this.sweep.t;
+          hitKind = 'box';
+          hitBoxIndex = i;
+          hitX = this.sweep.x;
+          hitY = this.sweep.y;
+        }
+      }
+
+      for (const target of this.brawlers) {
+        if (!target.isAlive || target.isJumping || target.id === p.ownerId) continue;
+        if (this.mode === 'gem_grab' && target.team === p.team) continue;
+        // A piercing shot may only touch each body once.
+        if (p.hitIds && p.hitIds.indexOf(target.id) !== -1) continue;
+
+        sweepCircleVsCircle(
+          p.x,
+          p.y,
+          p.radius,
+          stepX,
+          stepY,
+          target.x,
+          target.y,
+          BRAWLER_RADIUS,
+          this.sweep
+        );
+        if (this.sweep.hit && this.sweep.t < bestT) {
+          bestT = this.sweep.t;
+          hitKind = 'brawler';
+          hitTarget = target;
+          hitX = this.sweep.x;
+          hitY = this.sweep.y;
+        }
+      }
+
+      // ---- advance to the contact, or to the end of the step -----------
+      const advanceX = stepX * bestT;
+      const advanceY = stepY * bestT;
+      p.x += advanceX;
+      p.y += advanceY;
+      p.traveled += Math.hypot(advanceX, advanceY);
+
+      if (hitKind === 'none') {
+        if (expiresThisStep) {
+          toRemove.add(p.id);
+          this.detonateProjectile(p, p.x, p.y);
         }
         continue;
       }
 
-      // Check walls
-      let hitWall = false;
-      for (let i = this.walls.length - 1; i >= 0; i--) {
-        const wall = this.walls[i];
-        const col = circleRectCollision({ x: p.x, y: p.y, radius: p.radius }, wall);
-        if (col.collided) {
-          if (p.breaksWalls && wall.isDestructible) {
-            this.walls.splice(i, 1);
-          } else if (!p.piercesWalls) {
-            hitWall = true;
-            toRemove.add(p.id);
-            if (p.burstNeedlesOnEnd) {
-              this.burstSpikeNeedles(p.x, p.y, p.ownerId, p.team, Math.round(p.damage * 0.6));
-            }
-            if (p.spawnFireOnEnd) {
-              this.triggerExplosionAt(p.x, p.y, p.ownerId, p.team, p.damage, 65, true);
-            }
-            break;
-          }
+      if (hitKind === 'wall') {
+        const wall = this.walls[hitWallIndex];
+        if (p.breaksWalls && wall && wall.isDestructible) {
+          this.walls.splice(hitWallIndex, 1);
+          this.wallGridDirty = true;
+          continue; // carries on through the hole it just made
         }
+        toRemove.add(p.id);
+        this.detonateProjectile(p, hitX, hitY);
+        continue;
       }
-      if (hitWall) continue;
 
-      // Check boxes
-      let hitBox = false;
-      for (let i = this.boxes.length - 1; i >= 0; i--) {
-        const box = this.boxes[i];
-        const col = circleRectCollision({ x: p.x, y: p.y, radius: p.radius }, box);
-        if (col.collided) {
+      if (hitKind === 'box') {
+        const box = this.boxes[hitBoxIndex];
+        if (box) {
           box.hp -= p.damage;
           this.addFloatingNumber(`-${p.damage}`, box.x + box.w / 2, box.y, '#f59e0b');
-
-          if (box.hp <= 0) {
-            this.destroyBox(i);
-          }
-
-          if (p.burstNeedlesOnEnd) {
-            this.burstSpikeNeedles(p.x, p.y, p.ownerId, p.team, Math.round(p.damage * 0.6));
-          }
-          if (p.spawnFireOnEnd) {
-            this.triggerExplosionAt(p.x, p.y, p.ownerId, p.team, p.damage, 65, true);
-          }
-
-          if (!p.piercesWalls) {
-            hitBox = true;
-            toRemove.add(p.id);
-            break;
-          }
+          if (box.hp <= 0) this.destroyBox(hitBoxIndex);
         }
+        this.detonateProjectile(p, hitX, hitY);
+        if (!p.piercesWalls) {
+          toRemove.add(p.id);
+        } else {
+          p.x += stepX * (1 - bestT);
+          p.y += stepY * (1 - bestT);
+        }
+        continue;
       }
-      if (hitBox && !p.piercesWalls) continue;
 
-      // Check enemy brawlers
-      for (const target of this.brawlers) {
-        if (!target.isAlive || target.isJumping || target.id === p.ownerId) continue;
-        if (this.mode === 'gem_grab' && target.team === p.team) continue;
+      if (hitKind === 'brawler' && hitTarget) {
+        const effectiveDmg = this.applyDamageFalloff(p, p.damage);
+        this.damageBrawler(hitTarget, effectiveDmg, p.ownerId);
 
-        if (dist(p.x, p.y, target.x, target.y) <= p.radius + 22) {
-          // Calculate Leon Damage Falloff (Close range assassin multiplier!)
-          let effectiveDmg = p.damage;
-          if (p.brawlerId === 'leon' && !p.isSuper) {
-            if (p.traveled < 130) {
-              effectiveDmg = Math.round(p.damage * 1.65); // High damage ambush
-            } else if (p.traveled > 280) {
-              effectiveDmg = Math.round(p.damage * 0.75); // Lower damage poke
-            }
-          }
+        // Shelly's Super slows whatever it catches.
+        if (p.brawlerId === 'shelly' && p.isSuper) {
+          hitTarget.slowTimer = 3.0;
+        }
 
-          this.damageBrawler(target, effectiveDmg, p.ownerId);
+        if (p.knockbackForce && p.knockbackForce > 0) {
+          const ang = Math.atan2(hitTarget.y - hitY, hitTarget.x - hitX);
+          hitTarget.knockbackVx += Math.cos(ang) * p.knockbackForce;
+          hitTarget.knockbackVy += Math.sin(ang) * p.knockbackForce;
+          hitTarget.stunTimer = Math.max(hitTarget.stunTimer, 0.35);
+        }
 
-          // Shelly Shell Shock: Slow target for 3s
-          if (p.brawlerId === 'shelly' && p.isSuper) {
-            target.slowTimer = 3.0;
-          }
-
-          // Apply Knockback & Stun from Super Shell
-          if (p.knockbackForce && p.knockbackForce > 0) {
-            const ang = Math.atan2(target.y - p.y, target.x - p.x);
-            target.knockbackVx += Math.cos(ang) * p.knockbackForce;
-            target.knockbackVy += Math.sin(ang) * p.knockbackForce;
-            target.stunTimer = Math.max(target.stunTimer, 0.35);
-          }
-
-          // Charge owner's Super gauge
+        // Supers do not charge the next Super.
+        if (!p.isSuper) {
           const owner = this.brawlers.find(o => o.id === p.ownerId);
           if (owner) {
-            const cfg = BRAWLERS[owner.brawlerId];
-            owner.superCharge = Math.min(100, owner.superCharge + cfg.superChargePerHit);
-          }
-
-          if (p.burstNeedlesOnEnd) {
-            this.burstSpikeNeedles(p.x, p.y, p.ownerId, p.team, Math.round(p.damage * 0.6));
-          }
-          if (p.spawnFireOnEnd) {
-            this.triggerExplosionAt(p.x, p.y, p.ownerId, p.team, p.damage, 65, true);
-          }
-
-          if (!p.piercesWalls) {
-            toRemove.add(p.id);
-            break;
+            owner.superCharge = Math.min(
+              100,
+              owner.superCharge + this.superChargeFor(owner, effectiveDmg)
+            );
           }
         }
+
+        this.detonateProjectile(p, hitX, hitY);
+
+        if (!p.piercesWalls) {
+          toRemove.add(p.id);
+        } else {
+          (p.hitIds ||= []).push(hitTarget.id);
+          p.x += stepX * (1 - bestT);
+          p.y += stepY * (1 - bestT);
+        }
+        continue;
       }
     }
 
     if (toRemove.size > 0) {
       this.projectiles = this.projectiles.filter(p => !toRemove.has(p.id));
+    }
+  }
+
+  /** Secondary effects a projectile triggers wherever it comes to rest. */
+  private detonateProjectile(p: BrawlProjectile, x: number, y: number) {
+    if (p.burstNeedlesOnEnd) {
+      this.burstSpikeNeedles(x, y, p.ownerId, p.team, Math.round(p.damage * 0.6));
+    }
+    if (p.spawnFireOnEnd) {
+      this.triggerExplosionAt(x, y, p.ownerId, p.team, p.damage, 65, true);
+    }
+  }
+
+  /**
+   * Leon's close-range bonus as a smooth curve. The old version used two hard
+   * brackets, so a blade crossing an invisible 130 px line changed its damage
+   * by 55% from one pixel to the next.
+   */
+  private applyDamageFalloff(p: BrawlProjectile, damage: number): number {
+    if (p.brawlerId !== 'leon' || p.isSuper) return damage;
+    const t = clamp(p.traveled / 320, 0, 1);
+    return Math.round(damage * (1.7 - 0.95 * smoothstep(t)));
+  }
+
+  /**
+   * Super charge is proportional to damage dealt, not to how many projectiles
+   * happened to connect. Charging a flat amount per pellet meant Shelly's
+   * five-pellet shot filled 52% of her Super on one trigger pull and Colt's
+   * six-round burst 54% — two attacks and the Super was back.
+   */
+  private superChargeFor(owner: BrawlerEntity, damage: number): number {
+    const cfg = BRAWLERS[owner.brawlerId];
+    const fullAttackDamage = cfg.damagePerAttack * Math.max(1, cfg.projectileCount);
+    return (damage * 100) / (fullAttackDamage * cfg.superHitsRequired);
+  }
+
+  /**
+   * Pushes a body out of walls and boxes. Called once per movement axis so a
+   * blocked axis does not cancel the other one.
+   */
+  private resolveAgainstGeometry(b: BrawlerEntity, radius: number, horizontal: boolean) {
+    this.ensureWallGrid();
+
+    const near = this.wallGrid.queryCircle(b.x, b.y, radius);
+    for (let i = 0; i < near.length; i++) {
+      const wall = this.walls[near[i]];
+      if (!wall) continue;
+      const col = circleRectCollision({ x: b.x, y: b.y, radius }, wall);
+      if (col.collided) {
+        b.x += col.nx * col.depth;
+        b.y += col.ny * col.depth;
+        if (horizontal) b.vx = 0;
+        else b.vy = 0;
+      }
+    }
+
+    for (const box of this.boxes) {
+      const col = circleRectCollision({ x: b.x, y: b.y, radius }, box);
+      if (col.collided) {
+        b.x += col.nx * col.depth;
+        b.y += col.ny * col.depth;
+        if (horizontal) b.vx = 0;
+        else b.vy = 0;
+      }
+    }
+  }
+
+  /** Rebuilds the static broadphase when the wall set has changed. */
+  private ensureWallGrid() {
+    if (this.wallGridDirty || this.walls.length !== this.wallGridCount) {
+      this.wallGrid.rebuildFromRects(this.walls);
+      this.wallGridCount = this.walls.length;
+      this.wallGridDirty = false;
     }
   }
 
@@ -1308,6 +1497,9 @@ export class BrawlEngine {
       // Damage and slow enemies inside
       for (const b of this.brawlers) {
         if (!b.isAlive || b.isJumping) continue;
+        // Showdown is free-for-all, so the old gem-grab-only check left
+        // Spike standing in his own Super taking 600 damage a second.
+        if (b.id === tf.ownerId) continue;
         if (this.mode === 'gem_grab' && b.team === tf.team) continue;
 
         if (dist(tf.x, tf.y, b.x, b.y) <= tf.radius) {
@@ -1330,6 +1522,7 @@ export class BrawlEngine {
       // Damage enemies standing in fire
       for (const b of this.brawlers) {
         if (!b.isAlive || b.isJumping) continue;
+        if (b.id === fp.ownerId) continue;
         if (this.mode === 'gem_grab' && b.team === fp.team) continue;
 
         if (dist(fp.x, fp.y, b.x, b.y) <= fp.radius + 18) {
@@ -1404,8 +1597,8 @@ export class BrawlEngine {
       // Drop gems carried
       if (b.gemsCarried > 0) {
         for (let i = 0; i < b.gemsCarried; i++) {
-          const ang = Math.random() * Math.PI * 2;
-          const r = 20 + Math.random() * 45;
+          const ang = this.rng.next() * Math.PI * 2;
+          const r = 20 + this.rng.next() * 45;
           this.gems.push({
             id: `gem-${this.nextEntityId++}`,
             x: b.x + Math.cos(ang) * r,
@@ -1420,8 +1613,8 @@ export class BrawlEngine {
       if (this.mode === 'showdown') {
         const cubesToDrop = Math.max(1, Math.floor(b.powerCubes / 2) + 1);
         for (let i = 0; i < cubesToDrop; i++) {
-          const ang = Math.random() * Math.PI * 2;
-          const r = 20 + Math.random() * 40;
+          const ang = this.rng.next() * Math.PI * 2;
+          const r = 20 + this.rng.next() * 40;
           this.powerCubes.push({
             id: `cube-${this.nextEntityId++}`,
             x: b.x + Math.cos(ang) * r,
@@ -1441,8 +1634,8 @@ export class BrawlEngine {
       this.gemMine.spawnTimer = 5.5; // Spawn 1 gem every 5.5s
       this.gemMine.totalSpawned++;
 
-      const ang = Math.random() * Math.PI * 2;
-      const r = 20 + Math.random() * 35;
+      const ang = this.rng.next() * Math.PI * 2;
+      const r = 20 + this.rng.next() * 35;
       this.gems.push({
         id: `gem-${this.nextEntityId++}`,
         x: this.gemMine.x + Math.cos(ang) * r,

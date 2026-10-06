@@ -13,6 +13,21 @@ import { BrawlLobby } from './components/BrawlLobby';
 import { BrawlCanvas } from './components/BrawlCanvas';
 import { BrawlHUD } from './components/BrawlHUD';
 import { StarPlayerModal } from './components/StarPlayerModal';
+import { GameLoop } from './core/loop';
+import { seedFromString } from './core/rng';
+
+/**
+ * How often React is allowed to re-render the HUD.
+ *
+ * The old loop called setSnapshot 60 times a second with the engine's live
+ * entity arrays, re-rendering App, the HUD and the canvas on every frame. The
+ * canvas now reads the engine directly at 60 fps, so React only needs to tick
+ * often enough for health, ammo and timers to read as live.
+ */
+const HUD_REFRESH_INTERVAL = 1 / 12;
+
+/** Seconds between authoritative state broadcasts to connected peers. */
+const NET_SNAPSHOT_INTERVAL = 1 / 30;
 
 export const App: React.FC = () => {
   // Player state
@@ -41,8 +56,9 @@ export const App: React.FC = () => {
   const engineRef = useRef<BrawlEngine | null>(null);
   const peerManagerRef = useRef<PeerManager | null>(null);
   const myPlayerIdRef = useRef<string>('');
-  const lastTimeRef = useRef<number>(performance.now());
-  const loopAnimRef = useRef<number>(0);
+  const gameLoopRef = useRef<GameLoop | null>(null);
+  /** Lets the canvas pull live state without a React render. */
+  const snapshotSourceRef = useRef<(() => BrawlSnapshot | null) | undefined>(undefined);
 
   // Save player name
   useEffect(() => {
@@ -245,36 +261,51 @@ export const App: React.FC = () => {
       }
     };
 
-    engine.initMatch(currentPlayers, mode);
+    // Seeding from the room code makes a match reproducible: the same lobby and
+    // the same inputs now produce the same match on every machine.
+    const seed = seedFromString(roomCode || `${mode}-solo`);
+    engine.initMatch(currentPlayers, mode, seed);
     engineRef.current = engine;
+    snapshotSourceRef.current = () => engine.getSnapshot();
     setIsInGame(true);
+    setSnapshot(engine.getSnapshot());
 
-    lastTimeRef.current = performance.now();
+    let hudAccumulator = 0;
+    let netAccumulator = 0;
 
-    // 60 FPS Engine loop
-    let lastBroadcast = 0;
-    const loop = (now: number) => {
-      const dt = Math.min((now - lastTimeRef.current) / 1000, 0.05);
-      lastTimeRef.current = now;
+    // Fixed-timestep simulation: the engine always advances in whole 1/60 s
+    // steps regardless of display refresh rate, so the game no longer plays
+    // differently at 60 Hz and 144 Hz and a backgrounded tab cannot teleport
+    // everything through walls on the next frame.
+    const loop = new GameLoop({
+      update: dt => {
+        engine.update(dt);
 
-      engine.update(dt);
-      const currentSnap = engine.getSnapshot();
-      setSnapshot(currentSnap);
+        hudAccumulator += dt;
+        if (hudAccumulator >= HUD_REFRESH_INTERVAL) {
+          hudAccumulator = 0;
+          setSnapshot(engine.getSnapshot());
+        }
 
-      // Broadcast at 45Hz
-      if (!isSingleplayer && peerManagerRef.current && now - lastBroadcast > 22) {
-        lastBroadcast = now;
-        peerManagerRef.current.broadcast({
-          type: 'STATE',
-          snapshot: currentSnap,
-        });
-      }
+        if (!isSingleplayer && peerManagerRef.current) {
+          netAccumulator += dt;
+          if (netAccumulator >= NET_SNAPSHOT_INTERVAL) {
+            netAccumulator = 0;
+            peerManagerRef.current.broadcast({
+              type: 'STATE',
+              snapshot: engine.getSnapshot(),
+            });
+          }
+        }
+      },
+      render: () => {
+        // The canvas owns its own render loop and pulls state directly.
+      },
+    });
 
-      loopAnimRef.current = requestAnimationFrame(loop);
-    };
-
-    cancelAnimationFrame(loopAnimRef.current);
-    loopAnimRef.current = requestAnimationFrame(loop);
+    gameLoopRef.current?.stop();
+    gameLoopRef.current = loop;
+    loop.start();
   };
 
   // Send local input
@@ -325,7 +356,9 @@ export const App: React.FC = () => {
 
   // Leave Game
   const handleLeaveGame = () => {
-    cancelAnimationFrame(loopAnimRef.current);
+    gameLoopRef.current?.stop();
+    gameLoopRef.current = null;
+    snapshotSourceRef.current = undefined;
     peerManagerRef.current?.destroy();
     peerManagerRef.current = null;
     engineRef.current = null;
@@ -370,6 +403,7 @@ export const App: React.FC = () => {
             snapshot={snapshot}
             myPlayerId={myPlayerId}
             onSendInput={handleSendInput}
+            getSnapshot={snapshotSourceRef.current}
           />
 
           <BrawlHUD

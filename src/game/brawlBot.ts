@@ -1,5 +1,6 @@
 import { BrawlerEntity, BrawlPlayerInput, BrawlWall, Bush, GemDrop, PowerCubeDrop, PowerCubeBox } from '../types/brawl';
-import { dist } from './physics';
+import { dist } from '../core/math';
+import { hasLineOfSight } from '../core/collision';
 
 export class BrawlBot {
   private changeMoveTimer: number = 0;
@@ -79,13 +80,18 @@ export class BrawlBot {
       // Check attack range based on brawler
       const maxRange = bot.brawlerId === 'el_primo' ? 160 : bot.brawlerId === 'shelly' ? 300 : 420;
 
-      if (targetDist <= maxRange && bot.ammo >= 1 && this.attackCooldown <= 0) {
+      // Bots used to fire whenever a target was in range, including straight
+      // into the wall they were standing behind. Gate the trigger on actually
+      // being able to see what they are shooting at.
+      const canSeeTarget = hasLineOfSight(bot.x, bot.y, targetX, targetY, walls);
+
+      if (targetDist <= maxRange && canSeeTarget && bot.ammo >= 1 && this.attackCooldown <= 0) {
         shouldAttack = true;
         this.attackCooldown = 0.45 + Math.random() * 0.35;
       }
 
       // Super activation logic
-      if (bot.superCharge >= 100) {
+      if (bot.superCharge >= 100 && canSeeTarget) {
         if (bot.brawlerId === 'el_primo' && targetDist < 400 && targetDist > 100) {
           shouldSuper = true;
         } else if (bot.brawlerId === 'shelly' && targetDist < 260) {
@@ -157,7 +163,7 @@ export class BrawlBot {
       if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0) {
         if (bot.brawlerId === 'shelly' && targetDist > 90 && targetDist < 200) {
           shouldGadget = true;
-        } else if (bot.brawlerId === 'colt' && bot.ammo < 0.5 && targetDist < 450) {
+        } else if (bot.brawlerId === 'colt' && bot.ammo < 1 && targetDist < 450) {
           shouldGadget = true;
         } else if (bot.brawlerId === 'el_primo' && targetDist < 80) {
           shouldGadget = true;

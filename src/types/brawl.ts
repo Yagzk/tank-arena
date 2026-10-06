@@ -10,7 +10,13 @@ export interface BrawlerConfig {
   avatarBg: string;
   maxHp: number;
   speed: number;
-  reloadTime: number; // Seconds per ammo
+  reloadTime: number; // Seconds to refill one ammo slot
+  /** Enforced delay between two basic attacks, independent of ammo. */
+  attackCooldown: number;
+  /** Ground acceleration in px/s^2. Lower = heavier, more committed movement. */
+  acceleration: number;
+  /** Full-damage basic attacks needed to charge the Super from empty. */
+  superHitsRequired: number;
   range: number;
   damagePerAttack: number;
   superChargePerHit: number; // % charge per hit
@@ -40,6 +46,9 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     maxHp: 3800,
     speed: 175,
     reloadTime: 1.4,
+    attackCooldown: 0.52,
+    acceleration: 1500,
+    superHitsRequired: 3,
     range: 340,
     damagePerAttack: 320, // 5 pellets = 1600 max
     superChargePerHit: 10.5,
@@ -67,6 +76,9 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     maxHp: 2800,
     speed: 195, // with Slick Boots Star Power
     reloadTime: 1.5,
+    attackCooldown: 0.46,
+    acceleration: 1700,
+    superHitsRequired: 3.2,
     range: 480,
     damagePerAttack: 360, // 6 bullets = 2160 max
     superChargePerHit: 9,
@@ -94,6 +106,9 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     maxHp: 6000,
     speed: 200,
     reloadTime: 0.85,
+    attackCooldown: 0.30,
+    acceleration: 1250,
+    superHitsRequired: 2.6,
     range: 165,
     damagePerAttack: 380, // 4 punches = 1520 max
     superChargePerHit: 12,
@@ -121,6 +136,9 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     maxHp: 2600,
     speed: 165,
     reloadTime: 1.7,
+    attackCooldown: 0.62,
+    acceleration: 1350,
+    superHitsRequired: 2.4,
     range: 540,
     damagePerAttack: 1360, // rocket with AoE and fire patch
     superChargePerHit: 25,
@@ -148,6 +166,9 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     maxHp: 2400,
     speed: 165,
     reloadTime: 1.65,
+    attackCooldown: 0.58,
+    acceleration: 1400,
+    superHitsRequired: 2.8,
     range: 390,
     damagePerAttack: 700, // grenade + 6 needles (420 each)
     superChargePerHit: 18,
@@ -175,6 +196,9 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     maxHp: 3200,
     speed: 210,
     reloadTime: 1.45,
+    attackCooldown: 0.50,
+    acceleration: 1850,
+    superHitsRequired: 3,
     range: 420,
     damagePerAttack: 480, // 4 blades = up to 3200 close range burst!
     superChargePerHit: 12,
@@ -223,8 +247,15 @@ export interface BrawlerEntity {
   speedBoostTimer: number;
   hp: number;
   maxHp: number;
-  ammo: number; // 0 to 3
+  ammo: number; // Whole ammo slots, 0 to maxAmmo
   maxAmmo: number; // 3
+  /** Seconds accumulated toward the next ammo slot. Drives the partial bar. */
+  reloadTimer: number;
+  /** Blocks the next basic attack; independent of ammo so bursts cannot stack. */
+  attackCooldown: number;
+  /** Previous-tick position, used by the renderer to interpolate between ticks. */
+  prevX: number;
+  prevY: number;
   superCharge: number; // 0 to 100%
   isAlive: boolean;
   powerCubes: number; // For Showdown (+400 HP, +10% damage)
@@ -286,6 +317,9 @@ export interface BrawlProjectile {
   curveDir?: number;
   spawnFireOnEnd?: boolean;
   knockbackForce?: number;
+  /** Bodies a piercing projectile has already damaged, so it cannot hit the
+   *  same target twice as it passes through. */
+  hitIds?: string[];
 }
 
 export interface ThornField {
