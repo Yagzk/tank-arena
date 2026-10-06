@@ -36,7 +36,10 @@ export interface BrawlSoundEvent {
     | 'gem_pickup'
     | 'cube_pickup'
     | 'star_player'
-    | 'alarm';
+    | 'alarm'
+    | 'gadget_activate'
+    | 'band_aid'
+    | 'colt_reload';
 }
 
 export class BrawlEngine {
@@ -164,6 +167,14 @@ export class BrawlEngine {
         burstTargetX: 0,
         burstTargetY: 0,
         burstShotIndex: 0,
+        // Star Powers & Gadgets
+        gadgetCharges: 3,
+        gadgetCooldown: 0,
+        bandAidCooldown: 0,
+        meteorRushTimer: 0,
+        burnTimer: 0,
+        burnDamagePerSec: 0,
+        isClone: false,
       };
     });
   }
@@ -204,7 +215,8 @@ export class BrawlEngine {
   private updateBrawlers(dt: number) {
     const brawlerRadius = 22;
 
-    for (const b of this.brawlers) {
+    for (let bi = this.brawlers.length - 1; bi >= 0; bi--) {
+      const b = this.brawlers[bi];
       if (!b.isAlive) continue;
 
       const cfg = BRAWLERS[b.brawlerId];
@@ -223,14 +235,88 @@ export class BrawlEngine {
         }
       }
 
-      // Timers: Stun, Slow, Speed Boost, Invisibility, Emote
+      // Timers: Stun, Slow, Speed Boost, Invisibility, Emote, Gadget, Star Powers
       if (b.stunTimer > 0) b.stunTimer -= dt;
       if (b.slowTimer > 0) b.slowTimer -= dt;
       if (b.speedBoostTimer > 0) b.speedBoostTimer -= dt;
       if (b.invisibilityTimer > 0) b.invisibilityTimer -= dt;
+      if (b.gadgetCooldown > 0) b.gadgetCooldown -= dt;
+      if (b.bandAidCooldown > 0) b.bandAidCooldown -= dt;
+      if (b.meteorRushTimer > 0) b.meteorRushTimer -= dt;
+
       if (b.emoteTimer > 0) {
         b.emoteTimer -= dt;
         if (b.emoteTimer <= 0) b.activeEmote = null;
+      }
+
+      // El Fuego Burn Tick
+      if (b.burnTimer > 0) {
+        b.burnTimer -= dt;
+        const burnDmg = Math.round(b.burnDamagePerSec * dt);
+        if (burnDmg > 0) {
+          b.hp = Math.max(1, b.hp - burnDmg);
+          if (Math.random() < 0.2) {
+            this.addFloatingNumber(`-${Math.round(b.burnDamagePerSec)} ATEŞ`, b.x, b.y - 18, '#f97316');
+          }
+        }
+      }
+
+      // Shelly Star Power: Band-Aid (Instant heal when HP < 40%)
+      if (b.brawlerId === 'shelly' && b.hp < b.maxHp * 0.4 && b.bandAidCooldown <= 0) {
+        b.hp = Math.min(b.maxHp, b.hp + 1800);
+        b.bandAidCooldown = 15.0;
+        this.addFloatingNumber('+1800 YARA BANDI!', b.x, b.y - 30, '#4ade80');
+        this.visualEffects.push({
+          id: `fx-${this.nextEntityId++}`,
+          type: 'band_aid',
+          x: b.x,
+          y: b.y,
+          radius: 50,
+          color: '#22c55e',
+          duration: 0.6,
+          progress: 0,
+        });
+        this.onSoundTriggered?.({ type: 'band_aid' });
+      }
+
+      // Spike Star Power: Fertilizer (Heals +700 HP/sec in own Thorn Field)
+      if (b.brawlerId === 'spike') {
+        const inOwnThorn = this.thornFields.some(tf => tf.ownerId === b.id && dist(b.x, b.y, tf.x, tf.y) <= tf.radius);
+        if (inOwnThorn) {
+          b.hp = Math.min(b.maxHp, b.hp + 700 * dt);
+        }
+      }
+
+      // Leon Star Power: Invisiheal (Heals +700 HP/sec in Stealth)
+      if (b.brawlerId === 'leon' && b.invisibilityTimer > 0) {
+        b.hp = Math.min(b.maxHp, b.hp + 700 * dt);
+      }
+
+      // Leon Holographic Clone AI
+      if (b.isClone) {
+        // Clone charges toward nearest enemy
+        const enemy = this.brawlers.find(e => e.id !== b.id && e.isAlive && e.team !== b.team && !e.isClone);
+        if (enemy) {
+          const ang = Math.atan2(enemy.y - b.y, enemy.x - b.x);
+          b.x += Math.cos(ang) * 190 * dt;
+          b.y += Math.sin(ang) * 190 * dt;
+          b.aimAngle = ang;
+        }
+        b.timeSinceLastDamage += dt;
+        if (b.timeSinceLastDamage > 8.0 || b.hp <= 0) {
+          this.visualEffects.push({
+            id: `fx-${this.nextEntityId++}`,
+            type: 'smoke_poof',
+            x: b.x,
+            y: b.y,
+            radius: 40,
+            color: '#06b6d4',
+            duration: 0.35,
+            progress: 0,
+          });
+          this.brawlers.splice(bi, 1);
+          continue;
+        }
       }
 
       // Knockback Physics & Momentum decay
@@ -256,7 +342,7 @@ export class BrawlEngine {
         }
       }
 
-      // El Primo Jump Progression
+      // Airborne Leap Progression (El Primo Super & Brock Gadget jump)
       if (b.isJumping) {
         b.jumpProgress += dt * 1.55; // ~0.65s jump duration
         b.x = b.jumpStartX + (b.jumpTargetX - b.jumpStartX) * b.jumpProgress;
@@ -266,7 +352,9 @@ export class BrawlEngine {
           b.isJumping = false;
           b.x = b.jumpTargetX;
           b.y = b.jumpTargetY;
-          this.triggerPrimoLanding(b);
+          if (b.brawlerId === 'el_primo') {
+            this.triggerPrimoLanding(b);
+          }
         }
         continue; // Airborne brawler skips ground collisions & input
       }
@@ -314,10 +402,11 @@ export class BrawlEngine {
         continue;
       }
 
-      // Movement Calculations with Speed Modifiers
+      // Movement Calculations with Speed Modifiers & Star Powers
       let speed = cfg.speed;
       if (b.slowTimer > 0) speed *= 0.5; // Spike slow
-      if (b.speedBoostTimer > 0) speed *= 1.25; // Leon assassin burst speed!
+      if (b.speedBoostTimer > 0) speed *= 1.3; // Leon Smoke Trails (+30%)
+      if (b.meteorRushTimer > 0) speed *= 1.32; // El Primo Meteor Rush (+32%)
 
       if (input.moveX !== 0 || input.moveY !== 0) {
         const len = Math.hypot(input.moveX, input.moveY) || 1;
@@ -390,6 +479,13 @@ export class BrawlEngine {
       }
       this.prevSuperReadyState[b.id] = isSuperReady;
 
+      // GADGET ACTIVATION (E Key / Mobile Gadget button)
+      if (input.gadget && b.gadgetCharges > 0 && b.gadgetCooldown <= 0) {
+        b.gadgetCharges--;
+        b.gadgetCooldown = 4.5;
+        this.executeGadget(b);
+      }
+
       // ATTACK & SUPER TRIGGERING
       if (input.superAttack && b.superCharge >= 100) {
         b.superCharge = 0;
@@ -401,6 +497,169 @@ export class BrawlEngine {
         b.timeSinceLastAttack = 0;
         if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking cancels stealth
         this.executeAttack(b, input);
+      }
+    }
+  }
+
+  // Gadgets Execution
+  private executeGadget(b: BrawlerEntity) {
+    this.onSoundTriggered?.({ type: 'gadget_activate' });
+
+    switch (b.brawlerId) {
+      case 'shelly': {
+        // Fast Forward: Dash 140px in aim direction
+        this.addFloatingNumber('İLERİ ATILMA!', b.x, b.y - 25, '#c084fc');
+        b.knockbackVx = Math.cos(b.aimAngle) * 580;
+        b.knockbackVy = Math.sin(b.aimAngle) * 580;
+        this.visualEffects.push({
+          id: `fx-${this.nextEntityId++}`,
+          type: 'dash',
+          x: b.x,
+          y: b.y,
+          radius: 50,
+          color: '#a855f7',
+          duration: 0.3,
+          progress: 0,
+        });
+        break;
+      }
+
+      case 'colt': {
+        // Speedloader: Instantly reload 2 ammo
+        b.ammo = Math.min(b.maxAmmo, b.ammo + 2);
+        this.addFloatingNumber('+2 CEPHANE!', b.x, b.y - 25, '#ef4444');
+        this.onSoundTriggered?.({ type: 'colt_reload' });
+        break;
+      }
+
+      case 'el_primo': {
+        // Suplex Supplement: Grab nearest enemy (< 90px) and throw behind
+        let nearest: BrawlerEntity | null = null;
+        let minDist = 90;
+        for (const other of this.brawlers) {
+          if (other.id === b.id || !other.isAlive || other.team === b.team) continue;
+          const d = dist(b.x, b.y, other.x, other.y);
+          if (d < minDist) {
+            minDist = d;
+            nearest = other;
+          }
+        }
+        if (nearest) {
+          const flingAng = b.aimAngle + Math.PI;
+          nearest.x = b.x + Math.cos(flingAng) * 140;
+          nearest.y = b.y + Math.sin(flingAng) * 140;
+          nearest.stunTimer = 0.6;
+          this.damageBrawler(nearest, 480, b.id);
+          this.addFloatingNumber('SUPLEX!', nearest.x, nearest.y - 25, '#0284c7');
+          this.onSoundTriggered?.({ type: 'super_blast' });
+        } else {
+          this.addFloatingNumber('HEDEF YOK!', b.x, b.y - 25, '#94a3b8');
+        }
+        break;
+      }
+
+      case 'brock': {
+        // Rocket Laces: Jump in air, push and damage nearby enemies
+        this.addFloatingNumber('ROKET BAĞCIKLARI!', b.x, b.y - 25, '#f59e0b');
+        b.isJumping = true;
+        b.jumpProgress = 0;
+        b.jumpStartX = b.x;
+        b.jumpStartY = b.y;
+        b.jumpTargetX = b.x + Math.cos(b.aimAngle) * 120;
+        b.jumpTargetY = b.y + Math.sin(b.aimAngle) * 120;
+
+        this.triggerExplosionAt(b.x, b.y, b.id, b.team, 500, 75, true, 250);
+        this.onSoundTriggered?.({ type: 'brock_rocket' });
+        break;
+      }
+
+      case 'spike': {
+        // Popping Pincushion: 360-degree burst of 16 needles
+        this.addFloatingNumber('DİKEN YAĞMURU!', b.x, b.y - 25, '#10b981');
+        for (let i = 0; i < 16; i++) {
+          const ang = (i * Math.PI * 2) / 16;
+          this.projectiles.push({
+            id: `proj-${this.nextEntityId++}`,
+            ownerId: b.id,
+            brawlerId: 'spike',
+            team: b.team,
+            x: b.x + Math.cos(ang) * 15,
+            y: b.y + Math.sin(ang) * 15,
+            vx: Math.cos(ang) * 480,
+            vy: Math.sin(ang) * 480,
+            radius: 4.5,
+            damage: 420,
+            maxRange: 240,
+            traveled: 0,
+            isSuper: false,
+            color: '#10b981',
+            piercesWalls: false,
+            breaksWalls: false,
+          });
+        }
+        break;
+      }
+
+      case 'leon': {
+        // Clone Projector: Spawn holographic decoy clone
+        this.addFloatingNumber('KLON OLUŞTURULDU!', b.x, b.y - 25, '#06b6d4');
+        const cloneId = `clone-${this.nextEntityId++}`;
+        this.brawlers.push({
+          id: cloneId,
+          name: `${b.name} (KLON)`,
+          brawlerId: 'leon',
+          team: b.team,
+          x: b.x + 20,
+          y: b.y + 20,
+          angle: b.angle,
+          aimAngle: b.aimAngle,
+          vx: 0,
+          vy: 0,
+          knockbackVx: 0,
+          knockbackVy: 0,
+          stunTimer: 0,
+          speedBoostTimer: 0,
+          hp: b.hp,
+          maxHp: b.maxHp,
+          ammo: 0,
+          maxAmmo: 3,
+          superCharge: 0,
+          isAlive: true,
+          powerCubes: b.powerCubes,
+          gemsCarried: 0,
+          isInBush: false,
+          isVisibleToEnemies: true,
+          invisibilityTimer: 0,
+          isJumping: false,
+          jumpProgress: 0,
+          jumpStartX: 0,
+          jumpStartY: 0,
+          jumpTargetX: 0,
+          jumpTargetY: 0,
+          timeSinceLastDamage: 0,
+          timeSinceLastAttack: 99,
+          slowTimer: 0,
+          activeEmote: '🤖',
+          emoteTimer: 3,
+          isBot: true,
+          kills: 0,
+          burstRemaining: 0,
+          burstInterval: 0,
+          burstTimer: 0,
+          burstIsSuper: false,
+          burstAimAngle: 0,
+          burstTargetX: 0,
+          burstTargetY: 0,
+          burstShotIndex: 0,
+          gadgetCharges: 0,
+          gadgetCooldown: 99,
+          bandAidCooldown: 99,
+          meteorRushTimer: 0,
+          burnTimer: 0,
+          burnDamagePerSec: 0,
+          isClone: true,
+        });
+        break;
       }
     }
   }
@@ -494,7 +753,7 @@ export class BrawlEngine {
       }
 
       case 'spike': {
-        // Spike Needle Grenade: Explodes into 6 sharp needles at 60° increments!
+        // Spike Needle Grenade: Explodes into 6 sharp needles at 60° increments with Curveball!
         this.onSoundTriggered?.({ type: 'shelly_attack' });
         const baseDmg = Math.round(cfg.damagePerAttack * dmgMultiplier);
         this.projectiles.push({
@@ -750,7 +1009,7 @@ export class BrawlEngine {
       }
 
       case 'leon': {
-        // Smoke Bomb: Smoke cloud puff, 6s Invisibility AND +25% Assassin Speed Boost!
+        // Smoke Bomb: Smoke cloud puff, 6s Invisibility AND +30% Assassin Speed Boost & Invisiheal!
         this.onSoundTriggered?.({ type: 'super_blast' });
         b.invisibilityTimer = 6.0;
         b.speedBoostTimer = 6.0;
@@ -766,7 +1025,7 @@ export class BrawlEngine {
           progress: 0,
         });
 
-        this.addFloatingNumber('GÖRÜNMEZ & HIZLI!', b.x, b.y - 30, '#06b6d4');
+        this.addFloatingNumber('GÖRÜNMEZLİK AKTİF!', b.x, b.y - 30, '#06b6d4');
         break;
       }
     }
@@ -776,6 +1035,9 @@ export class BrawlEngine {
     this.onSoundTriggered?.({ type: 'super_blast' });
     const blastRadius = 125;
     const dmg = Math.round(1300 * (1 + b.powerCubes * 0.1));
+
+    // El Primo Meteor Rush Star Power (+32% speed for 4s)
+    b.meteorRushTimer = 4.0;
 
     // Spawn earthquake crater shockwave
     this.visualEffects.push({
@@ -789,7 +1051,7 @@ export class BrawlEngine {
       progress: 0,
     });
 
-    this.triggerExplosionAt(b.x, b.y, b.id, b.team, dmg, blastRadius, false, 420);
+    this.triggerExplosionAt(b.x, b.y, b.id, b.team, dmg, blastRadius, false, 420, true);
   }
 
   private triggerExplosionAt(
@@ -800,7 +1062,8 @@ export class BrawlEngine {
     damage: number,
     radius: number,
     spawnFire: boolean = false,
-    knockbackForce: number = 0
+    knockbackForce: number = 0,
+    applyPrimoBurn: boolean = false
   ) {
     // Damage and knockback enemies
     for (const b of this.brawlers) {
@@ -810,6 +1073,12 @@ export class BrawlEngine {
       const d = dist(x, y, b.x, b.y);
       if (d <= radius + 22) {
         this.damageBrawler(b, damage, ownerId);
+
+        // El Fuego Star Power: Burns hit enemies for 4s
+        if (applyPrimoBurn) {
+          b.burnTimer = 4.0;
+          b.burnDamagePerSec = 300;
+        }
 
         // Apply knockback away from explosion
         if (knockbackForce > 0) {
@@ -870,6 +1139,14 @@ export class BrawlEngine {
     const toRemove = new Set<string>();
 
     for (const p of this.projectiles) {
+      // Spike Curveball Trajectory Physics
+      if (p.isCurvingNeedle) {
+        const curAng = Math.atan2(p.vy, p.vx) + 2.5 * dt;
+        const spd = Math.hypot(p.vx, p.vy);
+        p.vx = Math.cos(curAng) * spd;
+        p.vy = Math.sin(curAng) * spd;
+      }
+
       const stepX = p.vx * dt;
       const stepY = p.vy * dt;
       p.x += stepX;
@@ -957,6 +1234,11 @@ export class BrawlEngine {
 
           this.damageBrawler(target, effectiveDmg, p.ownerId);
 
+          // Shelly Shell Shock: Slow target for 3s
+          if (p.brawlerId === 'shelly' && p.isSuper) {
+            target.slowTimer = 3.0;
+          }
+
           // Apply Knockback & Stun from Super Shell
           if (p.knockbackForce && p.knockbackForce > 0) {
             const ang = Math.atan2(target.y - p.y, target.x - p.x);
@@ -992,7 +1274,7 @@ export class BrawlEngine {
     }
   }
 
-  // Spike's 6 Needle Burst at 60-degree increments
+  // Spike's 6 Needle Burst at 60-degree increments (With Curveball)
   private burstSpikeNeedles(x: number, y: number, ownerId: string, team: number, damage: number) {
     for (let i = 0; i < 6; i++) {
       const ang = (i * Math.PI) / 3;
@@ -1007,12 +1289,13 @@ export class BrawlEngine {
         vy: Math.sin(ang) * 460,
         radius: 4.5,
         damage,
-        maxRange: 200,
+        maxRange: 210,
         traveled: 0,
         isSuper: false,
         color: '#10b981',
         piercesWalls: false,
         breaksWalls: false,
+        isCurvingNeedle: true,
       });
     }
   }
@@ -1102,6 +1385,11 @@ export class BrawlEngine {
     b.hp -= damage;
     b.timeSinceLastDamage = 0;
 
+    // El Primo Tank Trait: Charges super when receiving damage!
+    if (b.brawlerId === 'el_primo' && !b.isClone) {
+      b.superCharge = Math.min(100, b.superCharge + (damage / b.maxHp) * 75);
+    }
+
     if (showFloating) {
       this.addFloatingNumber(`-${damage}`, b.x, b.y - 20, '#ef4444');
     }
@@ -1170,7 +1458,7 @@ export class BrawlEngine {
     for (let i = this.powerCubes.length - 1; i >= 0; i--) {
       const cube = this.powerCubes[i];
       for (const b of this.brawlers) {
-        if (!b.isAlive || b.isJumping) continue;
+        if (!b.isAlive || b.isJumping || b.isClone) continue;
         if (dist(cube.x, cube.y, b.x, b.y) <= cube.radius + 22) {
           b.powerCubes++;
           b.maxHp += 400;
@@ -1187,7 +1475,7 @@ export class BrawlEngine {
     for (let i = this.gems.length - 1; i >= 0; i--) {
       const gem = this.gems[i];
       for (const b of this.brawlers) {
-        if (!b.isAlive || b.isJumping) continue;
+        if (!b.isAlive || b.isJumping || b.isClone) continue;
         if (dist(gem.x, gem.y, b.x, b.y) <= gem.radius + 22) {
           b.gemsCarried++;
           this.gems.splice(i, 1);
@@ -1229,7 +1517,7 @@ export class BrawlEngine {
 
   private checkGameModeRules(dt: number) {
     if (this.mode === 'showdown') {
-      const aliveBrawlers = this.brawlers.filter(b => b.isAlive);
+      const aliveBrawlers = this.brawlers.filter(b => b.isAlive && !b.isClone);
       if (aliveBrawlers.length <= 1) {
         this.phase = 'match_end';
         if (aliveBrawlers.length === 1) {
@@ -1243,7 +1531,9 @@ export class BrawlEngine {
       // Gem Grab Rules
       const teamGems: Record<number, number> = { 0: 0, 1: 0 };
       this.brawlers.forEach(b => {
-        teamGems[b.team] = (teamGems[b.team] || 0) + b.gemsCarried;
+        if (!b.isClone) {
+          teamGems[b.team] = (teamGems[b.team] || 0) + b.gemsCarried;
+        }
       });
 
       const team0Gems = teamGems[0] || 0;
@@ -1265,7 +1555,7 @@ export class BrawlEngine {
             this.winnerTeam = winningTeam;
 
             // Pick Star Player
-            const winningBrawlers = this.brawlers.filter(b => b.team === winningTeam);
+            const winningBrawlers = this.brawlers.filter(b => b.team === winningTeam && !b.isClone);
             winningBrawlers.sort((a, b) => (b.gemsCarried * 2 + b.kills) - (a.gemsCarried * 2 + a.kills));
             this.starPlayerId = winningBrawlers[0]?.id || null;
             this.onSoundTriggered?.({ type: 'star_player' });

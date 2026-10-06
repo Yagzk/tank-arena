@@ -94,6 +94,15 @@ export const App: React.FC = () => {
       case 'star_player':
         brawlAudio.playStarPlayer();
         break;
+      case 'gadget_activate':
+        brawlAudio.playGadget();
+        break;
+      case 'band_aid':
+        brawlAudio.playBandAid();
+        break;
+      case 'colt_reload':
+        brawlAudio.playReload();
+        break;
     }
   }, []);
 

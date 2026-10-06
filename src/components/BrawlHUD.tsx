@@ -177,27 +177,132 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
                 );
               })}
             </div>
+
+            {/* Star Power & Passive Trait Badges */}
+            <div className="flex items-center gap-2 mt-0.5">
+              {myBrawler.brawlerId === 'shelly' && (
+                <div
+                  className={`px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border transition flex items-center gap-1.5 shadow ${
+                    (myBrawler.bandAidCooldown || 0) <= 0
+                      ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.4)]'
+                      : 'bg-slate-900/80 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  <span>🩹</span>
+                  <span>
+                    {(myBrawler.bandAidCooldown || 0) <= 0
+                      ? 'YARA BANDI: HAZIR'
+                      : `YARA BANDI: ${Math.ceil(myBrawler.bandAidCooldown || 0)}s`}
+                  </span>
+                </div>
+              )}
+
+              {myBrawler.brawlerId === 'colt' && (
+                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-amber-500/20 border-amber-400/80 text-amber-300 shadow flex items-center gap-1.5">
+                  <span>👟</span>
+                  <span>KAYAN ÇİZMELER: +%12 HIZ</span>
+                </div>
+              )}
+
+              {myBrawler.brawlerId === 'el_primo' && (
+                <div className="flex items-center gap-1.5">
+                  <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-emerald-500/20 border-emerald-400/80 text-emerald-300 shadow flex items-center gap-1.5">
+                    <span>🛡️</span>
+                    <span>TANK ÖZELLİĞİ: HASARLA ULTİ DOLAR</span>
+                  </div>
+                  {(myBrawler.meteorRushTimer || 0) > 0 && (
+                    <div className="px-2.5 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-amber-500/30 border-amber-400 text-amber-200 animate-pulse flex items-center gap-1">
+                      <span>☄️</span>
+                      <span>METEOR HIZI!</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {myBrawler.brawlerId === 'brock' && (
+                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-orange-500/20 border-orange-400/80 text-orange-300 shadow flex items-center gap-1.5">
+                  <span>🔥</span>
+                  <span>ALEV İZLERİ: PATLAMA YAKAR</span>
+                </div>
+              )}
+
+              {myBrawler.brawlerId === 'spike' && (
+                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-lime-500/20 border-lime-400/80 text-lime-300 shadow flex items-center gap-1.5">
+                  <span>🌵</span>
+                  <span>FİDANLIK & KAVİSLİ İĞNELER</span>
+                </div>
+              )}
+
+              {myBrawler.brawlerId === 'leon' && (
+                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-indigo-500/20 border-indigo-400/80 text-indigo-300 shadow flex items-center gap-1.5">
+                  <span>💨</span>
+                  <span>GİZLİ İYİLEŞME & SİS İZLERİ</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Right: Giant Glowing SUPER Button */}
+        {/* Right: Gadget & Super Buttons */}
         {myBrawler && (
-          <div className="flex flex-col items-center pointer-events-auto">
-            <div
-              className={`w-20 h-20 rounded-full border-4 flex flex-col items-center justify-center shadow-2xl transition-all duration-200 ${
-                isSuperReady
-                  ? 'border-yellow-400 bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-[0_0_35px_rgba(234,179,8,0.85)] scale-110 animate-pulse'
-                  : 'border-slate-700 bg-slate-900/90 opacity-70'
-              }`}
-            >
-              <span className="text-2xl drop-shadow">💀</span>
-              <span className="text-[10px] font-arcade font-black text-slate-900">
-                {isSuperReady ? 'ULTİ!' : `${Math.floor(myBrawler.superCharge)}%`}
+          <div className="flex items-end gap-3 pointer-events-auto">
+            {/* Gadget Button (Green) */}
+            <div className="flex flex-col items-center">
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', code: 'KeyE' }));
+                  setTimeout(() => {
+                    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'e', code: 'KeyE' }));
+                  }, 80);
+                }}
+                disabled={(myBrawler.gadgetCharges || 0) <= 0 || (myBrawler.gadgetCooldown || 0) > 0}
+                className={`relative w-16 h-16 rounded-full border-4 flex flex-col items-center justify-center shadow-xl transition-all duration-150 cursor-pointer active:scale-95 ${
+                  (myBrawler.gadgetCharges || 0) > 0 && (myBrawler.gadgetCooldown || 0) <= 0
+                    ? 'border-emerald-400 bg-gradient-to-tr from-emerald-600 to-green-400 shadow-[0_0_25px_rgba(52,211,153,0.7)] hover:scale-105'
+                    : 'border-slate-700 bg-slate-900/90 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <span className="text-xl drop-shadow">⚡</span>
+                <span className="text-[9px] font-arcade font-black text-slate-950">
+                  {(myBrawler.gadgetCooldown || 0) > 0
+                    ? `${Math.ceil(myBrawler.gadgetCooldown || 0)}s`
+                    : `${myBrawler.gadgetCharges || 0}/3`}
+                </span>
+
+                {/* Charges badge */}
+                <div className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-slate-950 border border-emerald-400 text-[9px] font-arcade font-black text-emerald-300">
+                  x{myBrawler.gadgetCharges ?? 0}
+                </div>
+              </button>
+              <span className="text-[10px] font-bold text-slate-300 mt-1 uppercase tracking-wider">
+                [E] Aksesuar
               </span>
             </div>
-            <span className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
-              [Boşluk / Sağ Tık]
-            </span>
+
+            {/* Super Button (Yellow) */}
+            <div className="flex flex-col items-center">
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space' }));
+                  setTimeout(() => {
+                    window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space' }));
+                  }, 80);
+                }}
+                className={`w-20 h-20 rounded-full border-4 flex flex-col items-center justify-center shadow-2xl transition-all duration-200 cursor-pointer active:scale-95 ${
+                  isSuperReady
+                    ? 'border-yellow-400 bg-gradient-to-tr from-amber-500 to-yellow-300 shadow-[0_0_35px_rgba(234,179,8,0.85)] scale-105 animate-pulse'
+                    : 'border-slate-700 bg-slate-900/90 opacity-70'
+                }`}
+              >
+                <span className="text-2xl drop-shadow">💀</span>
+                <span className="text-[10px] font-arcade font-black text-slate-900">
+                  {isSuperReady ? 'ULTİ!' : `${Math.floor(myBrawler.superCharge)}%`}
+                </span>
+              </button>
+              <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                [Boşluk / Sağ Tık]
+              </span>
+            </div>
           </div>
         )}
       </div>

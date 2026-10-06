@@ -48,6 +48,7 @@ export class BrawlBot {
     let targetX = 0;
     let targetY = 0;
     let hasTarget = false;
+    let targetDist = Infinity;
 
     if (nearestEnemy) {
       targetX = nearestEnemy.x;
@@ -73,10 +74,10 @@ export class BrawlBot {
 
     if (hasTarget) {
       aimAngle = Math.atan2(targetY - bot.y, targetX - bot.x);
+      targetDist = dist(bot.x, bot.y, targetX, targetY);
 
       // Check attack range based on brawler
       const maxRange = bot.brawlerId === 'el_primo' ? 160 : bot.brawlerId === 'shelly' ? 300 : 420;
-      const targetDist = dist(bot.x, bot.y, targetX, targetY);
 
       if (targetDist <= maxRange && bot.ammo >= 1 && this.attackCooldown <= 0) {
         shouldAttack = true;
@@ -151,12 +152,31 @@ export class BrawlBot {
       }
     }
 
+      // Gadget activation logic for bots
+      let shouldGadget = false;
+      if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0) {
+        if (bot.brawlerId === 'shelly' && targetDist > 90 && targetDist < 200) {
+          shouldGadget = true;
+        } else if (bot.brawlerId === 'colt' && bot.ammo < 0.5 && targetDist < 450) {
+          shouldGadget = true;
+        } else if (bot.brawlerId === 'el_primo' && targetDist < 80) {
+          shouldGadget = true;
+        } else if (bot.brawlerId === 'brock' && targetDist < 120) {
+          shouldGadget = true;
+        } else if (bot.brawlerId === 'spike' && targetDist < 150) {
+          shouldGadget = true;
+        } else if (bot.brawlerId === 'leon' && targetDist < 300 && Math.random() < 0.3) {
+          shouldGadget = true;
+        }
+      }
+
     return {
       moveX: this.currentMoveX,
       moveY: this.currentMoveY,
       aimAngle,
       attack: shouldAttack,
       superAttack: shouldSuper,
+      gadget: shouldGadget,
       superTargetX: targetX,
       superTargetY: targetY,
     };

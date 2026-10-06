@@ -19,6 +19,10 @@ export interface BrawlerConfig {
   attackDesc: string;
   superName: string;
   superDesc: string;
+  gadgetName: string;
+  gadgetDesc: string;
+  starPowerName: string;
+  starPowerDesc: string;
   projectileSpeed: number;
   projectileCount: number;
   spreadAngle: number;
@@ -38,12 +42,16 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     reloadTime: 1.4,
     range: 340,
     damagePerAttack: 320, // 5 pellets = 1600 max
-    superChargePerHit: 12,
-    description: 'Pompalı tüfeğiyle yakın mesafede ölümcüldür. Süper Saçması duvarları parçalar ve rakipleri savurur.',
+    superChargePerHit: 10.5,
+    description: 'Pompalı tüfeğiyle yakın mesafede ölümcüldür. Süper Saçması duvarları parçalar, düşmanları savurur ve sersemletir.',
     attackName: 'Fişek Saçması (Buckshot)',
-    attackDesc: '5 adet konik yayılan saçma atar. Yakın mesafeden tüm saçmalar isabet ederse devasa hasar verir.',
+    attackDesc: '5 adet konik yayılan saçma atar. Yakın mesafeden tüm saçmalar isabet ederse devasa anlık hasar verir.',
     superName: 'Süper Saçma (Super Shell)',
-    superDesc: 'Duvarları ve çalıları paramparça eden 9 devasa saçma fırlatır, rakipleri geri savurur ve sersemletir!',
+    superDesc: 'Duvarları ve çalıları paramparça eden 9 devasa saçma fırlatır, rakipleri geri savurur, sersemletir ve ultiyi anında tekrar doldurur!',
+    gadgetName: 'İleri Atılma (Fast Forward)',
+    gadgetDesc: 'Shelly ileriye doğru hızla atılarak düşmanların üstüne çullanır!',
+    starPowerName: 'Yara Bandı (Band-Aid)',
+    starPowerDesc: 'Canı %40 altına düştüğünde anında +1800 Can yeniler (15 sn bekleme süresi).',
     projectileSpeed: 550,
     projectileCount: 5,
     spreadAngle: 0.36,
@@ -57,16 +65,20 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     secondaryColor: '#b91c1c',
     avatarBg: 'from-red-600 to-rose-900',
     maxHp: 2800,
-    speed: 175,
+    speed: 195, // with Slick Boots Star Power
     reloadTime: 1.5,
     range: 480,
     damagePerAttack: 360, // 6 bullets = 2160 max
     superChargePerHit: 9,
     description: 'İki altıpatlarıyla seri lazer yağdırır. Süper mermileri engelleri delip geçer.',
     attackName: 'Altıpatlar Fırtınası (Six-Shooters)',
-    attackDesc: 'Hızlı bir şekilde peş peşe 6 adet yüksek hızlı lazer mermisi sıkar.',
+    attackDesc: 'Hızlı bir şekilde peş peşe 6 adet yüksek hızlı lazer mermisi sıkar. Hareket ederek mermi hattını yönlendirebilirsiniz.',
     superName: 'Mermi Fırtınası (Bullet Storm)',
-    superDesc: 'Duvarları yıkan, rakiplerin içinden geçen 12 adet ekstra uzun menzilli yıkıcı mermi seli!',
+    superDesc: 'Duvarları ve engelleri yıkan, rakiplerin ve sandıkların içinden geçen 12 adet ekstra uzun menzilli yıkıcı mermi seli!',
+    gadgetName: 'Hızlı Doldurucu (Speedloader)',
+    gadgetDesc: 'Anında 2 tam cephane doldurarak çatışmaya kesintisiz devam eder!',
+    starPowerName: 'Kayan Çizmeler (Slick Boots)',
+    starPowerDesc: 'Colt kalıcı olarak %12 daha hızlı koşar ve altın ayak izleri bırakır.',
     projectileSpeed: 680,
     projectileCount: 6,
     spreadAngle: 0.04,
@@ -85,11 +97,15 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     range: 165,
     damagePerAttack: 380, // 4 punches = 1520 max
     superChargePerHit: 12,
-    description: 'Dev cüssesiyle rakiplerin üstüne atılır. Gökyüzüne sıçrayıp hedefe çarparak yer sarsıntısı yaratır.',
+    description: 'Dev cüssesiyle rakiplerin üstüne atılır. Hasar aldıkça ultisi dolar. Gökyüzüne sıçrayıp hedefe çarparak yer sarsıntısı yaratır.',
     attackName: 'Öfke Yumrukları (Fists of Fury)',
-    attackDesc: 'Yakın mesafede art arda 4 seri alevli yumruk savurur.',
+    attackDesc: 'Yakın mesafede art arda 4 seri alevli boks yumruğu savurur.',
     superName: 'Uçan Dirsek (Flying Elbow Drop)',
-    superDesc: 'Duvarların üzerinden gökyüzüne fırlar; inişte 1200 hasar verir, duvarları/çalıları yıkar ve herkesi savurur!',
+    superDesc: 'Duvarların üzerinden gökyüzüne fırlar; inişte 1300 hasar verir, duvarları/çalıları yıkar ve herkesi savurur!',
+    gadgetName: 'Suplex Takviyesi (Suplex Supplement)',
+    gadgetDesc: 'Yakındaki rakibi tutup omzunun üstünden arkasına fırlatır ve sersemletir!',
+    starPowerName: 'Ateşli Yumruk (El Fuego)',
+    starPowerDesc: 'Süperiyle çarptığı rakipler 4 saniye boyunca yanar (toplam 1200 yanma hasarı).',
     projectileSpeed: 420,
     projectileCount: 4,
     spreadAngle: 0.18,
@@ -110,9 +126,13 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     superChargePerHit: 25,
     description: 'Uzak mesafeden alan hasarı veren roketler atar. Yeri alevler içinde bırakır.',
     attackName: 'Tekli Roket (Rockin\' Rocket)',
-    attackDesc: 'Uzun menzilli roket. Çarptığında patlayarak alan hasarı verir ve yeri ateşe verir.',
+    attackDesc: 'Uzun menzilli roket. Çarptığında patlayarak alan hasarı verir ve yerde 2 saniye yanan alev havuzu bırakır.',
     superName: 'Roket Yağmuru (Rocket Rain)',
     superDesc: 'Gökyüzünden hedeflenen bölgeye 9 alev roketi yağdırır, duvarları yok eder ve alev havuzları bırakır!',
+    gadgetName: 'Roket Bağcıkları (Rocket Laces)',
+    gadgetDesc: 'Yere roket fırlatarak havaya zıplar, yakındaki düşmanları savurur ve hasar verir!',
+    starPowerName: 'Alev Alan (Incendiary)',
+    starPowerDesc: 'Tüm roket patlamaları yerde 420 hasar/sn vuran yangın havuzları bırakır.',
     projectileSpeed: 560,
     projectileCount: 1,
     spreadAngle: 0,
@@ -131,11 +151,15 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     range: 390,
     damagePerAttack: 700, // grenade + 6 needles (420 each)
     superChargePerHit: 18,
-    description: 'Patlayan kaktüs bombaları 6 yöne iğne saçar. Diken Tarlası rakipleri kilitler.',
+    description: 'Patlayan kaktüs bombaları 6 yöne iğne saçar. Diken Tarlası rakipleri kilitler, kendini iyileştirir.',
     attackName: 'İğne Bombası (Needle Grenade)',
-    attackDesc: 'Çarptığında veya menzil sonunda 6 yöne (60° aralıklarla) ölümcül kaktüs iğneleri fırlatır.',
+    attackDesc: 'Çarptığında veya menzil sonunda 6 yöne kavisli ölümcül kaktüs iğneleri fırlatır.',
     superName: 'Diken Tarlası (Stick Around!)',
     superDesc: 'Geniş bir alana diken serer; rakipleri %50 yavaşlatır ve saniyede 600 hasar verir!',
+    gadgetName: 'Diken Yağmuru (Popping Pincushion)',
+    gadgetDesc: 'Kendi etrafında 360 derece 16 adet sivri iğne fırlatır!',
+    starPowerName: 'Gübre (Fertilizer)',
+    starPowerDesc: 'Spike kendi Diken Tarlasının içinde durduğunda saniyede +700 Can yeniler!',
     projectileSpeed: 480,
     projectileCount: 1,
     spreadAngle: 0,
@@ -149,16 +173,20 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     secondaryColor: '#0891b2',
     avatarBg: 'from-cyan-600 to-teal-900',
     maxHp: 3200,
-    speed: 205,
+    speed: 210,
     reloadTime: 1.45,
     range: 420,
     damagePerAttack: 480, // 4 blades = up to 3200 close range burst!
     superChargePerHit: 12,
-    description: 'Dönen ninja yıldızları yakından 2 kat daha fazla vurur. Duman bombasıyla tamamen görünmez olur.',
+    description: 'Dönen ninja yıldızları yakından 2 kat daha fazla vurur. Duman bombasıyla tamamen görünmez olur, hızlanır ve can yeniler.',
     attackName: 'Döner Bıçaklar (Spinner Blades)',
-    attackDesc: 'Yay şeklinde 4 dönen shuriken fırlatır. Yakın mesafeden devasa suikast hasarı verir.',
+    attackDesc: 'Yay şeklinde 4 dönen shuriken fırlatır. Yakın mesafeden devasa suikast hasarı (3200+) verir.',
     superName: 'Duman Bombası (Smoke Bomb)',
-    superDesc: 'Duman bombası patlatarak 6 saniye boyunca TAMAMEN GÖRÜNMEZ olur ve %20 ekstra hız kazanır!',
+    superDesc: 'Duman bombası patlatarak 6 saniye boyunca TAMAMEN GÖRÜNMEZ olur, %30 ekstra hız kazanır ve her saniye +700 Can yeniler!',
+    gadgetName: 'Klon Yansıtıcı (Clone Projector)',
+    gadgetDesc: 'Rakipleri yanıltmak ve mermileri engellemek için koşan bir hologram klon oluşturur!',
+    starPowerName: 'Görünmez İyileşme (Invisiheal)',
+    starPowerDesc: 'Gizlilik halindeyken saniyede +700 Can yenilenir ve duman izleri arkada süzülür.',
     projectileSpeed: 600,
     projectileCount: 4,
     spreadAngle: 0.26,
@@ -204,7 +232,7 @@ export interface BrawlerEntity {
   isInBush: boolean;
   isVisibleToEnemies: boolean;
   invisibilityTimer: number; // Leon super
-  isJumping: boolean; // El Primo super
+  isJumping: boolean; // El Primo super / Brock gadget jump
   jumpProgress: number;
   jumpStartX: number;
   jumpStartY: number;
@@ -217,7 +245,7 @@ export interface BrawlerEntity {
   emoteTimer: number;
   isBot?: boolean;
   kills: number;
-  // Queued burst attacks (for Colt, El Primo, Leon, Brock Super)
+  // Queued burst attacks
   burstRemaining: number;
   burstInterval: number;
   burstTimer: number;
@@ -226,6 +254,14 @@ export interface BrawlerEntity {
   burstTargetX: number;
   burstTargetY: number;
   burstShotIndex: number;
+  // Gadgets & Star Powers
+  gadgetCharges: number; // 3 per match
+  gadgetCooldown: number;
+  bandAidCooldown: number; // Shelly Band-Aid (15s cooldown)
+  meteorRushTimer: number; // El Primo speed boost after Super
+  burnTimer: number; // El Fuego burn timer
+  burnDamagePerSec: number;
+  isClone?: boolean; // For Leon Clone
 }
 
 export interface BrawlProjectile {
@@ -246,6 +282,8 @@ export interface BrawlProjectile {
   piercesWalls: boolean;
   breaksWalls: boolean;
   burstNeedlesOnEnd?: boolean;
+  isCurvingNeedle?: boolean; // Spike Curveball
+  curveDir?: number;
   spawnFireOnEnd?: boolean;
   knockbackForce?: number;
 }
@@ -274,7 +312,7 @@ export interface FirePatch {
 
 export interface VisualEffect {
   id: string;
-  type: 'explosion' | 'shockwave' | 'primo_slam' | 'smoke_poof' | 'debris';
+  type: 'explosion' | 'shockwave' | 'primo_slam' | 'smoke_poof' | 'debris' | 'dash' | 'band_aid';
   x: number;
   y: number;
   radius: number;
@@ -391,6 +429,7 @@ export interface BrawlPlayerInput {
   aimAngle: number;
   attack: boolean;
   superAttack: boolean;
+  gadget?: boolean; // E key or Gadget button
   superTargetX?: number;
   superTargetY?: number;
   emote?: string;

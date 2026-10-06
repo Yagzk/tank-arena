@@ -176,9 +176,34 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm">{activeCfg.description}</p>
-                  <div className="flex flex-wrap items-center gap-4 mt-2.5 text-xs">
-                    <div><strong className="text-yellow-400">Saldırı:</strong> {activeCfg.attackName}</div>
-                    <div><strong className="text-purple-400">Ulti:</strong> {activeCfg.superName}</div>
+                  <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
+                    <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold">
+                      ⚔️ {activeCfg.attackName}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-lg bg-purple-500/15 border border-purple-500/40 text-purple-300 font-bold">
+                      💀 {activeCfg.superName}
+                    </span>
+                  </div>
+
+                  {/* Gadget & Star Power Detailed Badges */}
+                  <div className="flex flex-col gap-1.5 mt-3 pt-2 border-t border-slate-800/80 text-xs">
+                    <div className="flex items-start gap-2">
+                      <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-arcade text-[10px] font-black shrink-0">
+                        ⚡ AKSESUAR
+                      </span>
+                      <span className="text-slate-300">
+                        <strong className="text-emerald-400">{activeCfg.gadgetName}:</strong> {activeCfg.gadgetDesc}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start gap-2">
+                      <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 font-arcade text-[10px] font-black shrink-0">
+                        ⭐ YILDIZ GÜCÜ
+                      </span>
+                      <span className="text-slate-300">
+                        <strong className="text-amber-400">{activeCfg.starPowerName}:</strong> {activeCfg.starPowerDesc}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
