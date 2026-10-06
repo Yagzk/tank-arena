@@ -12,6 +12,15 @@ import { dist } from '../core/math';
 import { hasLineOfSight } from '../core/collision';
 import { NavGrid } from '../core/navGrid';
 
+/** Cubes a bot wants banked before it goes looking for a fight. */
+const LOOT_TARGET_CUBES = 3;
+
+/** Inside this range a bot defends itself regardless of what it was doing. */
+const ENGAGE_DISTANCE = 260;
+
+/** Health fraction below which a bot disengages. */
+const RETREAT_HEALTH = 0.42;
+
 export class BrawlBot {
   private changeMoveTimer: number = 0;
   private currentMoveX: number = 0;
@@ -71,26 +80,42 @@ export class BrawlBot {
     let hasTarget = false;
     let targetDist = Infinity;
 
-    if (nearestEnemy) {
+    let nearestBox: PowerCubeBox | null = null;
+    let minBoxDist = Infinity;
+    for (const box of boxes) {
+      const d = dist(bot.x, bot.y, box.x + box.w / 2, box.y + box.h / 2);
+      if (d < minBoxDist) {
+        minBoxDist = d;
+        nearestBox = box;
+      }
+    }
+
+    /*
+     * Objective choice.
+     *
+     * Bots used to charge the nearest enemy the instant they could see one,
+     * which is why every match collapsed into a brawl in the first few seconds
+     * and was over inside half a minute. A bot that is still weak now prefers
+     * loot it can reach sooner than the fight, which gives a round the opening
+     * phase it was missing — and makes power cubes worth contesting, because
+     * the bots are contesting them.
+     */
+    const isWeak = bot.powerCubes < LOOT_TARGET_CUBES;
+    const lootIsCloser = nearestBox !== null && minBoxDist < minEnemyDist * 0.85;
+    const enemyIsOnTopOfUs = minEnemyDist < ENGAGE_DISTANCE;
+
+    if (nearestEnemy && (!isWeak || enemyIsOnTopOfUs || !lootIsCloser)) {
       targetX = nearestEnemy.x;
       targetY = nearestEnemy.y;
       hasTarget = true;
-    } else {
-      // Find nearest box
-      let nearestBox: PowerCubeBox | null = null;
-      let minBoxDist = Infinity;
-      for (const box of boxes) {
-        const d = dist(bot.x, bot.y, box.x + box.w / 2, box.y + box.h / 2);
-        if (d < minBoxDist) {
-          minBoxDist = d;
-          nearestBox = box;
-        }
-      }
-      if (nearestBox) {
-        targetX = nearestBox.x + nearestBox.w / 2;
-        targetY = nearestBox.y + nearestBox.h / 2;
-        hasTarget = true;
-      }
+    } else if (nearestBox) {
+      targetX = nearestBox.x + nearestBox.w / 2;
+      targetY = nearestBox.y + nearestBox.h / 2;
+      hasTarget = true;
+    } else if (nearestEnemy) {
+      targetX = nearestEnemy.x;
+      targetY = nearestEnemy.y;
+      hasTarget = true;
     }
 
     if (hasTarget) {
@@ -148,7 +173,7 @@ export class BrawlBot {
     if (this.changeMoveTimer <= 0) {
       this.changeMoveTimer = 0.4 + Math.random() * 0.5;
 
-      const isLowHp = bot.hp < bot.maxHp * 0.35;
+      const isLowHp = bot.hp < bot.maxHp * RETREAT_HEALTH;
 
       if (isLowHp && nearestEnemy) {
         // Run away from enemy into safety

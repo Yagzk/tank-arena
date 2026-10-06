@@ -47,6 +47,15 @@ export interface BrawlSoundEvent {
     | 'rapid_reload';
 }
 
+/** When the arena starts closing in Showdown. */
+const GAS_START_TIME = 55;
+/** Closing speed, in pixels per second, at the start and once fully ramped. */
+const GAS_SPEED_INITIAL = 14;
+const GAS_SPEED_FINAL = 48;
+/** Damage per second for standing in it, at the start and once fully ramped. */
+const GAS_DAMAGE_INITIAL = 350;
+const GAS_DAMAGE_FINAL = 1600;
+
 /** Seconds of countdown before a match becomes playable. */
 const INTRO_DURATION = 3.0;
 
@@ -1768,10 +1777,18 @@ export class BrawlEngine {
   private updatePoisonGas(dt: number) {
     if (!this.poisonGas.isActive) return;
 
-    // Starts shrinking after 25s
-    if (this.matchTimer >= 25.0) {
+    // The gas used to start closing at 25 s and deal a flat 1000 a second,
+    // which ended matches in well under a minute: everyone met in the middle
+    // immediately and whoever got caught outside was simply executed. A round
+    // now has an opening phase — break boxes, take cubes, pick fights on your
+    // own terms — before the arena starts squeezing.
+    if (this.matchTimer >= GAS_START_TIME) {
+      const elapsed = this.matchTimer - GAS_START_TIME;
+      // Closes gently at first and accelerates, so late fights are forced
+      // rather than the whole match being a sprint to the centre.
+      const speed = GAS_SPEED_INITIAL + Math.min(elapsed / 45, 1) * (GAS_SPEED_FINAL - GAS_SPEED_INITIAL);
       if (this.poisonGas.inset < 900) {
-        this.poisonGas.inset += dt * 25; // 25 px/sec
+        this.poisonGas.inset += dt * speed;
       }
 
       this.poisonGas.damageTimer += dt;
@@ -1785,8 +1802,15 @@ export class BrawlEngine {
         for (const b of this.brawlers) {
           if (!b.isAlive || b.isJumping) continue;
           if (b.x < minX || b.x > maxX || b.y < minY || b.y > maxY) {
-            this.damageBrawler(b, 1000, 'gas');
-            this.addFloatingNumber('-1000 GAZ', b.x, b.y - 20, '#10b981');
+            // Ramps with the match, so being caught out early is a mistake you
+            // can recover from and being caught out late is not.
+            const damage = Math.round(
+              GAS_DAMAGE_INITIAL +
+                Math.min((this.matchTimer - GAS_START_TIME) / 60, 1) *
+                  (GAS_DAMAGE_FINAL - GAS_DAMAGE_INITIAL)
+            );
+            this.damageBrawler(b, damage, 'gas');
+            this.addFloatingNumber(`-${damage} GAZ`, b.x, b.y - 20, '#10b981');
           }
         }
       }
