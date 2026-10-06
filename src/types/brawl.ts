@@ -28,25 +28,25 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
   shelly: {
     id: 'shelly',
     name: 'SHELLY',
-    title: 'Öncü Dövüşçü',
+    title: 'Öncü Avcı',
     rarity: 'Başlangıç',
     color: '#a855f7',
     secondaryColor: '#7c3aed',
     avatarBg: 'from-purple-600 to-indigo-900',
     maxHp: 3800,
-    speed: 170,
-    reloadTime: 1.3,
-    range: 320,
+    speed: 175,
+    reloadTime: 1.4,
+    range: 340,
     damagePerAttack: 320, // 5 pellets = 1600 max
-    superChargePerHit: 11,
-    description: 'Saçma tüfeğiyle yakındaki rakipleri delik deşik eder.',
-    attackName: 'Fişek Saçması',
-    attackDesc: 'Geniş bir alana 5 adet yüksek hasarlı saçma fırlatır.',
-    superName: 'Süper Saçma',
-    superDesc: 'Duvarları ve çalıları paramparça eden devasa bir şok dalgası!',
-    projectileSpeed: 520,
+    superChargePerHit: 12,
+    description: 'Pompalı tüfeğiyle yakın mesafede ölümcüldür. Süper Saçması duvarları parçalar ve rakipleri savurur.',
+    attackName: 'Fişek Saçması (Buckshot)',
+    attackDesc: '5 adet konik yayılan saçma atar. Yakın mesafeden tüm saçmalar isabet ederse devasa hasar verir.',
+    superName: 'Süper Saçma (Super Shell)',
+    superDesc: 'Duvarları ve çalıları paramparça eden 9 devasa saçma fırlatır, rakipleri geri savurur ve sersemletir!',
+    projectileSpeed: 550,
     projectileCount: 5,
-    spreadAngle: 0.38,
+    spreadAngle: 0.36,
   },
   colt: {
     id: 'colt',
@@ -57,19 +57,19 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     secondaryColor: '#b91c1c',
     avatarBg: 'from-red-600 to-rose-900',
     maxHp: 2800,
-    speed: 170,
-    reloadTime: 1.4,
-    range: 460,
+    speed: 175,
+    reloadTime: 1.5,
+    range: 480,
     damagePerAttack: 360, // 6 bullets = 2160 max
     superChargePerHit: 9,
-    description: 'İki altıpatlarıyla hedefe kurşun yağdırır.',
-    attackName: 'Altıpatlar Fırtınası',
-    attackDesc: 'Düz bir hat boyunca peş peşe 6 hızlı lazer mermisi sıkar.',
-    superName: 'Mermi Barajı',
-    superDesc: 'Duvarların içinden geçip engelleri yıkan 12 ekstra uzun menzilli mermi!',
-    projectileSpeed: 640,
+    description: 'İki altıpatlarıyla seri lazer yağdırır. Süper mermileri engelleri delip geçer.',
+    attackName: 'Altıpatlar Fırtınası (Six-Shooters)',
+    attackDesc: 'Hızlı bir şekilde peş peşe 6 adet yüksek hızlı lazer mermisi sıkar.',
+    superName: 'Mermi Fırtınası (Bullet Storm)',
+    superDesc: 'Duvarları yıkan, rakiplerin içinden geçen 12 adet ekstra uzun menzilli yıkıcı mermi seli!',
+    projectileSpeed: 680,
     projectileCount: 6,
-    spreadAngle: 0.05,
+    spreadAngle: 0.04,
   },
   el_primo: {
     id: 'el_primo',
@@ -79,20 +79,20 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     color: '#0284c7',
     secondaryColor: '#0369a1',
     avatarBg: 'from-sky-600 to-blue-900',
-    maxHp: 6200,
-    speed: 195,
+    maxHp: 6000,
+    speed: 200,
     reloadTime: 0.85,
-    range: 160,
-    damagePerAttack: 440, // 4 punches = 1760 max
-    superChargePerHit: 11,
-    description: 'Devasa can havuzuyla rakiplerin üstüne atılır.',
-    attackName: 'Öfke Yumrukları',
-    attackDesc: 'Yakın mesafede peş peşe 4 şiddetli yumruk savurur.',
-    superName: 'Uçan Dirsek',
-    superDesc: 'Havaya sıçrayıp duvarların üzerinden hedefe uçar ve deprem yaratır!',
-    projectileSpeed: 380,
+    range: 165,
+    damagePerAttack: 380, // 4 punches = 1520 max
+    superChargePerHit: 12,
+    description: 'Dev cüssesiyle rakiplerin üstüne atılır. Gökyüzüne sıçrayıp hedefe çarparak yer sarsıntısı yaratır.',
+    attackName: 'Öfke Yumrukları (Fists of Fury)',
+    attackDesc: 'Yakın mesafede art arda 4 seri alevli yumruk savurur.',
+    superName: 'Uçan Dirsek (Flying Elbow Drop)',
+    superDesc: 'Duvarların üzerinden gökyüzüne fırlar; inişte 1200 hasar verir, duvarları/çalıları yıkar ve herkesi savurur!',
+    projectileSpeed: 420,
     projectileCount: 4,
-    spreadAngle: 0.22,
+    spreadAngle: 0.18,
   },
   brock: {
     id: 'brock',
@@ -104,16 +104,16 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     avatarBg: 'from-amber-600 to-yellow-900',
     maxHp: 2600,
     speed: 165,
-    reloadTime: 1.75,
-    range: 520,
-    damagePerAttack: 1420,
+    reloadTime: 1.7,
+    range: 540,
+    damagePerAttack: 1360, // rocket with AoE and fire patch
     superChargePerHit: 25,
-    description: 'Uzak mesafeden güçlü roketlerle bölgeyi domine eder.',
-    attackName: 'Tekli Roket',
-    attackDesc: 'Uzun menzilli, çarptığında alan hasarı veren güçlü roket.',
-    superName: 'Roket Yağmuru',
-    superDesc: 'Hedeflenen alana gökyüzünden 9 alev roketi yağdırır!',
-    projectileSpeed: 540,
+    description: 'Uzak mesafeden alan hasarı veren roketler atar. Yeri alevler içinde bırakır.',
+    attackName: 'Tekli Roket (Rockin\' Rocket)',
+    attackDesc: 'Uzun menzilli roket. Çarptığında patlayarak alan hasarı verir ve yeri ateşe verir.',
+    superName: 'Roket Yağmuru (Rocket Rain)',
+    superDesc: 'Gökyüzünden hedeflenen bölgeye 9 alev roketi yağdırır, duvarları yok eder ve alev havuzları bırakır!',
+    projectileSpeed: 560,
     projectileCount: 1,
     spreadAngle: 0,
   },
@@ -128,15 +128,15 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     maxHp: 2400,
     speed: 165,
     reloadTime: 1.65,
-    range: 380,
-    damagePerAttack: 720, // grenade + 6 needles
+    range: 390,
+    damagePerAttack: 700, // grenade + 6 needles (420 each)
     superChargePerHit: 18,
-    description: 'Patlayan kaktüsleri ve iğneleriyle rakipleri şaşırtır.',
-    attackName: 'İğne Bombası',
-    attackDesc: 'Çarptığında 6 yöne ölümcül kaktüs iğneleri fırlatır.',
-    superName: 'Diken Tarlası',
-    superDesc: 'Geniş bir alana diken sererek rakipleri yavaşlatır ve eritir!',
-    projectileSpeed: 460,
+    description: 'Patlayan kaktüs bombaları 6 yöne iğne saçar. Diken Tarlası rakipleri kilitler.',
+    attackName: 'İğne Bombası (Needle Grenade)',
+    attackDesc: 'Çarptığında veya menzil sonunda 6 yöne (60° aralıklarla) ölümcül kaktüs iğneleri fırlatır.',
+    superName: 'Diken Tarlası (Stick Around!)',
+    superDesc: 'Geniş bir alana diken serer; rakipleri %50 yavaşlatır ve saniyede 600 hasar verir!',
+    projectileSpeed: 480,
     projectileCount: 1,
     spreadAngle: 0,
   },
@@ -149,19 +149,19 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     secondaryColor: '#0891b2',
     avatarBg: 'from-cyan-600 to-teal-900',
     maxHp: 3200,
-    speed: 210,
+    speed: 205,
     reloadTime: 1.45,
-    range: 400,
-    damagePerAttack: 460, // 4 blades = 1840 max
+    range: 420,
+    damagePerAttack: 480, // 4 blades = up to 3200 close range burst!
     superChargePerHit: 12,
-    description: 'Hızı ve duman bombasıyla görünmez pusu ustasıdır.',
-    attackName: 'Döner Bıçaklar',
-    attackDesc: 'Yay şeklinde 4 dönen ninja yıldızı fırlatır.',
-    superName: 'Duman Perdesi',
-    superDesc: '6 saniye boyunca rakiplere karşı TAMAMEN GÖRÜNMEZ olur!',
-    projectileSpeed: 580,
+    description: 'Dönen ninja yıldızları yakından 2 kat daha fazla vurur. Duman bombasıyla tamamen görünmez olur.',
+    attackName: 'Döner Bıçaklar (Spinner Blades)',
+    attackDesc: 'Yay şeklinde 4 dönen shuriken fırlatır. Yakın mesafeden devasa suikast hasarı verir.',
+    superName: 'Duman Bombası (Smoke Bomb)',
+    superDesc: 'Duman bombası patlatarak 6 saniye boyunca TAMAMEN GÖRÜNMEZ olur ve %20 ekstra hız kazanır!',
+    projectileSpeed: 600,
     projectileCount: 4,
-    spreadAngle: 0.28,
+    spreadAngle: 0.26,
   },
 };
 
@@ -189,6 +189,10 @@ export interface BrawlerEntity {
   aimAngle: number;
   vx: number;
   vy: number;
+  knockbackVx: number;
+  knockbackVy: number;
+  stunTimer: number;
+  speedBoostTimer: number;
   hp: number;
   maxHp: number;
   ammo: number; // 0 to 3
@@ -213,6 +217,15 @@ export interface BrawlerEntity {
   emoteTimer: number;
   isBot?: boolean;
   kills: number;
+  // Queued burst attacks (for Colt, El Primo, Leon, Brock Super)
+  burstRemaining: number;
+  burstInterval: number;
+  burstTimer: number;
+  burstIsSuper: boolean;
+  burstAimAngle: number;
+  burstTargetX: number;
+  burstTargetY: number;
+  burstShotIndex: number;
 }
 
 export interface BrawlProjectile {
@@ -233,6 +246,8 @@ export interface BrawlProjectile {
   piercesWalls: boolean;
   breaksWalls: boolean;
   burstNeedlesOnEnd?: boolean;
+  spawnFireOnEnd?: boolean;
+  knockbackForce?: number;
 }
 
 export interface ThornField {
@@ -244,6 +259,28 @@ export interface ThornField {
   radius: number;
   duration: number;
   damagePerSec: number;
+}
+
+export interface FirePatch {
+  id: string;
+  ownerId: string;
+  team: number;
+  x: number;
+  y: number;
+  radius: number;
+  duration: number;
+  damagePerSec: number;
+}
+
+export interface VisualEffect {
+  id: string;
+  type: 'explosion' | 'shockwave' | 'primo_slam' | 'smoke_poof' | 'debris';
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  duration: number;
+  progress: number;
 }
 
 export interface PowerCubeBox {
@@ -336,6 +373,8 @@ export interface BrawlSnapshot {
   brawlers: BrawlerEntity[];
   projectiles: BrawlProjectile[];
   thornFields: ThornField[];
+  firePatches?: FirePatch[];
+  visualEffects?: VisualEffect[];
   boxes: PowerCubeBox[];
   powerCubes: PowerCubeDrop[];
   gems: GemDrop[];

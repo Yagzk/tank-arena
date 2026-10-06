@@ -19,7 +19,7 @@ class BrawlAudio {
     return this.isMuted;
   }
 
-  // Shelly Shotgun blast
+  // Shelly Shotgun Blast (Heavy buckshot crack with bass kick)
   public playShellyAttack() {
     if (this.isMuted) return;
     this.initCtx();
@@ -30,21 +30,21 @@ class BrawlAudio {
     const gain = this.ctx.createGain();
 
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(180, now);
-    osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(32, now + 0.14);
 
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.13);
+    osc.stop(now + 0.15);
 
-    this.playNoise(0.09, 0.35, 1200);
+    this.playNoise(0.12, 0.45, 1400);
   }
 
-  // Super Shell wall-shattering boom
+  // Super Blast (Devastating wall-shattering boom & cannon blast)
   public playSuperBlast() {
     if (this.isMuted) return;
     this.initCtx();
@@ -55,21 +55,21 @@ class BrawlAudio {
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(20, now + 0.45);
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(24, now + 0.5);
 
-    gain.gain.setValueAtTime(0.6, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+    gain.gain.setValueAtTime(0.7, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.5);
+    osc.stop(now + 0.52);
 
-    this.playNoise(0.35, 0.55, 600);
+    this.playNoise(0.4, 0.65, 800);
   }
 
-  // Colt rapid laser fire
+  // Colt Rapid Laser Fire (High-tech pew)
   public playColtLaser() {
     if (this.isMuted) return;
     this.initCtx();
@@ -80,19 +80,19 @@ class BrawlAudio {
     const gain = this.ctx.createGain();
 
     osc.type = 'square';
-    osc.frequency.setValueAtTime(880, now);
-    osc.frequency.exponentialRampToValueAtTime(220, now + 0.06);
+    osc.frequency.setValueAtTime(950, now);
+    osc.frequency.exponentialRampToValueAtTime(240, now + 0.055);
 
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.055);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.07);
+    osc.stop(now + 0.06);
   }
 
-  // El Primo heavy punch
+  // El Primo Heavy Punch (Satisfying boxing whoosh + thud)
   public playPrimoPunch() {
     if (this.isMuted) return;
     this.initCtx();
@@ -103,21 +103,21 @@ class BrawlAudio {
     const gain = this.ctx.createGain();
 
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(200, now);
-    osc.frequency.exponentialRampToValueAtTime(50, now + 0.08);
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(45, now + 0.09);
 
-    gain.gain.setValueAtTime(0.35, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.09);
+    osc.stop(now + 0.1);
 
-    this.playNoise(0.05, 0.25, 450);
+    this.playNoise(0.06, 0.3, 500);
   }
 
-  // El Primo leap whoosh & slam
+  // El Primo Airborne Leap Whoosh
   public playPrimoLeap() {
     if (this.isMuted) return;
     this.initCtx();
@@ -128,10 +128,10 @@ class BrawlAudio {
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(120, now);
-    osc.frequency.exponentialRampToValueAtTime(550, now + 0.35);
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(620, now + 0.35);
 
-    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.setValueAtTime(0.35, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
 
     osc.connect(gain);
@@ -140,7 +140,7 @@ class BrawlAudio {
     osc.stop(now + 0.38);
   }
 
-  // Brock Rocket launch
+  // Brock Rocket Launch Sizzle
   public playBrockRocket() {
     if (this.isMuted) return;
     this.initCtx();
@@ -151,21 +151,21 @@ class BrawlAudio {
     const gain = this.ctx.createGain();
 
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(320, now);
-    osc.frequency.exponentialRampToValueAtTime(90, now + 0.2);
+    osc.frequency.setValueAtTime(380, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.22);
 
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.22);
+    osc.stop(now + 0.24);
 
-    this.playNoise(0.18, 0.3, 800);
+    this.playNoise(0.2, 0.35, 900);
   }
 
-  // Leon smoke bomb / Shuriken
+  // Leon Swift Shuriken Whoosh
   public playLeonShuriken() {
     if (this.isMuted) return;
     this.initCtx();
@@ -176,10 +176,10 @@ class BrawlAudio {
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(1100, now);
-    osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
+    osc.frequency.setValueAtTime(1250, now);
+    osc.frequency.exponentialRampToValueAtTime(320, now + 0.05);
 
-    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.setValueAtTime(0.22, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
 
     osc.connect(gain);
@@ -188,7 +188,7 @@ class BrawlAudio {
     osc.stop(now + 0.06);
   }
 
-  // Super Ready Chime (The iconic Brawl Stars Super full sound!)
+  // Super Ready Fanfare (Brawl Stars 4-Note Iconic Chime)
   public playSuperReady() {
     if (this.isMuted) return;
     this.initCtx();
@@ -205,13 +205,13 @@ class BrawlAudio {
 
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.25, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.16);
+      gain.gain.setValueAtTime(0.28, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
       osc.start(t);
-      osc.stop(t + 0.18);
+      osc.stop(t + 0.2);
     });
   }
 
@@ -229,7 +229,7 @@ class BrawlAudio {
     osc.frequency.setValueAtTime(880, now);
     osc.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
 
-    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.setValueAtTime(0.26, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
 
     osc.connect(gain);
@@ -254,13 +254,13 @@ class BrawlAudio {
 
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.22, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+      gain.gain.setValueAtTime(0.24, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.11);
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
       osc.start(t);
-      osc.stop(t + 0.12);
+      osc.stop(t + 0.13);
     });
   }
 
@@ -282,7 +282,7 @@ class BrawlAudio {
 
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.28, t);
+      gain.gain.setValueAtTime(0.3, t);
       gain.gain.exponentialRampToValueAtTime(0.01, t + dur);
 
       osc.connect(gain);
