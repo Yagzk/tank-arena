@@ -1,62 +1,47 @@
-# ⚡ BRAWL STARS 2D | 4-10 Kişilik Çok Oyunculu Web & Mobil Oyunu
+# ⚡ NOVA ARENA | 4-10 Kişilik Çok Oyunculu Web & Mobil Arena
 
-Brawl Stars mekanikleriyle birebir tasarlanmış, **4 ila 10 oyuncu** destekleyen, devasa 2400x1800 haritada oynanan gerçek zamanlı web ve mobil uyumlu arena oyunu!
+Tepeden bakışlı, gerçek zamanlı, 4 ila 10 oyuncu destekleyen web ve mobil uyumlu arena oyunu. Tüm karakterler, görseller ve yetenek isimleri özgündür; oyunda hiçbir üçüncü taraf varlığı kullanılmaz — karakter sanatı tamamen kod içinde vektör olarak üretilir.
 
 ---
 
-## 🥊 6 Orijinal Brawler ve Özel Güçleri
+## 🥊 Kadro
 
-1. **SHELLY (Öncü Dövüşçü):** 
-   - **Saldırı:** 5 saçmalı tüfek ateşi.
-   - **ULTİ:** Duvarları ve çalıları paramparça eden devasa şok patlaması!
-2. **COLT (Keskin Nişancı):**
-   - **Saldırı:** 6 mermilik seri lazer taraması.
-   - **ULTİ:** Duvarları delip geçen 12 mermilik süper yaylım ateşi!
-3. **EL PRIMO (Lucha Libre Tankı):**
-   - **Saldırı:** 4 hızlı ve sert yumruk (6200 Can!).
-   - **ULTİ:** Duvarların üzerinden uçup hedeflenen noktaya deprem yaratarak inen Uçan Dirsek!
-4. **BROCK (Roketçi):**
-   - **Saldırı:** Uzun menzilli alan etkili roket.
-   - **ULTİ:** Gökyüzünden 9 alev roketi yağdıran Roket Yağmuru!
-5. **SPIKE (Efsanevi Kaktüs):**
-   - **Saldırı:** Çarptığında 6 yöne iğne saçan kaktüs bombası.
-   - **ULTİ:** Düşmanları %50 yavaşlatan ve sürekli hasar veren Diken Tarlası!
-6. **LEON (Efsanevi Suikastçı):**
-   - **Saldırı:** 4 döner ninja bıçağı.
-   - **ULTİ:** 6 saniye boyunca rakiplere karşı **TAMAMEN GÖRÜNMEZ** olan Duman Bombası!
+| Karakter | Rol | Saldırı | Şarjlı Yetenek |
+|---|---|---|---|
+| **MİRA** | Yakın mesafe avcısı | 5 saçmalı hurda tüfeği | **Yıkım Salvosu** — duvarları söker, savurur, sersemletir |
+| **RIVET** | Nişancı | 6 mermilik seri atış | **Delici Yaylım** — engellerden geçen 12 mermi |
+| **BOULDER** | Tank | 4 seri yumruk (6000 Can) | **Göktaşı İnişi** — duvar aşırı sıçrayış ve sarsıntı |
+| **FUSE** | Topçu | Alan hasarlı roket | **Roket Yağmuru** — 9 roket + alev havuzları |
+| **THORN** | Alan kontrolü | 6 yöne diken saçan tohum bombası | **Diken Tarlası** — %50 yavaşlatır, sürekli hasar |
+| **WISP** | Suikastçı | 4 dönen bıçak | **Sis Perdesi** — 6 sn görünmezlik, hız ve can yenilenmesi |
+
+Her karakterin ayrıca bir **aksesuarı** (3 kullanım) ve bir **yıldız gücü** (pasif) vardır.
 
 ---
 
 ## 🎮 Oyun Mekanikleri
 
-- **4 - 10 Oyuncu Desteği:** İster 4 kişi, ister 10 kişi oynayın. Eksik yerler akıllı AI botlarla doldurulabilir.
-- **3 Cephane Barı (Ammo):** Her atış 1 cephane harcar; cephaneler otomatik olarak teker teker dolar.
-- **Doğal Can Yenilenmesi:** 3 saniye boyunca çatışmadan uzak kalırsanız saniyede %13 can yenilenir.
-- **Çalılar & Görünmezlik (Tall Grass):** Çalıya girdiğinizde dışarıdaki rakipler sizi göremez!
-- **Güç Küpleri (🟩 Power Cubes):** Ahşap kutuları kırarak güç küpleri toplayın (+400 Can & +%10 Hasar).
-- **Zehirli Gaz (Poison Smoke):** Süre geçtikçe harita kenarlarından yeşil gaz içeri doğru daralır.
-- **Holografik Radar (Minimap):** Ekranın sağ üstünde haritayı, gaz sınırını ve oyuncuları gösteren canlı radar.
+- **4 - 10 Oyuncu:** Eksik yerler AI botlarla doldurulabilir.
+- **3 Cephane Yuvası:** Her atış bir yuva harcar; yuvalar teker teker dolar ve atışlar arasında ayrı bir bekleme süresi vardır.
+- **Can Yenilenmesi:** 4 saniye çatışma dışı kalırsanız saniyede %6 can yenilenir.
+- **Çalılar:** Çalıya girdiğinizde dışarıdaki rakipler sizi göremez.
+- **Güç Küpleri:** Sandıkları kırarak toplayın (+400 Can & +%10 Hasar).
+- **Zehirli Gaz:** Süre geçtikçe harita kenarlarından içeri doğru daralır.
+- **Radar:** Sağ üstte harita, gaz sınırı ve oyuncular.
 
 ---
 
 ## 🏆 Oyun Modları
 
-1. 💀 **SOLO SHOWDOWN (Hesaplaşma):** 10 Brawler, kutular, zehirli gaz ve son hayatta kalanın şampiyon olduğu Battle Royale modu!
-2. 💎 **GEM GRAB (Elmas Kapmaca):** Ortadaki madenden çıkan mor elmasları toplayın. 10 elmasa ulaşan takım 15 saniyelik geri sayımı başlatır!
+1. 💀 **HESAPLAŞMA (Showdown):** Kutular, zehirli gaz ve son hayatta kalanın kazandığı battle royale.
+2. 💎 **ELMAS KAPMACA (Gem Grab):** Ortadaki madenden çıkan elmasları toplayın. 10 elmasa ulaşan takım 15 saniyelik geri sayımı başlatır.
 
 ---
 
 ## 📱 Kontroller
 
-* **PC (Klavye & Fare):**
-  - `W, A, S, D`: Hareket
-  - `Fare`: Nişan Al & Sol Tık ile Ateş Et
-  - `Boşluk (Space)` veya `Sağ Tık`: **ULTİ**
-  - `E`: Emoji / Pin
-* **Mobil (Dokunmatik Ekran):**
-  - Sol Altta: Mavi Hareket Joystick'i
-  - Sağ Altta: Kırmızı Saldırı Joystick'i (Sürükleyip bırakarak ateş)
-  - Sarı Kuru Kafa: **ULTİ Butonu**
+* **PC:** `W A S D` hareket · Fare ile nişan, sol tık ateş · `Boşluk` veya sağ tık **şarjlı yetenek** · `E` aksesuar · `Q` emoji
+* **Mobil:** Sol alt hareket joystick'i · Sağ alt saldırı joystick'i (sürükle-bırak ateş) · Şarjlı yetenek ve aksesuar butonları
 
 ---
 

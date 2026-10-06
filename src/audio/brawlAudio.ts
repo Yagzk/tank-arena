@@ -20,7 +20,7 @@ class BrawlAudio {
   }
 
   // Shelly Shotgun Blast (Heavy buckshot crack with bass kick)
-  public playShellyAttack() {
+  public playScatterShot() {
     if (this.isMuted) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -70,7 +70,7 @@ class BrawlAudio {
   }
 
   // Colt Rapid Laser Fire (High-tech pew)
-  public playColtLaser() {
+  public playRapidShot() {
     if (this.isMuted) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -93,7 +93,7 @@ class BrawlAudio {
   }
 
   // El Primo Heavy Punch (Satisfying boxing whoosh + thud)
-  public playPrimoPunch() {
+  public playHeavyPunch() {
     if (this.isMuted) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -118,7 +118,7 @@ class BrawlAudio {
   }
 
   // El Primo Airborne Leap Whoosh
-  public playPrimoLeap() {
+  public playHeavyLeap() {
     if (this.isMuted) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -141,7 +141,7 @@ class BrawlAudio {
   }
 
   // Brock Rocket Launch Sizzle
-  public playBrockRocket() {
+  public playRocketLaunch() {
     if (this.isMuted) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -166,7 +166,7 @@ class BrawlAudio {
   }
 
   // Leon Swift Shuriken Whoosh
-  public playLeonShuriken() {
+  public playBladeThrow() {
     if (this.isMuted) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -188,7 +188,7 @@ class BrawlAudio {
     osc.stop(now + 0.06);
   }
 
-  // Super Ready Fanfare (Brawl Stars 4-Note Iconic Chime)
+  // Super Ready Fanfare (Nova Arena 4-Note Iconic Chime)
   public playSuperReady() {
     if (this.isMuted) return;
     this.initCtx();

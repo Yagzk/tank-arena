@@ -89,7 +89,7 @@ export class BrawlBot {
       targetDist = dist(bot.x, bot.y, targetX, targetY);
 
       // Check attack range based on brawler
-      const maxRange = bot.brawlerId === 'el_primo' ? 160 : bot.brawlerId === 'shelly' ? 300 : 420;
+      const maxRange = bot.brawlerId === 'boulder' ? 160 : bot.brawlerId === 'mira' ? 300 : 420;
 
       // Bots used to fire whenever a target was in range, including straight
       // into the wall they were standing behind. Gate the trigger on actually
@@ -103,17 +103,17 @@ export class BrawlBot {
 
       // Super activation logic
       if (bot.superCharge >= 100 && canSeeTarget) {
-        if (bot.brawlerId === 'el_primo' && targetDist < 400 && targetDist > 100) {
+        if (bot.brawlerId === 'boulder' && targetDist < 400 && targetDist > 100) {
           shouldSuper = true;
-        } else if (bot.brawlerId === 'shelly' && targetDist < 260) {
+        } else if (bot.brawlerId === 'mira' && targetDist < 260) {
           shouldSuper = true;
-        } else if (bot.brawlerId === 'colt' && targetDist < 500) {
+        } else if (bot.brawlerId === 'rivet' && targetDist < 500) {
           shouldSuper = true;
-        } else if (bot.brawlerId === 'brock' && targetDist < 520) {
+        } else if (bot.brawlerId === 'fuse' && targetDist < 520) {
           shouldSuper = true;
-        } else if (bot.brawlerId === 'spike' && targetDist < 380) {
+        } else if (bot.brawlerId === 'thorn' && targetDist < 380) {
           shouldSuper = true;
-        } else if (bot.brawlerId === 'leon') {
+        } else if (bot.brawlerId === 'wisp') {
           shouldSuper = true;
         }
       }
@@ -153,7 +153,7 @@ export class BrawlBot {
           const d = dist(bot.x, bot.y, targetX, targetY);
 
           // Ranged brawlers kite (keep optimal distance)
-          if (bot.brawlerId !== 'el_primo' && d < 180) {
+          if (bot.brawlerId !== 'boulder' && d < 180) {
             this.currentMoveX = -Math.cos(ang) * 0.8;
             this.currentMoveY = -Math.sin(ang) * 0.8;
           } else {
@@ -172,17 +172,17 @@ export class BrawlBot {
       // Gadget activation logic for bots
       let shouldGadget = false;
       if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0) {
-        if (bot.brawlerId === 'shelly' && targetDist > 90 && targetDist < 200) {
+        if (bot.brawlerId === 'mira' && targetDist > 90 && targetDist < 200) {
           shouldGadget = true;
-        } else if (bot.brawlerId === 'colt' && bot.ammo < 1 && targetDist < 450) {
+        } else if (bot.brawlerId === 'rivet' && bot.ammo < 1 && targetDist < 450) {
           shouldGadget = true;
-        } else if (bot.brawlerId === 'el_primo' && targetDist < 80) {
+        } else if (bot.brawlerId === 'boulder' && targetDist < 80) {
           shouldGadget = true;
-        } else if (bot.brawlerId === 'brock' && targetDist < 120) {
+        } else if (bot.brawlerId === 'fuse' && targetDist < 120) {
           shouldGadget = true;
-        } else if (bot.brawlerId === 'spike' && targetDist < 150) {
+        } else if (bot.brawlerId === 'thorn' && targetDist < 150) {
           shouldGadget = true;
-        } else if (bot.brawlerId === 'leon' && targetDist < 300 && Math.random() < 0.3) {
+        } else if (bot.brawlerId === 'wisp' && targetDist < 300 && Math.random() < 0.3) {
           shouldGadget = true;
         }
       }

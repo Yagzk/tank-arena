@@ -7,7 +7,13 @@ import {
   BrawlerId,
 } from '../types/brawl';
 import { MAP_WIDTH, MAP_HEIGHT } from '../game/brawlMaps';
-import { assetLoader } from '../game/assetLoader';
+import {
+  drawCharacter,
+  drawCharacterShadow,
+  drawGem,
+  drawPowerCube,
+} from '../render/characterArt';
+import { CHARACTER_STYLES } from '../render/characterStyles';
 import { clamp } from '../core/math';
 
 /**
@@ -119,9 +125,9 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     worldH: 1,
   });
 
-  // Initialize Assets & Touch Device Detection
+  // Touch Device Detection. Character art is generated in code, so there is
+  // nothing to preload.
   useEffect(() => {
-    assetLoader.loadAll();
     if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
       setIsTouchDevice(true);
     }
@@ -485,7 +491,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     return () => cancelAnimationFrame(animId);
   }, [isTouchDevice]);
 
-  // Authentic Brawl Stars Desert / Arena Ground Tiles
+  // Authentic Nova Arena Desert / Arena Ground Tiles
   const drawGroundTiles = (ctx: CanvasRenderingContext2D) => {
     // Rich desert stone floor
     ctx.fillStyle = '#1c192b';
@@ -540,7 +546,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.restore();
   };
 
-  // Authentic Layered Leafy Bushes (Brawl Stars Tall Grass)
+  // Authentic Layered Leafy Bushes (Nova Arena Tall Grass)
   const drawBushes = (ctx: CanvasRenderingContext2D, bushes: any[]) => {
     const time = performance.now() * 0.003;
 
@@ -734,7 +740,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         return;
       }
 
-      if (fx.type === 'primo_slam') {
+      if (fx.type === 'ground_slam') {
         // El Primo Earthquake Crater
         const p = fx.progress || 0;
         const r = fx.radius * p;
@@ -848,22 +854,12 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.fill();
 
     // Pulsing Gem Core
-    const gemImg = assetLoader.getImage('gem');
     const pulseScale = 1 + Math.sin(time * 3) * 0.15;
     ctx.save();
     ctx.scale(pulseScale, pulseScale);
-    if (gemImg) {
-      ctx.shadowColor = '#c084fc';
+    ctx.shadowColor = '#c084fc';
       ctx.shadowBlur = 24;
-      ctx.drawImage(gemImg, -20, -20, 40, 40);
-    } else {
-      ctx.fillStyle = '#c084fc';
-      ctx.shadowColor = '#a855f7';
-      ctx.shadowBlur = 20;
-      ctx.beginPath();
-      ctx.arc(0, 0, 16, 0, Math.PI * 2);
-      ctx.fill();
-    }
+      drawGem(ctx, 20, time * 0.35);
     ctx.restore();
 
     // Emitting purple sonar rings
@@ -957,8 +953,6 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   // High-Fidelity Pickups (Official Gems & Power Cubes)
   const drawPickups = (ctx: CanvasRenderingContext2D, gems: any[], cubes: any[]) => {
     const time = performance.now() * 0.005;
-    const gemImg = assetLoader.getImage('gem');
-    const cubeImg = assetLoader.getImage('power_cube');
 
     // 1. Purple Gems
     gems.forEach(g => {
@@ -976,18 +970,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.shadowColor = '#c084fc';
       ctx.shadowBlur = 16;
 
-      if (gemImg) {
-        ctx.drawImage(gemImg, -16, -16, 32, 32);
-      } else {
-        ctx.fillStyle = '#c084fc';
-        ctx.beginPath();
-        ctx.moveTo(0, -14);
-        ctx.lineTo(14, 0);
-        ctx.lineTo(0, 14);
-        ctx.lineTo(-14, 0);
-        ctx.closePath();
-        ctx.fill();
-      }
+      drawGem(ctx, 16, time * 0.4 + g.x * 0.01);
 
       ctx.restore();
     });
@@ -1008,12 +991,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.shadowColor = '#22c55e';
       ctx.shadowBlur = 18;
 
-      if (cubeImg) {
-        ctx.drawImage(cubeImg, -18, -18, 36, 36);
-      } else {
-        ctx.fillStyle = '#15803d';
-        ctx.fillRect(-14, -14, 28, 28);
-      }
+      drawPowerCube(ctx, 18, 0);
 
       ctx.restore();
     });
@@ -1086,8 +1064,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       }
     }
 
-    const cfg = BRAWLERS[b.brawlerId] || BRAWLERS.shelly;
-    const brawlerImg = assetLoader.getImage(b.brawlerId);
+    const cfg = BRAWLERS[b.brawlerId] ?? BRAWLERS.mira;
     const time = performance.now() * 0.005;
 
     // Handle Airborne Leap
@@ -1119,13 +1096,11 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.globalAlpha = isMe ? 0.6 : 0.45;
     }
 
-    // 1. Drop shadow (Stays on ground even during jumps)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ctx.beginPath();
-    ctx.ellipse(0, 18, 24 * (1 - elevateY * 0.005), 11 * (1 - elevateY * 0.005), 0, 0, Math.PI * 2);
-    ctx.fill();
+    // 1. Ground shadow. Stays on the floor during a leap and shrinks with
+    //    height, which is what reads as "airborne" from directly above.
+    drawCharacterShadow(ctx, 54, -elevateY);
 
-    // 2. Super Charged Aura (Signature Brawl Stars Glowing Yellow Ring at feet)
+    // 2. Super Charged Aura (Signature Nova Arena Glowing Yellow Ring at feet)
     if (b.superCharge >= 100) {
       ctx.save();
       ctx.strokeStyle = '#eab308';
@@ -1159,50 +1134,33 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.fill();
     ctx.restore();
 
-    // 4. Brawler Sprite Rendering (With Elevation & Walk Animation)
+    // 4. Character body. Assembled from vector parts in the body's own local
+    //    space, so it genuinely rotates to face where it aims instead of being
+    //    a front-facing portrait mirrored left and right.
     ctx.save();
     ctx.translate(0, elevateY);
     ctx.scale(jumpScale, jumpScale);
 
-    // Walk Bobbing Motion
-    const isMoving = Math.abs(b.vx) > 5 || Math.abs(b.vy) > 5;
-    const walkBob = isMoving ? Math.sin(performance.now() * 0.015) * 3 : 0;
+    const moveSpeed = Math.hypot(b.vx, b.vy);
+    const isMoving = moveSpeed > 5;
 
-    // Directional Horizontal Flip (Facing aim angle)
-    const isFacingLeft = Math.cos(b.aimAngle) < 0;
-    if (isFacingLeft) {
-      ctx.scale(-1, 1);
-    }
+    drawCharacter(ctx, CHARACTER_STYLES[b.brawlerId] ?? CHARACTER_STYLES.mira, {
+      aimAngle: b.aimAngle,
+      // Legs follow travel, torso follows aim: that difference is what makes
+      // strafing and backpedalling readable.
+      moveAngle: isMoving ? Math.atan2(b.vy, b.vx) : b.aimAngle,
+      speed01: Math.min(1, moveSpeed / (cfg.speed || 180)),
+      time: performance.now() / 1000,
+      // Driven by simulation time, so recoil decays identically everywhere.
+      recoil01: Math.max(0, 1 - b.timeSinceLastAttack / 0.18),
+      scale: 54,
+    });
+    
 
-    const spriteSize = 62;
-    if (brawlerImg) {
-      ctx.drawImage(
-        brawlerImg,
-        -spriteSize / 2,
-        -spriteSize / 2 - 8 + walkBob,
-        spriteSize,
-        spriteSize
-      );
-    } else {
-      ctx.fillStyle = cfg.color;
-      ctx.beginPath();
-      ctx.arc(0, -6 + walkBob, 22, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 15px Orbitron, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(cfg.name[0], 0, -6 + walkBob);
-    }
-
-    ctx.restore(); // Restore sprite transform
+    ctx.restore(); // Restore body transform
 
     // 5. Star Power & Status Trails:
-    if (b.brawlerId === 'colt' && isMoving) {
+    if (b.brawlerId === 'rivet' && isMoving) {
       // Colt Slick Boots: Golden speed trail
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
@@ -1252,7 +1210,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     ctx.restore(); // Restore brawler world transform
 
-    // 7. AUTHENTIC BRAWL STARS HEAD HUD (Health, Ammo, Cubes, Band-Aid badge)
+    // 7. AUTHENTIC NOVA ARENA HEAD HUD (Health, Ammo, Cubes, Band-Aid badge)
     ctx.save();
     ctx.translate(b.x, b.y + elevateY);
 
@@ -1266,7 +1224,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       b.name +
       (b.powerCubes > 0 ? ` [⚡${b.powerCubes}]` : '') +
       (b.gemsCarried > 0 ? ` [💎${b.gemsCarried}]` : '') +
-      (b.brawlerId === 'shelly' && b.bandAidCooldown <= 0 ? ' [✚]' : '');
+      (b.brawlerId === 'mira' && b.bandAidCooldown <= 0 ? ' [✚]' : '');
     ctx.fillText(badgeText, 0, -42);
 
     // Segmented Health Bar
@@ -1325,7 +1283,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     const angle = Math.atan2(p.vy, p.vx);
     ctx.rotate(angle);
 
-    if (p.brawlerId === 'brock') {
+    if (p.brawlerId === 'fuse') {
       // Brock Guided Rocket with Flame Exhaust
       ctx.fillStyle = '#f59e0b';
       ctx.shadowColor = '#ef4444';
@@ -1348,7 +1306,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.lineTo(-12, 3);
       ctx.closePath();
       ctx.fill();
-    } else if (p.brawlerId === 'leon') {
+    } else if (p.brawlerId === 'wisp') {
       // Leon Spinning Shuriken Blades
       const spin = performance.now() * 0.025;
       ctx.rotate(spin);
@@ -1366,7 +1324,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
       }
-    } else if (p.brawlerId === 'colt') {
+    } else if (p.brawlerId === 'rivet') {
       // Colt High-Velocity Neon Laser Tracers
       ctx.fillStyle = p.isSuper ? '#fbbf24' : '#38bdf8';
       ctx.shadowColor = p.isSuper ? '#f59e0b' : '#0284c7';
@@ -1381,7 +1339,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.beginPath();
       ctx.ellipse(2, 0, bLen * 0.6, p.radius * 0.5, 0, 0, Math.PI * 2);
       ctx.fill();
-    } else if (p.brawlerId === 'spike') {
+    } else if (p.brawlerId === 'thorn') {
       // Spike Cactus Bomb / Needle
       ctx.fillStyle = '#10b981';
       ctx.shadowColor = '#059669';
@@ -1399,7 +1357,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.arc(tx, ty, 2, 0, Math.PI * 2);
         ctx.fill();
       }
-    } else if (p.brawlerId === 'el_primo') {
+    } else if (p.brawlerId === 'boulder') {
       // El Primo Flying Flaming Punch
       ctx.fillStyle = '#f59e0b';
       ctx.shadowColor = '#ef4444';
@@ -1447,7 +1405,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.restore();
   };
 
-  // Authentic Brawl Stars Aiming Reticle (Normal Mode vs Golden Super Mode)
+  // Authentic Nova Arena Aiming Reticle (Normal Mode vs Golden Super Mode)
   const drawAimReticle = (
     ctx: CanvasRenderingContext2D,
     b: BrawlerEntity,
@@ -1464,7 +1422,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.shadowBlur = 16;
       ctx.lineWidth = 3;
 
-      if (b.brawlerId === 'el_primo') {
+      if (b.brawlerId === 'boulder') {
         const targetX = mouseRef.current.worldX;
         const targetY = mouseRef.current.worldY;
         const d = Math.min(380, Math.hypot(targetX - b.x, targetY - b.y));
@@ -1490,7 +1448,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('💥', landX, landY);
-      } else if (b.brawlerId === 'brock') {
+      } else if (b.brawlerId === 'fuse') {
         const targetX = mouseRef.current.worldX;
         const targetY = mouseRef.current.worldY;
 
@@ -1512,7 +1470,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('🎯', targetX, targetY);
-      } else if (b.brawlerId === 'spike') {
+      } else if (b.brawlerId === 'thorn') {
         const targetX = mouseRef.current.worldX;
         const targetY = mouseRef.current.worldY;
 
@@ -1529,7 +1487,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.arc(targetX, targetY, 90, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-      } else if (b.brawlerId === 'shelly') {
+      } else if (b.brawlerId === 'mira') {
         ctx.translate(b.x, b.y);
         ctx.rotate(b.aimAngle);
         ctx.beginPath();
@@ -1546,7 +1504,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.lineTo(400, 400 * Math.sin(0.28));
         ctx.closePath();
         ctx.fill();
-      } else if (b.brawlerId === 'colt') {
+      } else if (b.brawlerId === 'rivet') {
         ctx.translate(b.x, b.y);
         ctx.rotate(b.aimAngle);
         ctx.lineWidth = 4;
@@ -1556,7 +1514,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.moveTo(25, 6);
         ctx.lineTo(580, 6);
         ctx.stroke();
-      } else if (b.brawlerId === 'leon') {
+      } else if (b.brawlerId === 'wisp') {
         ctx.translate(b.x, b.y);
         ctx.strokeStyle = '#06b6d4';
         ctx.fillStyle = 'rgba(6, 182, 212, 0.25)';
@@ -1575,7 +1533,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.lineWidth = 2.5;
       ctx.setLineDash([8, 6]);
 
-      if (b.brawlerId === 'shelly') {
+      if (b.brawlerId === 'mira') {
         const halfAngle = cfg.spreadAngle || 0.28;
         ctx.beginPath();
         ctx.moveTo(25, 0);
@@ -1589,14 +1547,14 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.moveTo(25, 0);
         ctx.lineTo(cfg.range, 0);
         ctx.stroke();
-      } else if (b.brawlerId === 'colt') {
+      } else if (b.brawlerId === 'rivet') {
         ctx.beginPath();
         ctx.moveTo(25, -4);
         ctx.lineTo(cfg.range, -4);
         ctx.moveTo(25, 4);
         ctx.lineTo(cfg.range, 4);
         ctx.stroke();
-      } else if (b.brawlerId === 'brock') {
+      } else if (b.brawlerId === 'fuse') {
         ctx.beginPath();
         ctx.moveTo(25, 0);
         ctx.lineTo(cfg.range, 0);
@@ -1606,7 +1564,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.beginPath();
         ctx.arc(cfg.range, 0, 18, 0, Math.PI * 2);
         ctx.stroke();
-      } else if (b.brawlerId === 'spike') {
+      } else if (b.brawlerId === 'thorn') {
         ctx.beginPath();
         ctx.moveTo(25, 0);
         ctx.lineTo(cfg.range, 0);

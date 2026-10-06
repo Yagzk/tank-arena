@@ -180,7 +180,7 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
 
             {/* Star Power & Passive Trait Badges */}
             <div className="flex items-center gap-2 mt-0.5">
-              {myBrawler.brawlerId === 'shelly' && (
+              {myBrawler.brawlerId === 'mira' && (
                 <div
                   className={`px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border transition flex items-center gap-1.5 shadow ${
                     (myBrawler.bandAidCooldown || 0) <= 0
@@ -197,14 +197,14 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
                 </div>
               )}
 
-              {myBrawler.brawlerId === 'colt' && (
+              {myBrawler.brawlerId === 'rivet' && (
                 <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-amber-500/20 border-amber-400/80 text-amber-300 shadow flex items-center gap-1.5">
                   <span>👟</span>
                   <span>KAYAN ÇİZMELER: +%12 HIZ</span>
                 </div>
               )}
 
-              {myBrawler.brawlerId === 'el_primo' && (
+              {myBrawler.brawlerId === 'boulder' && (
                 <div className="flex items-center gap-1.5">
                   <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-emerald-500/20 border-emerald-400/80 text-emerald-300 shadow flex items-center gap-1.5">
                     <span>🛡️</span>
@@ -219,21 +219,21 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
                 </div>
               )}
 
-              {myBrawler.brawlerId === 'brock' && (
+              {myBrawler.brawlerId === 'fuse' && (
                 <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-orange-500/20 border-orange-400/80 text-orange-300 shadow flex items-center gap-1.5">
                   <span>🔥</span>
                   <span>ALEV İZLERİ: PATLAMA YAKAR</span>
                 </div>
               )}
 
-              {myBrawler.brawlerId === 'spike' && (
+              {myBrawler.brawlerId === 'thorn' && (
                 <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-lime-500/20 border-lime-400/80 text-lime-300 shadow flex items-center gap-1.5">
                   <span>🌵</span>
                   <span>FİDANLIK & KAVİSLİ İĞNELER</span>
                 </div>
               )}
 
-              {myBrawler.brawlerId === 'leon' && (
+              {myBrawler.brawlerId === 'wisp' && (
                 <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-indigo-500/20 border-indigo-400/80 text-indigo-300 shadow flex items-center gap-1.5">
                   <span>💨</span>
                   <span>GİZLİ İYİLEŞME & SİS İZLERİ</span>

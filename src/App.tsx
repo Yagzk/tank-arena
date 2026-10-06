@@ -34,7 +34,7 @@ export const App: React.FC = () => {
   const [playerName, setPlayerName] = useState<string>(() => {
     return localStorage.getItem('brwl_player_name') || `Brawler-${Math.floor(100 + Math.random() * 900)}`;
   });
-  const [selectedBrawler, setSelectedBrawler] = useState<BrawlerId>('shelly');
+  const [selectedBrawler, setSelectedBrawler] = useState<BrawlerId>('mira');
   const [gameMode, setGameMode] = useState<BrawlGameMode>('showdown');
   const [roomCode, setRoomCode] = useState<string>('');
 
@@ -77,23 +77,23 @@ export const App: React.FC = () => {
   // Audio trigger handler
   const handleSoundEvent = useCallback((event: BrawlSoundEvent) => {
     switch (event.type) {
-      case 'shelly_attack':
-        brawlAudio.playShellyAttack();
+      case 'scatter_shot':
+        brawlAudio.playScatterShot();
         break;
-      case 'colt_attack':
-        brawlAudio.playColtLaser();
+      case 'rapid_shot':
+        brawlAudio.playRapidShot();
         break;
-      case 'primo_punch':
-        brawlAudio.playPrimoPunch();
+      case 'heavy_punch':
+        brawlAudio.playHeavyPunch();
         break;
-      case 'primo_leap':
-        brawlAudio.playPrimoLeap();
+      case 'heavy_leap':
+        brawlAudio.playHeavyLeap();
         break;
-      case 'brock_rocket':
-        brawlAudio.playBrockRocket();
+      case 'rocket_launch':
+        brawlAudio.playRocketLaunch();
         break;
-      case 'leon_shuriken':
-        brawlAudio.playLeonShuriken();
+      case 'blade_throw':
+        brawlAudio.playBladeThrow();
         break;
       case 'super_ready':
         brawlAudio.playSuperReady();
@@ -116,7 +116,7 @@ export const App: React.FC = () => {
       case 'band_aid':
         brawlAudio.playBandAid();
         break;
-      case 'colt_reload':
+      case 'rapid_reload':
         brawlAudio.playReload();
         break;
     }
@@ -199,7 +199,7 @@ export const App: React.FC = () => {
     setMyPlayerId(myId);
     myPlayerIdRef.current = myId;
 
-    const botBrawlers: BrawlerId[] = ['colt', 'el_primo', 'brock', 'spike', 'leon', 'shelly', 'colt'];
+    const botBrawlers: BrawlerId[] = ['rivet', 'boulder', 'fuse', 'thorn', 'wisp', 'mira', 'rivet'];
     const botNames = [
       'Gunslinger-AI',
       'El-Toro-AI',
@@ -335,7 +335,7 @@ export const App: React.FC = () => {
   // Add Bot (Host action up to 10 players)
   const handleAddBot = () => {
     if (players.length >= 10) return;
-    const brawlerList: BrawlerId[] = ['shelly', 'colt', 'el_primo', 'brock', 'spike', 'leon'];
+    const brawlerList: BrawlerId[] = ['mira', 'rivet', 'boulder', 'fuse', 'thorn', 'wisp'];
     const chosenBrawler = brawlerList[players.length % brawlerList.length];
     const botNum = players.filter(p => p.isBot).length + 1;
 

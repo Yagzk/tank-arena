@@ -29,12 +29,12 @@ import { BrawlBot } from './brawlBot';
 
 export interface BrawlSoundEvent {
   type:
-    | 'shelly_attack'
-    | 'colt_attack'
-    | 'primo_punch'
-    | 'primo_leap'
-    | 'brock_rocket'
-    | 'leon_shuriken'
+    | 'scatter_shot'
+    | 'rapid_shot'
+    | 'heavy_punch'
+    | 'heavy_leap'
+    | 'rocket_launch'
+    | 'blade_throw'
     | 'super_ready'
     | 'super_blast'
     | 'gem_pickup'
@@ -43,7 +43,7 @@ export interface BrawlSoundEvent {
     | 'alarm'
     | 'gadget_activate'
     | 'band_aid'
-    | 'colt_reload';
+    | 'rapid_reload';
 }
 
 /** Collision radius shared by every brawler body. */
@@ -139,7 +139,7 @@ export class BrawlEngine {
 
     // Initialize brawlers (up to 10 players)
     this.brawlers = players.map((p, idx) => {
-      const cfg = BRAWLERS[p.brawler || 'shelly'];
+      const cfg = BRAWLERS[p.brawler || 'mira'];
       const team = mode === 'gem_grab' ? idx % 2 : idx;
       // Gem Grab spawn points are grouped by team (first half blue, second
       // half red). Indexing them by raw player order dropped half the lobby
@@ -158,7 +158,7 @@ export class BrawlEngine {
       return {
         id: p.id,
         name: p.name,
-        brawlerId: p.brawler || 'shelly',
+        brawlerId: p.brawler || 'mira',
         team,
         x: spawn.x,
         y: spawn.y,
@@ -321,7 +321,7 @@ export class BrawlEngine {
       }
 
       // Shelly Star Power: Band-Aid (Instant heal when HP < 40%)
-      if (b.brawlerId === 'shelly' && b.hp < b.maxHp * 0.4 && b.bandAidCooldown <= 0) {
+      if (b.brawlerId === 'mira' && b.hp < b.maxHp * 0.4 && b.bandAidCooldown <= 0) {
         b.hp = Math.min(b.maxHp, b.hp + 1800);
         b.bandAidCooldown = 15.0;
         this.addFloatingNumber('+1800 YARA BANDI!', b.x, b.y - 30, '#4ade80');
@@ -339,7 +339,7 @@ export class BrawlEngine {
       }
 
       // Spike Star Power: Fertilizer (Heals +700 HP/sec in own Thorn Field)
-      if (b.brawlerId === 'spike') {
+      if (b.brawlerId === 'thorn') {
         const inOwnThorn = this.thornFields.some(tf => tf.ownerId === b.id && dist(b.x, b.y, tf.x, tf.y) <= tf.radius);
         if (inOwnThorn) {
           b.hp = Math.min(b.maxHp, b.hp + 700 * dt);
@@ -347,7 +347,7 @@ export class BrawlEngine {
       }
 
       // Leon Star Power: Invisiheal (Heals +700 HP/sec in Stealth)
-      if (b.brawlerId === 'leon' && b.invisibilityTimer > 0) {
+      if (b.brawlerId === 'wisp' && b.invisibilityTimer > 0) {
         b.hp = Math.min(b.maxHp, b.hp + 700 * dt);
       }
 
@@ -411,8 +411,8 @@ export class BrawlEngine {
           b.isJumping = false;
           b.x = b.jumpTargetX;
           b.y = b.jumpTargetY;
-          if (b.brawlerId === 'el_primo') {
-            this.triggerPrimoLanding(b);
+          if (b.brawlerId === 'boulder') {
+            this.triggerSlamLanding(b);
           }
         }
         continue; // Airborne brawler skips ground collisions & input
@@ -572,7 +572,7 @@ export class BrawlEngine {
     this.onSoundTriggered?.({ type: 'gadget_activate' });
 
     switch (b.brawlerId) {
-      case 'shelly': {
+      case 'mira': {
         // Fast Forward: Dash 140px in aim direction
         this.addFloatingNumber('İLERİ ATILMA!', b.x, b.y - 25, '#c084fc');
         b.knockbackVx = Math.cos(b.aimAngle) * 580;
@@ -590,15 +590,15 @@ export class BrawlEngine {
         break;
       }
 
-      case 'colt': {
+      case 'rivet': {
         // Speedloader: Instantly reload 2 ammo
         b.ammo = Math.min(b.maxAmmo, b.ammo + 2);
         this.addFloatingNumber('+2 CEPHANE!', b.x, b.y - 25, '#ef4444');
-        this.onSoundTriggered?.({ type: 'colt_reload' });
+        this.onSoundTriggered?.({ type: 'rapid_reload' });
         break;
       }
 
-      case 'el_primo': {
+      case 'boulder': {
         // Suplex Supplement: Grab nearest enemy (< 90px) and throw behind
         let nearest: BrawlerEntity | null = null;
         let minDist = 90;
@@ -624,7 +624,7 @@ export class BrawlEngine {
         break;
       }
 
-      case 'brock': {
+      case 'fuse': {
         // Rocket Laces: Jump in air, push and damage nearby enemies
         this.addFloatingNumber('ROKET BAĞCIKLARI!', b.x, b.y - 25, '#f59e0b');
         b.isJumping = true;
@@ -635,11 +635,11 @@ export class BrawlEngine {
         b.jumpTargetY = b.y + Math.sin(b.aimAngle) * 120;
 
         this.triggerExplosionAt(b.x, b.y, b.id, b.team, 500, 75, true, 250);
-        this.onSoundTriggered?.({ type: 'brock_rocket' });
+        this.onSoundTriggered?.({ type: 'rocket_launch' });
         break;
       }
 
-      case 'spike': {
+      case 'thorn': {
         // Popping Pincushion: 360-degree burst of 16 needles
         this.addFloatingNumber('DİKEN YAĞMURU!', b.x, b.y - 25, '#10b981');
         for (let i = 0; i < 16; i++) {
@@ -647,7 +647,7 @@ export class BrawlEngine {
           this.projectiles.push({
             id: `proj-${this.nextEntityId++}`,
             ownerId: b.id,
-            brawlerId: 'spike',
+            brawlerId: 'thorn',
             team: b.team,
             x: b.x + Math.cos(ang) * 15,
             y: b.y + Math.sin(ang) * 15,
@@ -666,14 +666,14 @@ export class BrawlEngine {
         break;
       }
 
-      case 'leon': {
+      case 'wisp': {
         // Clone Projector: Spawn holographic decoy clone
         this.addFloatingNumber('KLON OLUŞTURULDU!', b.x, b.y - 25, '#06b6d4');
         const cloneId = `clone-${this.nextEntityId++}`;
         this.brawlers.push({
           id: cloneId,
           name: `${b.name} (KLON)`,
-          brawlerId: 'leon',
+          brawlerId: 'wisp',
           team: b.team,
           x: b.x + 20,
           y: b.y + 20,
@@ -734,7 +734,7 @@ export class BrawlEngine {
     }
   }
 
-  // Basic Attacks Implementation (Authentic to Brawl Stars)
+  // Basic Attacks Implementation (Authentic to Nova Arena)
   private executeAttack(b: BrawlerEntity, input: BrawlPlayerInput) {
     const cfg = BRAWLERS[b.brawlerId];
     const dmgMultiplier = 1 + b.powerCubes * 0.1;
@@ -753,9 +753,9 @@ export class BrawlEngine {
     );
 
     switch (b.brawlerId) {
-      case 'shelly': {
+      case 'mira': {
         // Shelly Buckshot: 5 spread pellets simultaneously! Devastating point blank
-        this.onSoundTriggered?.({ type: 'shelly_attack' });
+        this.onSoundTriggered?.({ type: 'scatter_shot' });
         const pelletCount = 5;
         const spread = cfg.spreadAngle;
         const baseDmg = Math.round(cfg.damagePerAttack * dmgMultiplier);
@@ -785,9 +785,9 @@ export class BrawlEngine {
         break;
       }
 
-      case 'colt': {
+      case 'rivet': {
         // Colt Six-Shooters: 6 high-speed bullets in rapid burst!
-        this.onSoundTriggered?.({ type: 'colt_attack' });
+        this.onSoundTriggered?.({ type: 'rapid_shot' });
         b.burstRemaining = 6;
         b.burstInterval = 0.065;
         b.burstTimer = 0; // Fire first bullet immediately
@@ -797,9 +797,9 @@ export class BrawlEngine {
         break;
       }
 
-      case 'el_primo': {
+      case 'boulder': {
         // El Primo Fists of Fury: 4 rapid alternating boxing punches!
-        this.onSoundTriggered?.({ type: 'primo_punch' });
+        this.onSoundTriggered?.({ type: 'heavy_punch' });
         b.burstRemaining = 4;
         b.burstInterval = 0.08;
         b.burstTimer = 0;
@@ -809,9 +809,9 @@ export class BrawlEngine {
         break;
       }
 
-      case 'brock': {
+      case 'fuse': {
         // Brock Rockin' Rocket: Single rocket with splash AoE and incendiary fire patch!
-        this.onSoundTriggered?.({ type: 'brock_rocket' });
+        this.onSoundTriggered?.({ type: 'rocket_launch' });
         const baseDmg = Math.round(cfg.damagePerAttack * dmgMultiplier);
         this.projectiles.push({
           id: `proj-${this.nextEntityId++}`,
@@ -835,9 +835,9 @@ export class BrawlEngine {
         break;
       }
 
-      case 'spike': {
+      case 'thorn': {
         // Spike Needle Grenade: Explodes into 6 sharp needles at 60° increments with Curveball!
-        this.onSoundTriggered?.({ type: 'shelly_attack' });
+        this.onSoundTriggered?.({ type: 'scatter_shot' });
         const baseDmg = Math.round(cfg.damagePerAttack * dmgMultiplier);
         this.projectiles.push({
           id: `proj-${this.nextEntityId++}`,
@@ -861,9 +861,9 @@ export class BrawlEngine {
         break;
       }
 
-      case 'leon': {
+      case 'wisp': {
         // Leon Spinner Blades: 4 shurikens in a sweep! Assassin close-range burst
-        this.onSoundTriggered?.({ type: 'leon_shuriken' });
+        this.onSoundTriggered?.({ type: 'blade_throw' });
         b.burstRemaining = 4;
         b.burstInterval = 0.055;
         b.burstTimer = 0;
@@ -880,7 +880,7 @@ export class BrawlEngine {
     const cfg = BRAWLERS[b.brawlerId];
     const dmgMultiplier = 1 + b.powerCubes * 0.1;
 
-    if (b.brawlerId === 'colt') {
+    if (b.brawlerId === 'rivet') {
       if (b.burstIsSuper) {
         // Colt Super: Bullet Storm (12 giant piercing bullets)
         const spread = (this.rng.next() - 0.5) * 0.05;
@@ -903,7 +903,7 @@ export class BrawlEngine {
           piercesWalls: true,
           breaksWalls: true,
         });
-        if (b.burstShotIndex % 3 === 0) this.onSoundTriggered?.({ type: 'colt_attack' });
+        if (b.burstShotIndex % 3 === 0) this.onSoundTriggered?.({ type: 'rapid_shot' });
       } else {
         // Colt Basic: Six-Shooters (6 rapid bullets)
         const spread = (this.rng.next() - 0.5) * 0.04;
@@ -927,7 +927,7 @@ export class BrawlEngine {
           breaksWalls: false,
         });
       }
-    } else if (b.brawlerId === 'el_primo') {
+    } else if (b.brawlerId === 'boulder') {
       // El Primo Fists of Fury (alternating left/right punches)
       const offset = (b.burstShotIndex % 2 === 0 ? 1 : -1) * 0.14;
       const ang = b.burstAimAngle + offset;
@@ -949,7 +949,7 @@ export class BrawlEngine {
         piercesWalls: false,
         breaksWalls: false,
       });
-    } else if (b.brawlerId === 'leon') {
+    } else if (b.brawlerId === 'wisp') {
       // Leon Spinner Blades (sweeping arc from left to right)
       const offset = ((b.burstShotIndex / 3) - 0.5) * 0.28;
       const ang = b.burstAimAngle + offset;
@@ -971,12 +971,12 @@ export class BrawlEngine {
         piercesWalls: false,
         breaksWalls: false,
       });
-    } else if (b.brawlerId === 'brock' && b.burstIsSuper) {
+    } else if (b.brawlerId === 'fuse' && b.burstIsSuper) {
       // Brock Super: Rocket Rain (9 artillery rockets)
       const rx = b.burstTargetX + (this.rng.next() - 0.5) * 170;
       const ry = b.burstTargetY + (this.rng.next() - 0.5) * 170;
       this.triggerExplosionAt(rx, ry, b.id, b.team, Math.round(950 * dmgMultiplier), 85, true);
-      this.onSoundTriggered?.({ type: 'brock_rocket' });
+      this.onSoundTriggered?.({ type: 'rocket_launch' });
     }
   }
 
@@ -985,7 +985,7 @@ export class BrawlEngine {
     const dmgMultiplier = 1 + b.powerCubes * 0.1;
 
     switch (b.brawlerId) {
-      case 'shelly': {
+      case 'mira': {
         // Super Shell: 9 heavy buckshot shells that break walls, shear bushes, knock back, and stun!
         this.onSoundTriggered?.({ type: 'super_blast' });
         const pelletCount = 9;
@@ -1029,7 +1029,7 @@ export class BrawlEngine {
         break;
       }
 
-      case 'colt': {
+      case 'rivet': {
         // Bullet Storm: 12 long-range piercing bullets breaking through obstacles!
         this.onSoundTriggered?.({ type: 'super_blast' });
         b.burstRemaining = 12;
@@ -1041,9 +1041,9 @@ export class BrawlEngine {
         break;
       }
 
-      case 'el_primo': {
+      case 'boulder': {
         // Flying Elbow Drop: Airborne leap over walls and landing earthquake shockwave!
-        this.onSoundTriggered?.({ type: 'primo_leap' });
+        this.onSoundTriggered?.({ type: 'heavy_leap' });
         b.isJumping = true;
         b.jumpProgress = 0;
         b.jumpStartX = b.x;
@@ -1056,7 +1056,7 @@ export class BrawlEngine {
         break;
       }
 
-      case 'brock': {
+      case 'fuse': {
         // Rocket Rain: 9 heavy incendiary rockets raining from above!
         this.onSoundTriggered?.({ type: 'super_blast' });
         const targetX = input.superTargetX || (b.x + Math.cos(b.aimAngle) * 360);
@@ -1072,7 +1072,7 @@ export class BrawlEngine {
         break;
       }
 
-      case 'spike': {
+      case 'thorn': {
         // Stick Around!: Giant thorny garden slowing enemies by 50% and dealing rapid damage
         this.onSoundTriggered?.({ type: 'super_blast' });
         const targetX = input.superTargetX || (b.x + Math.cos(b.aimAngle) * 320);
@@ -1091,7 +1091,7 @@ export class BrawlEngine {
         break;
       }
 
-      case 'leon': {
+      case 'wisp': {
         // Smoke Bomb: Smoke cloud puff, 6s Invisibility AND +30% Assassin Speed Boost & Invisiheal!
         this.onSoundTriggered?.({ type: 'super_blast' });
         b.invisibilityTimer = 6.0;
@@ -1114,7 +1114,7 @@ export class BrawlEngine {
     }
   }
 
-  private triggerPrimoLanding(b: BrawlerEntity) {
+  private triggerSlamLanding(b: BrawlerEntity) {
     this.onSoundTriggered?.({ type: 'super_blast' });
     const blastRadius = 125;
     const dmg = Math.round(1300 * (1 + b.powerCubes * 0.1));
@@ -1125,7 +1125,7 @@ export class BrawlEngine {
     // Spawn earthquake crater shockwave
     this.visualEffects.push({
       id: `fx-${this.nextEntityId++}`,
-      type: 'primo_slam',
+      type: 'ground_slam',
       x: b.x,
       y: b.y,
       radius: blastRadius,
@@ -1395,7 +1395,7 @@ export class BrawlEngine {
         }
 
         // Shelly's Super slows whatever it catches.
-        if (p.brawlerId === 'shelly' && p.isSuper) {
+        if (p.brawlerId === 'mira' && p.isSuper) {
           hitTarget.slowTimer = 3.0;
         }
 
@@ -1451,7 +1451,7 @@ export class BrawlEngine {
    * by 55% from one pixel to the next.
    */
   private applyDamageFalloff(p: BrawlProjectile, damage: number): number {
-    if (p.brawlerId !== 'leon' || p.isSuper) return damage;
+    if (p.brawlerId !== 'wisp' || p.isSuper) return damage;
     const t = clamp(p.traveled / 320, 0, 1);
     return Math.round(damage * (1.7 - 0.95 * smoothstep(t)));
   }
@@ -1529,7 +1529,7 @@ export class BrawlEngine {
       this.projectiles.push({
         id: `proj-${this.nextEntityId++}`,
         ownerId,
-        brawlerId: 'spike',
+        brawlerId: 'thorn',
         team,
         x,
         y,
@@ -1638,7 +1638,7 @@ export class BrawlEngine {
     b.timeSinceLastDamage = 0;
 
     // El Primo Tank Trait: Charges super when receiving damage!
-    if (b.brawlerId === 'el_primo' && !b.isClone) {
+    if (b.brawlerId === 'boulder' && !b.isClone) {
       b.superCharge = Math.min(100, b.superCharge + (damage / b.maxHp) * 75);
     }
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CharacterPortrait } from './CharacterPortrait';
 import { BrawlerId, BRAWLERS, PlayerInfo, BrawlGameMode } from '../types/brawl';
 import {
   Users,
@@ -62,7 +63,7 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
   onToggleMute,
 }) => {
   const [copied, setCopied] = useState(false);
-  const brawlerList: BrawlerId[] = ['shelly', 'colt', 'el_primo', 'brock', 'spike', 'leon'];
+  const brawlerList: BrawlerId[] = ['mira', 'rivet', 'boulder', 'fuse', 'thorn', 'wisp'];
   const activeCfg = BRAWLERS[selectedBrawler];
 
   const copyInviteLink = () => {
@@ -94,7 +95,7 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
             <span>⚡ 4-10 Kişilik Çok Oyunculu Arena</span>
           </div>
           <h1 className="text-4xl md:text-6xl font-black font-arcade tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-amber-400 via-yellow-200 to-rose-400 filter drop-shadow">
-            BRAWL STARS 2D
+            NOVA ARENA
           </h1>
           <p className="text-slate-400 text-sm mt-1">
             Özel ultiler, çalı pusuları, güç küpleri ve elmas madeniyle gerçek zamanlı savaş
@@ -141,14 +142,10 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
                         isSelected ? 'scale-105 shadow-[0_0_20px_rgba(234,179,8,0.4)] ring-2 ring-yellow-400/50' : 'hover:border-slate-600'
                       }`}
                     >
-                      <img
-                        src={`/assets/${bId}.png`}
-                        alt={bCfg.name}
-                        className="w-14 h-14 object-contain filter drop-shadow-md mb-1.5 transition-transform hover:scale-110"
-                        onError={(e) => {
-                          // fallback if image not loaded
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
+                      <CharacterPortrait
+                        brawlerId={bId}
+                        size={56}
+                        className="mb-1.5 transition-transform hover:scale-110"
                       />
                       <span className="font-arcade text-xs font-bold text-slate-100">{bCfg.name}</span>
                       <span className="text-[10px] text-slate-400">{bCfg.rarity}</span>
@@ -161,10 +158,11 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
             {/* Selected Brawler Stats Detail Card */}
             <div className="p-5 rounded-2xl bg-slate-950/85 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-5 shadow-inner">
               <div className="flex items-center gap-4">
-                <img
-                  src={`/assets/${selectedBrawler}.png`}
-                  alt={activeCfg.name}
-                  className="w-24 h-24 object-contain filter drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] animate-pulse"
+                <CharacterPortrait
+                  brawlerId={selectedBrawler}
+                  size={96}
+                  animated
+                  className="drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]"
                 />
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2">
@@ -362,7 +360,7 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
                     );
                   }
 
-                  const bCfg = BRAWLERS[p.brawler || 'shelly'];
+                  const bCfg = BRAWLERS[p.brawler || 'mira'];
 
                   return (
                     <div
