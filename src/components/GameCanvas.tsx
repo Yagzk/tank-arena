@@ -1,0 +1,565 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { GameStateSnapshot, PlayerInput, TANK_COLORS, Tank, Bullet, Mine, PowerUp, Wall } from '../types/game';
+import { ARENA_WIDTH, ARENA_HEIGHT } from '../game/mapGenerator';
+import { soundManager } from '../audio/soundManager';
+
+interface GameCanvasProps {
+  snapshot: GameStateSnapshot | null;
+  myPlayerId: string;
+  onSendInput: (input: PlayerInput) => void;
+  isHost: boolean;
+}
+
+export const GameCanvas: React.FC<GameCanvasProps> = ({
+  snapshot,
+  myPlayerId,
+  onSendInput,
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Screen shake
+  const shakeRef = useRef<number>(0);
+
+  // Input states
+  const keysRef = useRef<{ [key: string]: boolean }>({});
+  const mouseRef = useRef<{ x: number; y: number; isDown: boolean; rightDown: boolean }>({
+    x: ARENA_WIDTH / 2,
+    y: ARENA_HEIGHT / 2,
+    isDown: false,
+    rightDown: false,
+  });
+
+  // Track previous bullet/mine count to trigger local screen shakes
+  const prevBulletCountRef = useRef<number>(0);
+
+  // Handle inputs and send at 60fps
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent scrolling
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+        e.preventDefault();
+      }
+      keysRef.current[e.code.toLowerCase()] = true;
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysRef.current[e.code.toLowerCase()] = false;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const scaleX = ARENA_WIDTH / rect.width;
+      const scaleY = ARENA_HEIGHT / rect.height;
+      mouseRef.current.x = (e.clientX - rect.left) * scaleX;
+      mouseRef.current.y = (e.clientY - rect.top) * scaleY;
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 0) mouseRef.current.isDown = true;
+      if (e.button === 2) {
+        e.preventDefault();
+        mouseRef.current.rightDown = true;
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 0) mouseRef.current.isDown = false;
+      if (e.button === 2) mouseRef.current.rightDown = false;
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('contextmenu', handleContextMenu);
+
+    // Send input loop
+    const inputInterval = setInterval(() => {
+      const keys = keysRef.current;
+      const myTank = snapshot?.tanks.find(t => t.id === myPlayerId);
+
+      let aimAngle = 0;
+      if (myTank) {
+        aimAngle = Math.atan2(mouseRef.current.y - myTank.y, mouseRef.current.x - myTank.x);
+      }
+
+      const input: PlayerInput = {
+        moveForward: !!(keys['keyw'] || keys['arrowup']),
+        moveBackward: !!(keys['keys'] || keys['arrowdown']),
+        turnLeft: !!(keys['keya'] || keys['arrowleft']),
+        turnRight: !!(keys['keyd'] || keys['arrowright']),
+        aimAngle,
+        shoot: !!(mouseRef.current.isDown || keys['space']),
+        placeMine: !!(mouseRef.current.rightDown || keys['keyq'] || keys['keye'] || keys['shiftleft']),
+      };
+
+      onSendInput(input);
+    }, 1000 / 60);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('contextmenu', handleContextMenu);
+      clearInterval(inputInterval);
+    };
+  }, [snapshot, myPlayerId, onSendInput]);
+
+  // Main Render Loop
+  useEffect(() => {
+    let animId: number;
+
+    const render = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Handle Screen Shake
+      ctx.save();
+      if (shakeRef.current > 0) {
+        const sx = (Math.random() - 0.5) * shakeRef.current;
+        const sy = (Math.random() - 0.5) * shakeRef.current;
+        ctx.translate(sx, sy);
+        shakeRef.current = Math.max(0, shakeRef.current - 0.5);
+      }
+
+      // Clear & Background Grid
+      drawBackground(ctx);
+
+      if (snapshot) {
+        // Draw Walls & Crates
+        drawWalls(ctx, snapshot.walls);
+
+        // Draw PowerUps
+        drawPowerups(ctx, snapshot.powerups);
+
+        // Draw Mines
+        drawMines(ctx, snapshot.mines);
+
+        // Draw Tanks
+        snapshot.tanks.forEach(tank => {
+          drawTank(ctx, tank, tank.id === myPlayerId);
+        });
+
+        // Draw Bullets
+        snapshot.bullets.forEach(bullet => {
+          drawBullet(ctx, bullet);
+        });
+
+        // Overlays (Starting countdown / Round Over banner)
+        drawPhaseOverlay(ctx, snapshot);
+      }
+
+      ctx.restore();
+      animId = requestAnimationFrame(render);
+    };
+
+    animId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(animId);
+  }, [snapshot, myPlayerId]);
+
+  // Draw cybernetic arena grid floor
+  const drawBackground = (ctx: CanvasRenderingContext2D) => {
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(30, 41, 59, 0.4)';
+    ctx.lineWidth = 1;
+    const gridSize = 40;
+
+    ctx.beginPath();
+    for (let x = 0; x <= ARENA_WIDTH; x += gridSize) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, ARENA_HEIGHT);
+    }
+    for (let y = 0; y <= ARENA_HEIGHT; y += gridSize) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(ARENA_WIDTH, y);
+    }
+    ctx.stroke();
+
+    // Center circular arena ring
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ARENA_WIDTH / 2, ARENA_HEIGHT / 2, 140, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+
+  // Draw walls & crates
+  const drawWalls = (ctx: CanvasRenderingContext2D, walls: Wall[]) => {
+    walls.forEach(wall => {
+      if (wall.isDestructible) {
+        // Wooden / Metal Crate
+        ctx.save();
+        ctx.fillStyle = '#78350f';
+        ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+
+        // Border & wooden planks
+        ctx.strokeStyle = '#b45309';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(wall.x, wall.y, wall.w, wall.h);
+
+        // Cross bracing
+        ctx.strokeStyle = '#92400e';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(wall.x, wall.y);
+        ctx.lineTo(wall.x + wall.w, wall.y + wall.h);
+        ctx.moveTo(wall.x + wall.w, wall.y);
+        ctx.lineTo(wall.x, wall.y + wall.h);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Solid High-Tech Neon Wall
+        ctx.save();
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+
+        // Wall neon edge
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(wall.x + 1, wall.y + 1, wall.w - 2, wall.h - 2);
+
+        // Inner bevel
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(wall.x + 3, wall.y + 3, wall.w - 6, wall.h - 6);
+        ctx.restore();
+      }
+    });
+  };
+
+  // Draw Powerups
+  const drawPowerups = (ctx: CanvasRenderingContext2D, powerups: PowerUp[]) => {
+    const time = performance.now() * 0.004;
+
+    powerups.forEach(p => {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+
+      // Floating pulse
+      const pulse = Math.sin(time * 3) * 2;
+      const r = p.radius + pulse;
+
+      // Glow ring
+      ctx.shadowBlur = 15;
+      let color = '#38bdf8';
+      let icon = '⚡';
+
+      if (p.type === 'shield') {
+        color = '#06b6d4';
+        icon = '🛡️';
+      } else if (p.type === 'speed') {
+        color = '#facc15';
+        icon = '🚀';
+      } else if (p.type === 'triple') {
+        color = '#fb923c';
+        icon = '💥';
+      } else if (p.type === 'laser') {
+        color = '#f43f5e';
+        icon = '⚡';
+      } else if (p.type === 'ammo') {
+        color = '#4ade80';
+        icon = '🔋';
+      }
+
+      ctx.shadowColor = color;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.fill();
+
+      // Emoji / Icon
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(icon, 0, 0);
+
+      ctx.restore();
+    });
+  };
+
+  // Draw Mines
+  const drawMines = (ctx: CanvasRenderingContext2D, mines: Mine[]) => {
+    const time = performance.now() * 0.006;
+
+    mines.forEach(mine => {
+      ctx.save();
+      ctx.translate(mine.x, mine.y);
+
+      // Base body
+      ctx.fillStyle = '#1e1b4b';
+      ctx.beginPath();
+      ctx.arc(0, 0, mine.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = mine.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Pulsing red danger LED
+      const isArmed = mine.armTimer <= 0;
+      const ledColor = isArmed ? (Math.sin(time * 8) > 0 ? '#ef4444' : '#7f1d1d') : '#38bdf8';
+
+      ctx.fillStyle = ledColor;
+      ctx.shadowColor = ledColor;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    });
+  };
+
+  // Draw Tank
+  const drawTank = (ctx: CanvasRenderingContext2D, tank: Tank, isMe: boolean) => {
+    if (!tank.isAlive) {
+      // Draw destroyed wreck
+      ctx.save();
+      ctx.translate(tank.x, tank.y);
+      ctx.rotate(tank.angle);
+      ctx.fillStyle = '#262626';
+      ctx.fillRect(-14, -10, 28, 20);
+      ctx.strokeStyle = '#404040';
+      ctx.strokeRect(-14, -10, 28, 20);
+      ctx.restore();
+      return;
+    }
+
+    const colorConfig = TANK_COLORS[tank.color] || TANK_COLORS.cyan;
+
+    ctx.save();
+    ctx.translate(tank.x, tank.y);
+
+    // Energy Shield bubble
+    if (tank.shield) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.85)';
+      ctx.shadowColor = '#06b6d4';
+      ctx.shadowBlur = 18;
+      ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.15)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 28, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // You indicator (arrow/glow ring if local player)
+    if (isMe) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(0, 0, 32, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 1. TANK BODY (Treads and Hull rotated by body angle)
+    ctx.save();
+    ctx.rotate(tank.angle);
+
+    // Treads
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-17, -15, 34, 7); // Left tread
+    ctx.fillRect(-17, 8, 34, 7);  // Right tread
+
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-17, -15, 34, 7);
+    ctx.strokeRect(-17, 8, 34, 7);
+
+    // Main hull
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(-14, -9, 28, 18);
+
+    // Hull armor stripe with player color
+    ctx.fillStyle = colorConfig.primary;
+    ctx.shadowColor = colorConfig.glow;
+    ctx.shadowBlur = 10;
+    ctx.fillRect(-8, -6, 16, 12);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    // 2. TURRET & CANNON (Rotated by turretAngle)
+    ctx.save();
+    ctx.rotate(tank.turretAngle);
+
+    // Barrel
+    const barrelLength = tank.laserShotTimer > 0 ? 30 : 25;
+    const barrelWidth = tank.tripleShotTimer > 0 ? 8 : 5;
+
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(0, -barrelWidth / 2, barrelLength, barrelWidth);
+
+    // Barrel tip glow
+    if (tank.laserShotTimer > 0) {
+      ctx.fillStyle = '#f43f5e';
+      ctx.fillRect(barrelLength - 6, -barrelWidth / 2, 6, barrelWidth);
+    } else if (tank.tripleShotTimer > 0) {
+      ctx.fillStyle = '#fb923c';
+      ctx.fillRect(barrelLength - 5, -barrelWidth / 2, 5, barrelWidth);
+    }
+
+    // Turret Dome
+    ctx.fillStyle = colorConfig.secondary;
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+
+    // 3. NAME TAG & AMMO DOTS
+    ctx.restore(); // Exit tank translation
+
+    // Name tag
+    ctx.save();
+    ctx.font = 'bold 12px Orbitron, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isMe ? '#f8fafc' : '#cbd5e1';
+    ctx.shadowColor = '#000000';
+    ctx.shadowBlur = 4;
+    ctx.fillText(tank.name + (tank.isBot ? ' [BOT]' : ''), tank.x, tank.y - 32);
+
+    // Ammo pips (5 dots)
+    const ammoCount = Math.floor(tank.ammo);
+    const startX = tank.x - 16;
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i < ammoCount ? colorConfig.primary : '#475569';
+      ctx.beginPath();
+      ctx.arc(startX + i * 8, tank.y - 23, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  };
+
+  // Draw Bullet
+  const drawBullet = (ctx: CanvasRenderingContext2D, bullet: Bullet) => {
+    ctx.save();
+    ctx.translate(bullet.x, bullet.y);
+
+    if (bullet.isLaser) {
+      ctx.fillStyle = '#f43f5e';
+      ctx.shadowColor = '#f43f5e';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(0, 0, bullet.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // White inner core
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, bullet.radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = bullet.color;
+      ctx.shadowColor = bullet.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(0, 0, bullet.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, bullet.radius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  };
+
+  // Draw overlays (Round countdown, round over)
+  const drawPhaseOverlay = (ctx: CanvasRenderingContext2D, state: GameStateSnapshot) => {
+    if (state.phase === 'starting') {
+      const count = Math.ceil(state.roundTimer);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+
+      ctx.font = 'bold 80px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#38bdf8';
+      ctx.shadowColor = '#0284c7';
+      ctx.shadowBlur = 25;
+
+      const text = count > 0 ? `${count}` : 'ATEŞ!';
+      ctx.fillText(text, ARENA_WIDTH / 2, ARENA_HEIGHT / 2);
+
+      ctx.font = '20px Orbitron, sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(`ROUND ${state.round} / ${state.maxRounds}`, ARENA_WIDTH / 2, ARENA_HEIGHT / 2 - 70);
+
+      ctx.restore();
+    } else if (state.phase === 'round_end') {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+
+      ctx.font = 'bold 50px Orbitron, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const winner = state.tanks.find(t => t.id === state.roundWinnerId);
+      if (winner) {
+        ctx.fillStyle = TANK_COLORS[winner.color]?.primary || '#eab308';
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 20;
+        ctx.fillText(`👑 ${winner.name.toUpperCase()} KAZANDI!`, ARENA_WIDTH / 2, ARENA_HEIGHT / 2 - 20);
+      } else {
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('BERABERE!', ARENA_WIDTH / 2, ARENA_HEIGHT / 2 - 20);
+      }
+
+      ctx.font = '18px Rajdhani, sans-serif';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.shadowBlur = 0;
+      ctx.fillText(`Sonraki round hazırlanıyor...`, ARENA_WIDTH / 2, ARENA_HEIGHT / 2 + 40);
+
+      ctx.restore();
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full h-full flex items-center justify-center p-2 select-none overflow-hidden"
+    >
+      <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-800 bg-slate-950 aspect-[3/2] max-h-[88vh] max-w-full">
+        <canvas
+          ref={canvasRef}
+          width={ARENA_WIDTH}
+          height={ARENA_HEIGHT}
+          className="w-full h-full object-contain cursor-crosshair block"
+        />
+      </div>
+    </div>
+  );
+};
