@@ -89,6 +89,13 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
 
   const isTouch = useIsTouchDevice();
 
+  // Showdown placement, read off the elimination order: the last player
+  // knocked out finished second, the one before them third, and so on.
+  const contenders = snapshot?.brawlers.filter(b => !b.isClone) ?? [];
+  const totalContenders = contenders.length;
+  const eliminatedIndex = snapshot?.eliminationOrder?.indexOf(myPlayerId) ?? -1;
+  const placement = eliminatedIndex >= 0 ? totalContenders - eliminatedIndex : totalContenders;
+
   return (
     <div className="absolute inset-0 pointer-events-none p-2 sm:p-4 flex flex-col justify-between select-none">
       {/* ================= TOP BAR ================= */}
@@ -185,6 +192,48 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
           })}
         </div>
       </div>
+
+      {/* ================= KILL FEED =================
+          Sits under the radar, newest at the bottom, oldest fading out. Without
+          it a Showdown lobby silently emptied and the only clue was the counter
+          at the top ticking down. */}
+      {snapshot.killFeed && snapshot.killFeed.length > 0 && (
+        <div className="absolute top-24 right-2 sm:right-4 flex flex-col items-end gap-1 pointer-events-none">
+          {snapshot.killFeed.slice(-4).map((entry, index, shown) => (
+            <div
+              key={entry.id}
+              style={{ opacity: 0.45 + ((index + 1) / shown.length) * 0.55 }}
+              className="px-2.5 py-1 rounded-xl bg-slate-950/85 border border-slate-700/70 text-[10px] font-bold flex items-center gap-1.5 shadow-lg"
+            >
+              <span className="text-slate-300">{entry.killerName}</span>
+              <span className="text-rose-400">⚔</span>
+              <span className="text-slate-500 line-through">{entry.victimName}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ================= ELIMINATION BANNER =================
+          Being knocked out used to leave the player watching a corpse with no
+          explanation. The camera now follows someone still playing, and this
+          says what happened and where they finished. */}
+      {myBrawler && !myBrawler.isAlive && snapshot.phase === 'playing' && (
+        <div className="absolute inset-x-0 top-1/3 flex flex-col items-center gap-2 pointer-events-none">
+          <div className="px-6 py-3 rounded-3xl bg-slate-950/90 border-2 border-rose-500/70 shadow-2xl flex flex-col items-center gap-1">
+            <span className="font-arcade text-xl font-black text-rose-300 tracking-widest">
+              ELENDİN
+            </span>
+            {snapshot.mode === 'showdown' && (
+              <span className="font-arcade text-sm font-bold text-amber-300">
+                {`#${placement} / ${totalContenders}`}
+              </span>
+            )}
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+              Maçı izliyorsun
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ================= BOTTOM BAR ================= */}
       <div className="flex items-end justify-between w-full max-w-5xl mx-auto">

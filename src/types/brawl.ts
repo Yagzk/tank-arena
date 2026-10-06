@@ -454,6 +454,16 @@ export interface GemMine {
   totalSpawned: number;
 }
 
+/** One line of the kill feed. */
+export interface KillFeedEntry {
+  id: string;
+  killerName: string;
+  victimName: string;
+  victimBrawler: BrawlerId;
+  /** Match time the kill happened, so the renderer can fade it out. */
+  at: number;
+}
+
 export type BrawlPhase = 'waiting' | 'starting' | 'playing' | 'match_end';
 
 export interface BrawlSnapshot {
@@ -478,6 +488,15 @@ export interface BrawlSnapshot {
   gemMine?: GemMine;
   poisonGas: PoisonGas;
   floatingNumbers: FloatingNumber[];
+  /** Recent kills, newest last. Capped by the engine. */
+  killFeed: KillFeedEntry[];
+  /**
+   * Player ids in the order they were eliminated. Position in Showdown is read
+   * off the end of this: the last one out placed second, and so on.
+   */
+  eliminationOrder: string[];
+  /** Seconds remaining in the pre-match countdown; zero once play has begun. */
+  introCountdown: number;
 }
 
 export interface BrawlPlayerInput {

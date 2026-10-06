@@ -10,6 +10,7 @@ import {
   Bush,
   BrawlWall,
   FloatingNumber,
+  KillFeedEntry,
   PoisonGas,
   GemMine,
   BrawlSnapshot,
@@ -46,6 +47,9 @@ export interface BrawlSoundEvent {
     | 'rapid_reload';
 }
 
+/** Seconds of countdown before a match becomes playable. */
+const INTRO_DURATION = 3.0;
+
 /** Collision radius shared by every brawler body. */
 const BRAWLER_RADIUS = 22;
 
@@ -72,6 +76,10 @@ export class BrawlEngine {
   public gemMine?: GemMine;
   public poisonGas: PoisonGas = { inset: 0, damageTimer: 0, isActive: false };
   public floatingNumbers: FloatingNumber[] = [];
+  /** Recent kills, newest last. */
+  public killFeed: KillFeedEntry[] = [];
+  /** Player ids in elimination order, used to work out Showdown placement. */
+  public eliminationOrder: string[] = [];
 
   public playerInputs: Record<string, BrawlPlayerInput> = {};
   private botControllers: Record<string, BrawlBot> = {};
@@ -130,6 +138,8 @@ export class BrawlEngine {
     this.powerCubes = [];
     this.gems = [];
     this.floatingNumbers = [];
+    this.killFeed = [];
+    this.eliminationOrder = [];
 
     this.poisonGas = {
       inset: 0,
@@ -224,9 +234,12 @@ export class BrawlEngine {
 
   public update(dt: number) {
     if (this.phase === 'starting') {
+      // Three seconds of countdown, so players can read the map and find
+      // themselves before anything can shoot them.
       this.matchTimer += dt;
-      if (this.matchTimer >= 2.0) {
+      if (this.matchTimer >= INTRO_DURATION) {
         this.phase = 'playing';
+        this.matchTimer = 0;
       }
       return;
     }
@@ -1653,6 +1666,19 @@ export class BrawlEngine {
       const killer = this.brawlers.find(k => k.id === killerId);
       if (killer) killer.kills++;
 
+      if (!b.isClone) {
+        this.eliminationOrder.push(b.id);
+        this.killFeed.push({
+          id: `kf-${this.nextEntityId++}`,
+          killerName: killer ? killer.name : killerId === 'gas' ? 'Zehirli Gaz' : 'Çevre',
+          victimName: b.name,
+          victimBrawler: b.brawlerId,
+          at: this.matchTimer,
+        });
+        // The HUD only ever shows the last few lines.
+        if (this.killFeed.length > 6) this.killFeed.shift();
+      }
+
       // Drop gems carried
       if (b.gemsCarried > 0) {
         for (let i = 0; i < b.gemsCarried; i++) {
@@ -1898,6 +1924,10 @@ export class BrawlEngine {
       gemMine: this.gemMine,
       poisonGas: this.poisonGas,
       floatingNumbers: this.floatingNumbers,
+      killFeed: this.killFeed,
+      eliminationOrder: this.eliminationOrder,
+      introCountdown:
+        this.phase === 'starting' ? Math.max(0, INTRO_DURATION - this.matchTimer) : 0,
     };
   }
 }

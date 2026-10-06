@@ -109,6 +109,13 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     superReady: false,
   });
 
+  /**
+   * Who the camera is following. Normally you; once you are out it holds on
+   * someone still playing, because watching a corpse until the match ends is
+   * not a spectator mode.
+   */
+  const spectateIdRef = useRef<string | null>(null);
+
   /** Diagnostics overlay, toggled with F3. */
   const showDiagnosticsRef = useRef<boolean>(false);
   const lastFrameAtRef = useRef<number>(performance.now());
@@ -446,8 +453,22 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       const myBrawler = snap?.brawlers.find(b => b.id === myId);
 
       // Smooth Camera tracking
+      // Pick a camera subject: you while you are alive, otherwise someone who
+      // still is. The previous choice is kept while it remains valid so the
+      // view does not hop between players every frame.
+      let focus = myBrawler;
+      if (snap && (!myBrawler || !myBrawler.isAlive)) {
+        const held = snap.brawlers.find(
+          b => b.id === spectateIdRef.current && b.isAlive && !b.isClone
+        );
+        focus = held ?? snap.brawlers.find(b => b.isAlive && !b.isClone && b.id !== myId);
+        spectateIdRef.current = focus?.id ?? null;
+      } else {
+        spectateIdRef.current = null;
+      }
+
       const view = viewRef.current;
-      if (myBrawler) {
+      if (focus) {
         // Clamp against the visible world extent, not the pixel size of the
         // canvas, so the edge of the arena lines up at any zoom level.
         const halfW = Math.min(view.worldW / 2, MAP_WIDTH / 2);
@@ -455,8 +476,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         // On a phone the bottom of the screen is thumbs and buttons, so the
         // camera sits a little low and leaves the character above that band.
         const controlBias = isTouchDeviceRef.current ? view.worldH * 0.1 : 0;
-        const targetX = clamp(myBrawler.x, halfW, MAP_WIDTH - halfW);
-        const targetY = clamp(myBrawler.y + controlBias, halfH, MAP_HEIGHT - halfH);
+        const targetX = clamp(focus.x, halfW, MAP_WIDTH - halfW);
+        const targetY = clamp(focus.y + controlBias, halfH, MAP_HEIGHT - halfH);
         cameraRef.current.x += (targetX - cameraRef.current.x) * 0.12;
         cameraRef.current.y += (targetY - cameraRef.current.y) * 0.12;
       }
@@ -609,6 +630,10 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         profiler.setCount('projectiles', snap.projectiles.length);
         profiler.setCount('effects', snap.visualEffects?.length ?? 0);
         profiler.setCount('walls', snap.walls.length);
+      }
+
+      if (snap && snap.introCountdown > 0) {
+        drawIntroCountdown(ctx, view, snap.introCountdown);
       }
 
       profiler.render.end();
@@ -1697,6 +1722,52 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.stroke();
       ctx.restore();
     }
+  };
+
+  /**
+   * Pre-match countdown.
+   *
+   * The match used to begin after two silent seconds in which nothing told the
+   * player the round had not started yet, so the first thing many people did
+   * was walk into a fight that had already begun without them.
+   */
+  const drawIntroCountdown = (
+    ctx: CanvasRenderingContext2D,
+    view: ViewMetrics,
+    remaining: number
+  ) => {
+    const whole = Math.ceil(remaining);
+    // Each number swells as it appears and settles, so the beat is readable
+    // even at a glance.
+    const phase = 1 - (remaining - Math.floor(remaining));
+    const scale = 1 + Math.max(0, 0.5 - phase) * 1.4;
+
+    ctx.save();
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.35)';
+    ctx.fillRect(0, 0, view.w, view.h);
+
+    ctx.translate(view.w / 2, view.h * 0.42);
+    ctx.scale(scale, scale);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.font = 'bold 96px Orbitron, system-ui, sans-serif';
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#0f172a';
+    ctx.strokeText(`${whole}`, 0, 0);
+    ctx.fillStyle = '#facc15';
+    ctx.fillText(`${whole}`, 0, 0);
+
+    ctx.font = 'bold 20px Orbitron, system-ui, sans-serif';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#0f172a';
+    ctx.strokeText('HAZIRLAN', 0, 76);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText('HAZIRLAN', 0, 76);
+
+    ctx.restore();
   };
 
   /**
