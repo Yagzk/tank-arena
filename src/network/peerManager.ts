@@ -1,23 +1,22 @@
 import { Peer, DataConnection } from 'peerjs';
-import { PlayerInfo, PlayerInput, GameStateSnapshot, TankColor } from '../types/game';
-import { SoundEvent } from '../game/gameEngine';
+import { PlayerInfo, BrawlPlayerInput, BrawlSnapshot, BrawlerId, BrawlGameMode } from '../types/brawl';
+import { BrawlSoundEvent } from '../game/brawlEngine';
 
 export type NetworkMessage =
-  | { type: 'JOIN'; name: string; color: TankColor }
-  | { type: 'ROOM_UPDATE'; players: PlayerInfo[]; targetScore: number }
-  | { type: 'START_MATCH'; targetScore: number }
-  | { type: 'INPUT'; input: PlayerInput }
-  | { type: 'STATE'; snapshot: GameStateSnapshot }
-  | { type: 'SOUND'; event: SoundEvent }
-  | { type: 'RESTART_ROUND' };
+  | { type: 'JOIN'; name: string; brawler: BrawlerId }
+  | { type: 'ROOM_UPDATE'; players: PlayerInfo[]; mode: BrawlGameMode }
+  | { type: 'START_MATCH'; mode: BrawlGameMode }
+  | { type: 'INPUT'; input: BrawlPlayerInput }
+  | { type: 'STATE'; snapshot: BrawlSnapshot }
+  | { type: 'SOUND'; event: BrawlSoundEvent };
 
 export interface PeerManagerCallbacks {
-  onConnected?: (peerId: string) => void;
+  onConnected?: (roomCode: string) => void;
   onPlayersChanged?: (players: PlayerInfo[]) => void;
-  onGameStart?: (targetScore: number) => void;
-  onStateReceived?: (snapshot: GameStateSnapshot) => void;
-  onInputReceived?: (playerId: string, input: PlayerInput) => void;
-  onSoundReceived?: (event: SoundEvent) => void;
+  onGameStart?: (mode: BrawlGameMode) => void;
+  onStateReceived?: (snapshot: BrawlSnapshot) => void;
+  onInputReceived?: (playerId: string, input: BrawlPlayerInput) => void;
+  onSoundReceived?: (event: BrawlSoundEvent) => void;
   onError?: (err: string) => void;
 }
 
@@ -27,6 +26,7 @@ export class PeerManager {
   public roomCode: string = '';
   public isHost: boolean = false;
   public players: PlayerInfo[] = [];
+  public mode: BrawlGameMode = 'showdown';
   public connections: Map<string, DataConnection> = new Map();
   private hostConn: DataConnection | null = null;
   private callbacks: PeerManagerCallbacks = {};
@@ -35,7 +35,6 @@ export class PeerManager {
     this.callbacks = callbacks;
   }
 
-  // Generate clean 4-character alphanumeric code (e.g. 7X9K)
   public static generateRoomCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
@@ -45,25 +44,25 @@ export class PeerManager {
     return code;
   }
 
-  // Host a room
-  public hostRoom(roomCode: string, hostName: string, hostColor: TankColor) {
+  public hostRoom(roomCode: string, hostName: string, hostBrawler: BrawlerId, mode: BrawlGameMode) {
     this.isHost = true;
     this.roomCode = roomCode.toUpperCase();
-    const peerId = `tk2d-${this.roomCode}`;
+    this.mode = mode;
+    const peerId = `brwl-${this.roomCode}`;
 
-    this.peer = new Peer(peerId, {
-      debug: 1,
-    });
+    this.peer = new Peer(peerId, { debug: 1 });
 
     this.peer.on('open', id => {
       this.myId = id;
       this.players = [
         {
           id,
-          name: hostName || 'Komutan 1',
-          color: hostColor,
+          name: hostName || 'Yıldız Oyuncu',
+          brawler: hostBrawler,
+          team: 0,
           isHost: true,
           score: 0,
+          trophies: 0,
         },
       ];
       this.callbacks.onConnected?.(this.roomCode);
@@ -71,10 +70,6 @@ export class PeerManager {
     });
 
     this.peer.on('connection', conn => {
-      conn.on('open', () => {
-        // Wait for JOIN message
-      });
-
       conn.on('data', data => {
         const msg = data as NetworkMessage;
         this.handleHostIncomingMessage(conn, msg);
@@ -87,7 +82,7 @@ export class PeerManager {
         this.broadcast({
           type: 'ROOM_UPDATE',
           players: this.players,
-          targetScore: 5,
+          mode: this.mode,
         });
       });
     });
@@ -95,22 +90,19 @@ export class PeerManager {
     this.peer.on('error', err => {
       console.warn('Peer error:', err);
       if (err.type === 'unavailable-id') {
-        this.callbacks.onError?.('Bu oda kodu zaten kullanımda, lütfen yeni bir oda kurun.');
+        this.callbacks.onError?.('Bu oda kodu kullanımda. Lütfen yeni oda kurun.');
       } else {
         this.callbacks.onError?.(err.message || 'Bağlantı hatası oluştu');
       }
     });
   }
 
-  // Join existing room
-  public joinRoom(roomCode: string, playerName: string, playerColor: TankColor) {
+  public joinRoom(roomCode: string, playerName: string, playerBrawler: BrawlerId) {
     this.isHost = false;
     this.roomCode = roomCode.toUpperCase();
-    const targetPeerId = `tk2d-${this.roomCode}`;
+    const targetPeerId = `brwl-${this.roomCode}`;
 
-    this.peer = new Peer({
-      debug: 1,
-    });
+    this.peer = new Peer({ debug: 1 });
 
     this.peer.on('open', myId => {
       this.myId = myId;
@@ -119,11 +111,10 @@ export class PeerManager {
 
       conn.on('open', () => {
         this.callbacks.onConnected?.(this.roomCode);
-        // Send join request
         conn.send({
           type: 'JOIN',
-          name: playerName || 'Asker',
-          color: playerColor,
+          name: playerName || 'Brawler',
+          brawler: playerBrawler,
         });
       });
 
@@ -137,41 +128,35 @@ export class PeerManager {
       });
 
       conn.on('error', err => {
-        this.callbacks.onError?.('Odaya bağlanılamadı: ' + err);
+        this.callbacks.onError?.('Bağlantı hatası: ' + err);
       });
     });
 
     this.peer.on('error', err => {
       console.warn('Peer error:', err);
-      this.callbacks.onError?.('Oda bulunamadı veya bağlantı sağlanamadı.');
+      this.callbacks.onError?.('Odaya bağlanılamadı. Kodun doğru olduğundan emin olun.');
     });
   }
 
   private handleHostIncomingMessage(conn: DataConnection, msg: NetworkMessage) {
     if (msg.type === 'JOIN') {
-      if (this.players.length >= 4) {
-        conn.send({ type: 'ROOM_UPDATE', players: this.players, targetScore: 5 });
+      if (this.players.length >= 10) {
+        conn.send({ type: 'ROOM_UPDATE', players: this.players, mode: this.mode });
         conn.close();
         return;
       }
 
       this.connections.set(conn.peer, conn);
 
-      // Check for color conflict and adjust if necessary
-      let color = msg.color;
-      const takenColors = this.players.map(p => p.color);
-      if (takenColors.includes(color)) {
-        const allColors: TankColor[] = ['cyan', 'red', 'green', 'amber', 'purple'];
-        const available = allColors.find(c => !takenColors.includes(c));
-        if (available) color = available;
-      }
-
+      const team = this.players.length % 2;
       const newPlayer: PlayerInfo = {
         id: conn.peer,
         name: msg.name,
-        color,
+        brawler: msg.brawler,
+        team,
         isHost: false,
         score: 0,
+        trophies: 0,
       };
 
       this.players.push(newPlayer);
@@ -180,7 +165,7 @@ export class PeerManager {
       this.broadcast({
         type: 'ROOM_UPDATE',
         players: this.players,
-        targetScore: 5,
+        mode: this.mode,
       });
     } else if (msg.type === 'INPUT') {
       this.callbacks.onInputReceived?.(conn.peer, msg.input);
@@ -191,10 +176,11 @@ export class PeerManager {
     switch (msg.type) {
       case 'ROOM_UPDATE':
         this.players = msg.players;
+        this.mode = msg.mode;
         this.callbacks.onPlayersChanged?.(this.players);
         break;
       case 'START_MATCH':
-        this.callbacks.onGameStart?.(msg.targetScore);
+        this.callbacks.onGameStart?.(msg.mode);
         break;
       case 'STATE':
         this.callbacks.onStateReceived?.(msg.snapshot);
@@ -205,7 +191,6 @@ export class PeerManager {
     }
   }
 
-  // Host broadcasts to all clients
   public broadcast(msg: NetworkMessage) {
     if (!this.isHost) return;
     this.connections.forEach(conn => {
@@ -215,34 +200,36 @@ export class PeerManager {
     });
   }
 
-  // Client sends to host
   public sendToHost(msg: NetworkMessage) {
     if (this.hostConn && this.hostConn.open) {
       this.hostConn.send(msg);
     }
   }
 
-  // Add Bot (Host only)
-  public addBot(botName: string, color: TankColor) {
-    if (!this.isHost || this.players.length >= 4) return;
+  public addBot(botName: string, brawler: BrawlerId) {
+    if (!this.isHost || this.players.length >= 10) return;
     const botId = `bot-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const team = this.players.length % 2;
+
     this.players.push({
       id: botId,
       name: botName,
-      color,
+      brawler,
+      team,
       isHost: false,
       isBot: true,
       score: 0,
+      trophies: 0,
     });
+
     this.callbacks.onPlayersChanged?.(this.players);
     this.broadcast({
       type: 'ROOM_UPDATE',
       players: this.players,
-      targetScore: 5,
+      mode: this.mode,
     });
   }
 
-  // Remove Player/Bot (Host only)
   public removePlayer(playerId: string) {
     if (!this.isHost) return;
     const conn = this.connections.get(playerId);
@@ -255,7 +242,16 @@ export class PeerManager {
     this.broadcast({
       type: 'ROOM_UPDATE',
       players: this.players,
-      targetScore: 5,
+      mode: this.mode,
+    });
+  }
+
+  public setMode(mode: BrawlGameMode) {
+    this.mode = mode;
+    this.broadcast({
+      type: 'ROOM_UPDATE',
+      players: this.players,
+      mode: this.mode,
     });
   }
 

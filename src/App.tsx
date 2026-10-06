@@ -1,20 +1,26 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { TankColor, PlayerInfo, GameStateSnapshot, PlayerInput } from './types/game';
-import { GameEngine, SoundEvent } from './game/gameEngine';
+import {
+  BrawlerId,
+  PlayerInfo,
+  BrawlSnapshot,
+  BrawlPlayerInput,
+  BrawlGameMode,
+} from './types/brawl';
+import { BrawlEngine, BrawlSoundEvent } from './game/brawlEngine';
 import { PeerManager } from './network/peerManager';
-import { soundManager } from './audio/soundManager';
-import { Lobby } from './components/Lobby';
-import { GameCanvas } from './components/GameCanvas';
-import { GameHUD } from './components/GameHUD';
-import { VictoryModal } from './components/VictoryModal';
-import { HelpModal } from './components/HelpModal';
+import { brawlAudio } from './audio/brawlAudio';
+import { BrawlLobby } from './components/BrawlLobby';
+import { BrawlCanvas } from './components/BrawlCanvas';
+import { BrawlHUD } from './components/BrawlHUD';
+import { StarPlayerModal } from './components/StarPlayerModal';
 
 export const App: React.FC = () => {
   // Player state
   const [playerName, setPlayerName] = useState<string>(() => {
-    return localStorage.getItem('tk_player_name') || `Komutan-${Math.floor(100 + Math.random() * 900)}`;
+    return localStorage.getItem('brwl_player_name') || `Brawler-${Math.floor(100 + Math.random() * 900)}`;
   });
-  const [playerColor, setPlayerColor] = useState<TankColor>('cyan');
+  const [selectedBrawler, setSelectedBrawler] = useState<BrawlerId>('shelly');
+  const [gameMode, setGameMode] = useState<BrawlGameMode>('showdown');
   const [roomCode, setRoomCode] = useState<string>('');
 
   // Game & Room state
@@ -24,17 +30,15 @@ export const App: React.FC = () => {
   const [isSingleplayer, setIsSingleplayer] = useState<boolean>(false);
   const [myPlayerId, setMyPlayerId] = useState<string>('');
   const [players, setPlayers] = useState<PlayerInfo[]>([]);
-  const [targetScore, setTargetScore] = useState<number>(5);
 
   // Snapshot for rendering
-  const [snapshot, setSnapshot] = useState<GameStateSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<BrawlSnapshot | null>(null);
 
-  // Modals
-  const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  // Audio mute
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
   // Engine & Network references
-  const engineRef = useRef<GameEngine | null>(null);
+  const engineRef = useRef<BrawlEngine | null>(null);
   const peerManagerRef = useRef<PeerManager | null>(null);
   const myPlayerIdRef = useRef<string>('');
   const lastTimeRef = useRef<number>(performance.now());
@@ -42,7 +46,7 @@ export const App: React.FC = () => {
 
   // Save player name
   useEffect(() => {
-    localStorage.setItem('tk_player_name', playerName);
+    localStorage.setItem('brwl_player_name', playerName);
   }, [playerName]);
 
   // Check URL query parameters for ?room=CODE
@@ -55,43 +59,40 @@ export const App: React.FC = () => {
   }, []);
 
   // Audio trigger handler
-  const handleSoundEvent = useCallback((event: SoundEvent) => {
+  const handleSoundEvent = useCallback((event: BrawlSoundEvent) => {
     switch (event.type) {
-      case 'shoot':
-        soundManager.playShoot();
+      case 'shelly_attack':
+        brawlAudio.playShellyAttack();
         break;
-      case 'ricochet':
-        soundManager.playRicochet();
+      case 'colt_attack':
+        brawlAudio.playColtLaser();
         break;
-      case 'explosion':
-        soundManager.playExplosion(event.isBig);
+      case 'primo_punch':
+        brawlAudio.playPrimoPunch();
         break;
-      case 'laser':
-        soundManager.playLaser();
+      case 'primo_leap':
+        brawlAudio.playPrimoLeap();
         break;
-      case 'mine':
-        soundManager.playMinePlace();
+      case 'brock_rocket':
+        brawlAudio.playBrockRocket();
         break;
-      case 'powerup':
-        soundManager.playPowerup();
+      case 'leon_shuriken':
+        brawlAudio.playLeonShuriken();
         break;
-      case 'shield':
-        soundManager.playShieldBreak();
+      case 'super_ready':
+        brawlAudio.playSuperReady();
         break;
-      case 'dash':
-        soundManager.playDash();
+      case 'super_blast':
+        brawlAudio.playSuperBlast();
         break;
-      case 'emp':
-        soundManager.playEmp();
+      case 'gem_pickup':
+        brawlAudio.playGemPickup();
         break;
-      case 'portal':
-        soundManager.playPortal();
+      case 'cube_pickup':
+        brawlAudio.playPowerCubePickup();
         break;
-      case 'sudden_death':
-        soundManager.playSuddenDeath();
-        break;
-      case 'victory':
-        soundManager.playVictory();
+      case 'star_player':
+        brawlAudio.playStarPlayer();
         break;
     }
   }, []);
@@ -102,7 +103,8 @@ export const App: React.FC = () => {
     setRoomCode(code);
     setIsHost(true);
     setIsSingleplayer(false);
-    const hostId = `tk2d-${code.toUpperCase()}`;
+
+    const hostId = `brwl-${code.toUpperCase()}`;
     setMyPlayerId(hostId);
     myPlayerIdRef.current = hostId;
 
@@ -122,7 +124,7 @@ export const App: React.FC = () => {
     });
 
     peerManagerRef.current = pm;
-    pm.hostRoom(code, playerName, playerColor);
+    pm.hostRoom(code, playerName, selectedBrawler, gameMode);
   };
 
   // Join Game
@@ -142,8 +144,8 @@ export const App: React.FC = () => {
       onPlayersChanged: updatedPlayers => {
         setPlayers([...updatedPlayers]);
       },
-      onGameStart: score => {
-        setTargetScore(score);
+      onGameStart: mode => {
+        setGameMode(mode);
         setIsInGame(true);
       },
       onStateReceived: snap => {
@@ -159,10 +161,10 @@ export const App: React.FC = () => {
     });
 
     peerManagerRef.current = pm;
-    pm.joinRoom(roomCode, playerName, playerColor);
+    pm.joinRoom(roomCode, playerName, selectedBrawler);
   };
 
-  // Start Singleplayer (Instant vs 3 Bots)
+  // Start Singleplayer (Instant Showdown with 7 AI Bots = 8 Brawlers Total!)
   const handleStartSingleplayer = () => {
     setIsHost(true);
     setIsSingleplayer(true);
@@ -172,46 +174,58 @@ export const App: React.FC = () => {
     setMyPlayerId(myId);
     myPlayerIdRef.current = myId;
 
-    const botColors: TankColor[] = ['red', 'green', 'amber'];
-    const botNames = ['Titan-AI', 'Phantom-AI', 'Viper-AI'];
+    const botBrawlers: BrawlerId[] = ['colt', 'el_primo', 'brock', 'spike', 'leon', 'shelly', 'colt'];
+    const botNames = [
+      'Gunslinger-AI',
+      'El-Toro-AI',
+      'Rocket-Pro-AI',
+      'Needle-King-AI',
+      'Shadow-AI',
+      'Bandita-AI',
+      'Sheriff-AI',
+    ];
 
     const gamePlayers: PlayerInfo[] = [
       {
         id: myId,
-        name: playerName || 'Komutan',
-        color: playerColor,
+        name: playerName || 'Yıldız Oyuncu',
+        brawler: selectedBrawler,
+        team: 0,
         isHost: true,
         score: 0,
+        trophies: 0,
       },
       ...botNames.map((bName, i) => ({
         id: `bot-${i + 1}`,
         name: bName,
-        color: botColors[i],
+        brawler: botBrawlers[i],
+        team: i + 1,
         isHost: false,
         isBot: true,
         score: 0,
+        trophies: 0,
       })),
     ];
 
     setPlayers(gamePlayers);
-    startEngineMatch(gamePlayers, targetScore);
+    startEngineMatch(gamePlayers, gameMode);
   };
 
   // Start Match (Host action)
   const handleStartMatch = () => {
-    if (!isHost || players.length < 2) return;
+    if (!isHost || players.length < 4) return;
 
     peerManagerRef.current?.broadcast({
       type: 'START_MATCH',
-      targetScore,
+      mode: gameMode,
     });
 
-    startEngineMatch(players, targetScore);
+    startEngineMatch(players, gameMode);
   };
 
   // Start the engine loop (Host or Singleplayer)
-  const startEngineMatch = (currentPlayers: PlayerInfo[], scoreToWin: number) => {
-    const engine = new GameEngine();
+  const startEngineMatch = (currentPlayers: PlayerInfo[], mode: BrawlGameMode) => {
+    const engine = new BrawlEngine();
     engine.onSoundTriggered = event => {
       handleSoundEvent(event);
       if (!isSingleplayer) {
@@ -222,13 +236,13 @@ export const App: React.FC = () => {
       }
     };
 
-    engine.initMatch(currentPlayers, scoreToWin);
+    engine.initMatch(currentPlayers, mode);
     engineRef.current = engine;
     setIsInGame(true);
 
     lastTimeRef.current = performance.now();
 
-    // Run Engine Loop
+    // 60 FPS Engine loop
     let lastBroadcast = 0;
     const loop = (now: number) => {
       const dt = Math.min((now - lastTimeRef.current) / 1000, 0.05);
@@ -238,7 +252,7 @@ export const App: React.FC = () => {
       const currentSnap = engine.getSnapshot();
       setSnapshot(currentSnap);
 
-      // Broadcast state to clients at 45Hz
+      // Broadcast at 45Hz
       if (!isSingleplayer && peerManagerRef.current && now - lastBroadcast > 22) {
         lastBroadcast = now;
         peerManagerRef.current.broadcast({
@@ -255,7 +269,7 @@ export const App: React.FC = () => {
   };
 
   // Send local input
-  const handleSendInput = useCallback((input: PlayerInput) => {
+  const handleSendInput = useCallback((input: BrawlPlayerInput) => {
     if (isHost || isSingleplayer) {
       engineRef.current?.setPlayerInput(myPlayerIdRef.current, input);
     } else {
@@ -266,14 +280,26 @@ export const App: React.FC = () => {
     }
   }, [isHost, isSingleplayer]);
 
-  // Add Bot (Host action)
+  // Send Emote
+  const handleSendEmote = (emote: string) => {
+    handleSendInput({
+      moveX: 0,
+      moveY: 0,
+      aimAngle: 0,
+      attack: false,
+      superAttack: false,
+      emote,
+    });
+  };
+
+  // Add Bot (Host action up to 10 players)
   const handleAddBot = () => {
-    const takenColors = players.map(p => p.color);
-    const allColors: TankColor[] = ['cyan', 'red', 'green', 'amber', 'purple'];
-    const freeColor = allColors.find(c => !takenColors.includes(c)) || 'amber';
+    if (players.length >= 10) return;
+    const brawlerList: BrawlerId[] = ['shelly', 'colt', 'el_primo', 'brock', 'spike', 'leon'];
+    const chosenBrawler = brawlerList[players.length % brawlerList.length];
     const botNum = players.filter(p => p.isBot).length + 1;
 
-    peerManagerRef.current?.addBot(`Bot-${botNum}`, freeColor);
+    peerManagerRef.current?.addBot(`Bot-${botNum}`, chosenBrawler);
   };
 
   // Remove Player/Bot
@@ -284,11 +310,11 @@ export const App: React.FC = () => {
   // Restart match after game over
   const handleRestartMatch = () => {
     if (isHost) {
-      startEngineMatch(players, targetScore);
+      startEngineMatch(players, gameMode);
     }
   };
 
-  // Leave Game / Return to main menu
+  // Leave Game
   const handleLeaveGame = () => {
     cancelAnimationFrame(loopAnimRef.current);
     peerManagerRef.current?.destroy();
@@ -300,25 +326,25 @@ export const App: React.FC = () => {
   };
 
   const handleToggleMute = () => {
-    const muted = soundManager.toggleMute();
+    const muted = brawlAudio.toggleMute();
     setIsMuted(muted);
   };
 
   return (
     <main className="w-screen h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center overflow-hidden">
       {!isInGame ? (
-        <Lobby
+        <BrawlLobby
           playerName={playerName}
           setPlayerName={setPlayerName}
-          playerColor={playerColor}
-          setPlayerColor={setPlayerColor}
+          selectedBrawler={selectedBrawler}
+          setSelectedBrawler={setSelectedBrawler}
+          gameMode={gameMode}
+          setGameMode={setGameMode}
           roomCode={roomCode}
           setRoomCode={setRoomCode}
           isInRoom={isInRoom}
           isHost={isHost}
           players={players}
-          targetScore={targetScore}
-          setTargetScore={setTargetScore}
           onHostGame={handleHostGame}
           onJoinGame={handleJoinGame}
           onStartSingleplayer={handleStartSingleplayer}
@@ -326,31 +352,28 @@ export const App: React.FC = () => {
           onAddBot={handleAddBot}
           onRemovePlayer={handleRemovePlayer}
           onLeaveRoom={handleLeaveGame}
-          onOpenHelp={() => setIsHelpOpen(true)}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
         />
       ) : (
         <div className="relative w-full h-full flex items-center justify-center bg-slate-950">
-          <GameCanvas
+          <BrawlCanvas
             snapshot={snapshot}
             myPlayerId={myPlayerId}
             onSendInput={handleSendInput}
-            isHost={isHost}
           />
 
-          <GameHUD
+          <BrawlHUD
             snapshot={snapshot}
             myPlayerId={myPlayerId}
-            isHost={isHost}
-            onOpenHelp={() => setIsHelpOpen(true)}
-            onLeaveGame={handleLeaveGame}
             isMuted={isMuted}
             onToggleMute={handleToggleMute}
+            onLeaveGame={handleLeaveGame}
+            onSendEmote={handleSendEmote}
           />
 
           {snapshot?.phase === 'match_end' && (
-            <VictoryModal
+            <StarPlayerModal
               snapshot={snapshot}
               myPlayerId={myPlayerId}
               isHost={isHost}
@@ -360,9 +383,6 @@ export const App: React.FC = () => {
           )}
         </div>
       )}
-
-      {/* Help & Controls Modal */}
-      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </main>
   );
 };
