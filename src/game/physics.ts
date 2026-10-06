@@ -22,8 +22,15 @@ export function circleIntersect(c1: Circle, c2: Circle): boolean {
   return distSq(c1.x, c1.y, c2.x, c2.y) <= r * r;
 }
 
-// Circle to Rectangle (Wall/Crate) collision check & penetration vector
-export function circleRectCollision(circle: Circle, rect: Wall): { collided: boolean; nx: number; ny: number; depth: number } {
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// Circle to Rectangle (Wall/Crate/Pad) collision check & penetration vector
+export function circleRectCollision(circle: Circle, rect: Rect): { collided: boolean; nx: number; ny: number; depth: number } {
   // Find closest point on rectangle to circle center
   const closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.w));
   const closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.h));

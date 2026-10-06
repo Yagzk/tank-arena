@@ -26,25 +26,22 @@ class SoundManager {
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
-    
-    // Low punch
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.14);
 
     gain.gain.setValueAtTime(0.35, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.16);
+    osc.stop(now + 0.15);
 
-    // Noise crackle
-    this.playNoise(0.08, 0.25, 800);
+    this.playNoise(0.07, 0.25, 900);
   }
 
   // Crisp Metallic Ricochet
@@ -57,10 +54,10 @@ class SoundManager {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    const startFreq = 800 + Math.random() * 400;
+    const startFreq = 850 + Math.random() * 400;
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(startFreq, now);
-    osc.frequency.exponentialRampToValueAtTime(startFreq * 2.5, now + 0.08);
+    osc.frequency.exponentialRampToValueAtTime(startFreq * 2.6, now + 0.08);
 
     gain.gain.setValueAtTime(0.2, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
@@ -72,23 +69,98 @@ class SoundManager {
     osc.stop(now + 0.13);
   }
 
-  // Powerful Explosion
+  // Dash Jet Thrust
+  public playDash() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(450, now);
+    osc.frequency.exponentialRampToValueAtTime(120, now + 0.18);
+
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.2);
+
+    this.playNoise(0.12, 0.2, 1200);
+  }
+
+  // EMP Electromagnetic Shockwave
+  public playEmp() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.35);
+
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.36);
+
+    this.playNoise(0.25, 0.35, 600);
+  }
+
+  // Portal Teleport Whoosh
+  public playPortal() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(250, now);
+    osc.frequency.exponentialRampToValueAtTime(1100, now + 0.22);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+
+  // Barrel / Heavy Explosion
   public playExplosion(isBig: boolean = false) {
     if (this.isMuted) return;
     this.initCtx();
     if (!this.ctx) return;
 
     const now = this.ctx.currentTime;
-    const duration = isBig ? 0.6 : 0.35;
+    const duration = isBig ? 0.7 : 0.35;
 
-    // Sub rumble
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(90, now);
+    osc.frequency.setValueAtTime(isBig ? 120 : 90, now);
     osc.frequency.exponentialRampToValueAtTime(20, now + duration);
 
-    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.setValueAtTime(isBig ? 0.55 : 0.4, now);
     gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
 
     osc.connect(gain);
@@ -97,8 +169,7 @@ class SoundManager {
     osc.start(now);
     osc.stop(now + duration + 0.05);
 
-    // Noise burst
-    this.playNoise(duration, isBig ? 0.5 : 0.3, 400);
+    this.playNoise(duration, isBig ? 0.6 : 0.3, 400);
   }
 
   // Laser shot sound
@@ -200,6 +271,30 @@ class SoundManager {
 
     osc.start(now);
     osc.stop(now + 0.16);
+  }
+
+  // Sudden Death Warning Alarm
+  public playSuddenDeath() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.linearRampToValueAtTime(700, now + 0.3);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.38);
   }
 
   // Victory Fanfare

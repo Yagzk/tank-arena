@@ -98,13 +98,13 @@ export const Lobby: React.FC<LobbyProps> = ({
         {/* Logo & Title */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-bold uppercase tracking-widest mb-3">
-            <span>⚡ 4 Kişilik P2P Web Oyunu</span>
+            <span>⚡ 4 Kişilik P2P Online Arena</span>
           </div>
           <h1 className="text-4xl md:text-5xl font-black font-arcade tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-sky-400 via-cyan-200 to-amber-300 filter drop-shadow">
             TANK ARENA 2D
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Vercel üzerinde çalışan, mermi sekmeli çok oyunculu tank savaşı
+            Taktiksel, mermi sekmeli, portallı ve patlayıcı mekanikli çok oyunculu tank savaşı
           </p>
         </div>
 

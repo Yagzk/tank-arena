@@ -77,6 +77,12 @@ export class BotController {
     // Occasionally drop a mine if enemy is close behind
     const shouldMine = targetEnemy && minEnemyDist < 120 && Math.random() < 0.05;
 
+    // Use Dash to chase or escape
+    const shouldDash = targetEnemy && (minEnemyDist > 300 || minEnemyDist < 90) && Math.random() < 0.03;
+
+    // Use EMP if surrounded or in danger
+    const shouldEmp = targetEnemy && minEnemyDist < 110 && Math.random() < 0.04;
+
     return {
       moveX: 0,
       moveY: 0,
@@ -87,6 +93,8 @@ export class BotController {
       aimAngle: targetAimAngle,
       shoot: shouldShoot,
       placeMine: !!shouldMine,
+      dash: !!shouldDash,
+      emp: !!shouldEmp,
     };
   }
 }

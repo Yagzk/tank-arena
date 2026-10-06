@@ -52,6 +52,8 @@ export const TANK_COLORS: Record<TankColor, ColorConfig> = {
   },
 };
 
+export type BiomeType = 'cyber' | 'magma' | 'frost';
+
 export interface PlayerInfo {
   id: string;
   name: string;
@@ -79,10 +81,15 @@ export interface Tank {
   speedBoostTimer: number;
   tripleShotTimer: number;
   laserShotTimer: number;
+  homingShotTimer: number;
   ammo: number;
   maxAmmo: number;
   lastShootTime: number;
   lastMineTime: number;
+  dashCooldown: number;
+  empCooldown: number;
+  isDashing: boolean;
+  dashTimer: number;
   isBot?: boolean;
 }
 
@@ -97,6 +104,8 @@ export interface Bullet {
   bouncesLeft: number;
   color: string;
   isLaser?: boolean;
+  isHoming?: boolean;
+  targetTankId?: string | null;
   createdAt: number;
 }
 
@@ -106,13 +115,13 @@ export interface Mine {
   x: number;
   y: number;
   radius: number;
-  armTimer: number; // ticks before active
-  fuseTimer: number; // auto detonates after X ms
+  armTimer: number;
+  fuseTimer: number;
   isDetonated: boolean;
   color: string;
 }
 
-export type PowerUpType = 'shield' | 'speed' | 'triple' | 'laser' | 'ammo';
+export type PowerUpType = 'shield' | 'speed' | 'triple' | 'laser' | 'homing' | 'ammo';
 
 export interface PowerUp {
   id: string;
@@ -120,7 +129,7 @@ export interface PowerUp {
   y: number;
   type: PowerUpType;
   radius: number;
-  duration: number; // for despawn
+  duration: number;
 }
 
 export interface Wall {
@@ -130,6 +139,36 @@ export interface Wall {
   h: number;
   isDestructible: boolean;
   hp?: number;
+}
+
+export interface ExplosiveBarrel {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  isExploded: boolean;
+}
+
+export interface BoostPad {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  dirX: number;
+  dirY: number;
+}
+
+export interface Portal {
+  id: string;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  radius: number;
+  color: string;
+  cooldownTanks: Record<string, number>;
 }
 
 export interface Particle {
@@ -150,6 +189,25 @@ export interface TreadMark {
   alpha: number;
 }
 
+export interface AfterImage {
+  x: number;
+  y: number;
+  angle: number;
+  turretAngle: number;
+  color: string;
+  alpha: number;
+}
+
+export interface FloatingText {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  color: string;
+  alpha: number;
+  vy: number;
+}
+
 export interface GameEventMessage {
   id: string;
   text: string;
@@ -159,8 +217,15 @@ export interface GameEventMessage {
 
 export type GamePhase = 'waiting' | 'starting' | 'playing' | 'round_end' | 'match_end';
 
+export interface SuddenDeathZone {
+  isActive: boolean;
+  inset: number; // Pixels inward from arena border
+  damageTimer: number;
+}
+
 export interface GameStateSnapshot {
   phase: GamePhase;
+  biome: BiomeType;
   round: number;
   maxRounds: number;
   roundTimer: number;
@@ -170,9 +235,14 @@ export interface GameStateSnapshot {
   tanks: Tank[];
   bullets: Bullet[];
   mines: Mine[];
+  barrels: ExplosiveBarrel[];
+  boostPads: BoostPad[];
+  portals: Portal[];
   powerups: PowerUp[];
   walls: Wall[];
   events: GameEventMessage[];
+  floatingTexts: FloatingText[];
+  suddenDeath: SuddenDeathZone;
 }
 
 export interface PlayerInput {
@@ -185,4 +255,6 @@ export interface PlayerInput {
   aimAngle: number;
   shoot: boolean;
   placeMine: boolean;
+  dash: boolean;
+  emp: boolean;
 }

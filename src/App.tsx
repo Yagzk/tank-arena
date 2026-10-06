@@ -78,6 +78,18 @@ export const App: React.FC = () => {
       case 'shield':
         soundManager.playShieldBreak();
         break;
+      case 'dash':
+        soundManager.playDash();
+        break;
+      case 'emp':
+        soundManager.playEmp();
+        break;
+      case 'portal':
+        soundManager.playPortal();
+        break;
+      case 'sudden_death':
+        soundManager.playSuddenDeath();
+        break;
       case 'victory':
         soundManager.playVictory();
         break;
