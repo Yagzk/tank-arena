@@ -137,16 +137,19 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
                         borderColor: isSelected ? bCfg.color : '#334155',
                         backgroundColor: isSelected ? bCfg.color + '25' : '#0f172a',
                       }}
-                      className={`flex flex-col items-center p-3 rounded-2xl border-2 transition-all cursor-pointer ${
-                        isSelected ? 'scale-105 shadow-[0_0_20px_rgba(234,179,8,0.4)]' : 'hover:border-slate-600'
+                      className={`flex flex-col items-center p-2.5 rounded-2xl border-2 transition-all cursor-pointer ${
+                        isSelected ? 'scale-105 shadow-[0_0_20px_rgba(234,179,8,0.4)] ring-2 ring-yellow-400/50' : 'hover:border-slate-600'
                       }`}
                     >
-                      <div
-                        style={{ backgroundColor: bCfg.color }}
-                        className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-arcade font-black text-white shadow-md mb-2"
-                      >
-                        {bCfg.name[0]}
-                      </div>
+                      <img
+                        src={`/assets/${bId}.png`}
+                        alt={bCfg.name}
+                        className="w-14 h-14 object-contain filter drop-shadow-md mb-1.5 transition-transform hover:scale-110"
+                        onError={(e) => {
+                          // fallback if image not loaded
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
                       <span className="font-arcade text-xs font-bold text-slate-100">{bCfg.name}</span>
                       <span className="text-[10px] text-slate-400">{bCfg.rarity}</span>
                     </button>
@@ -156,20 +159,27 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
             </div>
 
             {/* Selected Brawler Stats Detail Card */}
-            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <h3 style={{ color: activeCfg.color }} className="font-arcade text-lg font-black">
-                    {activeCfg.name}
-                  </h3>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold">
-                    {activeCfg.title}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">{activeCfg.description}</p>
-                <div className="flex items-center gap-4 mt-3 text-xs">
-                  <div><strong className="text-yellow-400">Saldırı:</strong> {activeCfg.attackName}</div>
-                  <div><strong className="text-purple-400">Ulti:</strong> {activeCfg.superName}</div>
+            <div className="p-5 rounded-2xl bg-slate-950/85 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-5 shadow-inner">
+              <div className="flex items-center gap-4">
+                <img
+                  src={`/assets/${selectedBrawler}.png`}
+                  alt={activeCfg.name}
+                  className="w-24 h-24 object-contain filter drop-shadow-[0_0_15px_rgba(255,255,255,0.2)] animate-pulse"
+                />
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <h3 style={{ color: activeCfg.color }} className="font-arcade text-xl font-black">
+                      {activeCfg.name}
+                    </h3>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold border border-slate-700">
+                      {activeCfg.title}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm">{activeCfg.description}</p>
+                  <div className="flex flex-wrap items-center gap-4 mt-2.5 text-xs">
+                    <div><strong className="text-yellow-400">Saldırı:</strong> {activeCfg.attackName}</div>
+                    <div><strong className="text-purple-400">Ulti:</strong> {activeCfg.superName}</div>
+                  </div>
                 </div>
               </div>
 
