@@ -14,6 +14,7 @@ import {
   drawPowerCube,
 } from '../render/characterArt';
 import { CHARACTER_STYLES } from '../render/characterStyles';
+import { SnapshotInterpolator } from '../net/interpolation';
 import { clamp } from '../core/math';
 
 /**
@@ -115,6 +116,17 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   onSendInputRef.current = onSendInput;
   const getSnapshotRef = useRef<(() => BrawlSnapshot | null) | undefined>(getSnapshot);
   getSnapshotRef.current = getSnapshot;
+
+  /**
+   * Network clients receive state at the host's broadcast rate and would
+   * otherwise redraw each packet as it lands, so every body jumps forward and
+   * then freezes. Buffering and rendering slightly in the past turns that into
+   * continuous motion. The host has its own simulation and skips this entirely.
+   */
+  const interpolatorRef = useRef<SnapshotInterpolator>(new SnapshotInterpolator());
+  if (!getSnapshot && snapshot) {
+    interpolatorRef.current.push(snapshot, performance.now());
+  }
 
   /**
    * World-space bounds of what the camera can currently see, with a margin so
@@ -363,7 +375,10 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
       // Prefer the live engine state; fall back to the prop for network
       // clients, which only ever receive snapshots.
-      const snap = getSnapshotRef.current?.() ?? snapshotRef.current;
+      const snap =
+        getSnapshotRef.current?.() ??
+        interpolatorRef.current.sample(performance.now()) ??
+        snapshotRef.current;
       const myId = myPlayerIdRef.current;
       const myBrawler = snap?.brawlers.find(b => b.id === myId);
 
