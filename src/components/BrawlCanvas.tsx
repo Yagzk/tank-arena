@@ -34,6 +34,17 @@ import { hasArmedPassive } from '../sim/kitInfo';
 const DESIGN_VIEW_LANDSCAPE = { w: 1280, h: 720 };
 const DESIGN_VIEW_PORTRAIT = { w: 640, h: 1100 };
 
+/**
+ * Deterministic value noise in [0, 1) from a pair of coordinates.
+ *
+ * Decoration needs to look random but must not change between frames, or it
+ * crawls. A hash of the position gives both.
+ */
+function hash2(x: number, y: number): number {
+  const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+
 /** How long a body stays lit after taking a hit. */
 const HIT_FLASH_SECONDS = 0.11;
 
@@ -746,41 +757,65 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       if (!inView(b.x, b.y, b.w, b.h)) return;
       ctx.save();
 
-      // Drop shadow for bush cluster
+      // Drop shadow, rounded: a bush is foliage, and a hard-cornered
+      // rectangle of shadow under it gives the game away immediately.
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      ctx.fillRect(b.x + 3, b.y + 5, b.w, b.h);
+      ctx.beginPath();
+      ctx.roundRect(b.x + 3, b.y + 6, b.w, b.h, 18);
+      ctx.fill();
 
-      // Base deep forest green layer
+      // Base deep shade, so gaps between the puffs read as depth rather than
+      // as holes in the cluster.
       ctx.fillStyle = '#0f5132';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
+      ctx.beginPath();
+      ctx.roundRect(b.x + 4, b.y + 4, b.w - 8, b.h - 8, 16);
+      ctx.fill();
 
-      // Layered organic circular leaf puffs
-      const clumpStep = 24;
-      for (let lx = b.x + 12; lx < b.x + b.w; lx += clumpStep) {
-        for (let ly = b.y + 12; ly < b.y + b.h; ly += clumpStep) {
-          const sway = Math.sin(time + lx * 0.05 + ly * 0.05) * 2;
+      /*
+       * Foliage.
+       *
+       * This used to be a perfectly regular 24 px grid of identical circles,
+       * each with an identical highlight in the same place, and it read as
+       * polka dots rather than as a bush. The positions, sizes and tones are
+       * now jittered by a hash of the clump's own coordinates — stable frame
+       * to frame, so nothing crawls, but with no visible grid left.
+       */
+      const clumpStep = 22;
+      const tones = ['#15803d', '#16a34a', '#22c55e'];
+      for (let lx = b.x + 10; lx < b.x + b.w; lx += clumpStep) {
+        for (let ly = b.y + 10; ly < b.y + b.h; ly += clumpStep) {
+          const h1 = hash2(lx, ly);
+          const h2 = hash2(ly, lx * 1.7);
+          const h3 = hash2(lx * 0.3, ly * 2.1);
 
-          // Mid-tone rich foliage
-          ctx.fillStyle = '#16a34a';
+          // Clumps nudged off the lattice and sized unevenly.
+          const px = lx + (h1 - 0.5) * clumpStep * 0.85;
+          const py = ly + (h2 - 0.5) * clumpStep * 0.85;
+          const r = 13 + h3 * 7;
+          const sway = Math.sin(time + h1 * 6.283) * 2.2;
+
+          ctx.fillStyle = tones[Math.floor(h3 * tones.length) % tones.length];
           ctx.beginPath();
-          ctx.arc(lx + sway, ly, 14, 0, Math.PI * 2);
+          ctx.arc(px + sway, py, r, 0, Math.PI * 2);
           ctx.fill();
 
-          // Vibrant lime-green top highlight leaf
-          ctx.fillStyle = '#4ade80';
+          // Highlight offset toward a fixed light, so the whole canopy is lit
+          // from one direction instead of every leaf lighting itself.
+          ctx.fillStyle = h1 > 0.45 ? '#4ade80' : '#34d399';
           ctx.beginPath();
-          ctx.arc(lx + sway - 2, ly - 3, 9, 0, Math.PI * 2);
+          ctx.arc(px + sway - r * 0.25, py - r * 0.3, r * 0.58, 0, Math.PI * 2);
           ctx.fill();
 
-          // Occasional yellow flower blossom in bushes
-          if ((Math.floor(lx + ly) % 70) < 15) {
+          // The occasional flower, placed by the same hash so it is rare and
+          // scattered rather than falling on a diagonal.
+          if (h2 > 0.9) {
             ctx.fillStyle = '#facc15';
             ctx.beginPath();
-            ctx.arc(lx + sway, ly - 2, 4, 0, Math.PI * 2);
+            ctx.arc(px + sway, py - 2, 4, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#ef4444';
             ctx.beginPath();
-            ctx.arc(lx + sway, ly - 2, 1.5, 0, Math.PI * 2);
+            ctx.arc(px + sway, py - 2, 1.5, 0, Math.PI * 2);
             ctx.fill();
           }
         }
