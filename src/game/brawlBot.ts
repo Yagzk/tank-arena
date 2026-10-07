@@ -10,6 +10,7 @@ import {
 } from '../types/brawl';
 import { dist } from '../core/math';
 import { hasLineOfSight } from '../core/collision';
+import { getKit } from '../sim/kits';
 import { NavGrid } from '../core/navGrid';
 
 /** Cubes a bot wants banked before it goes looking for a fight. */
@@ -26,6 +27,12 @@ export class BrawlBot {
   private currentMoveX: number = 0;
   private currentMoveY: number = 0;
   private attackCooldown: number = 0;
+  /**
+   * Whether the gadget is worth spending right now, decided alongside the
+   * attack where the target distance is known and read further down, where
+   * the input is assembled.
+   */
+  private wantsGadget: boolean = false;
 
   /** Distance field toward this bot's current objective. */
   private field: Int32Array | null = null;
@@ -138,34 +145,49 @@ export class BrawlBot {
       }
       aimAngle = Math.atan2(leadY - bot.y, leadX - bot.x);
 
-      // Check attack range based on brawler
-      const maxRange = bot.brawlerId === 'boulder' ? 160 : bot.brawlerId === 'mira' ? 300 : 420;
+      // How this character wants to fight, read off its kit. Ranges are
+      // fractions of its own reach, so a balance pass on the weapon moves the
+      // bot with it.
+      const profile = getKit(bot.brawlerId).bot;
+      const reach = BRAWLERS[bot.brawlerId].range;
+      const maxRange = reach * (profile?.engageRange ?? 0.85);
 
       // Bots used to fire whenever a target was in range, including straight
       // into the wall they were standing behind. Gate the trigger on actually
-      // being able to see what they are shooting at.
-      canSeeTarget = hasLineOfSight(bot.x, bot.y, targetX, targetY, walls);
+      // being able to see what they are shooting at — unless the attack arcs
+      // over walls, in which case cover is where it wants to be.
+      const lineOfSight = hasLineOfSight(bot.x, bot.y, targetX, targetY, walls);
+      canSeeTarget = lineOfSight || profile?.ignoresCover === true;
 
       if (targetDist <= maxRange && canSeeTarget && bot.ammo >= 1 && this.attackCooldown <= 0) {
         shouldAttack = true;
         this.attackCooldown = 0.45 + Math.random() * 0.35;
       }
 
-      // Super activation logic
       if (bot.superCharge >= 100 && canSeeTarget) {
-        if (bot.brawlerId === 'boulder' && targetDist < 400 && targetDist > 100) {
-          shouldSuper = true;
-        } else if (bot.brawlerId === 'mira' && targetDist < 260) {
-          shouldSuper = true;
-        } else if (bot.brawlerId === 'rivet' && targetDist < 500) {
-          shouldSuper = true;
-        } else if (bot.brawlerId === 'fuse' && targetDist < 520) {
-          shouldSuper = true;
-        } else if (bot.brawlerId === 'thorn' && targetDist < 380) {
-          shouldSuper = true;
-        } else if (bot.brawlerId === 'wisp') {
-          shouldSuper = true;
+        const min = (profile?.superRange?.min ?? 0) * reach;
+        const max = (profile?.superRange?.max ?? 1.1) * reach;
+        shouldSuper = targetDist >= min && targetDist <= max;
+      }
+
+      const gadget = profile?.gadget;
+      if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0 && gadget) {
+        switch (gadget.when) {
+          case 'enemyWithin':
+            this.wantsGadget = targetDist < gadget.range;
+            break;
+          case 'enemyBetween':
+            this.wantsGadget = targetDist > gadget.min && targetDist < gadget.max;
+            break;
+          case 'outOfAmmo':
+            this.wantsGadget = bot.ammo < 1 && targetDist < gadget.range;
+            break;
+          case 'chance':
+            this.wantsGadget = targetDist < gadget.range && Math.random() < gadget.probability;
+            break;
         }
+      } else {
+        this.wantsGadget = false;
       }
     }
 
@@ -219,23 +241,7 @@ export class BrawlBot {
       }
     }
 
-      // Gadget activation logic for bots
-      let shouldGadget = false;
-      if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0) {
-        if (bot.brawlerId === 'mira' && targetDist > 90 && targetDist < 200) {
-          shouldGadget = true;
-        } else if (bot.brawlerId === 'rivet' && bot.ammo < 1 && targetDist < 450) {
-          shouldGadget = true;
-        } else if (bot.brawlerId === 'boulder' && targetDist < 80) {
-          shouldGadget = true;
-        } else if (bot.brawlerId === 'fuse' && targetDist < 120) {
-          shouldGadget = true;
-        } else if (bot.brawlerId === 'thorn' && targetDist < 150) {
-          shouldGadget = true;
-        } else if (bot.brawlerId === 'wisp' && targetDist < 300 && Math.random() < 0.3) {
-          shouldGadget = true;
-        }
-      }
+      const shouldGadget = this.wantsGadget;
 
     // Pathfinding runs every tick rather than on the decision timer: a route
     // is only useful if the body keeps following it between decisions. When the

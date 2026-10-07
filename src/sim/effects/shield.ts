@@ -14,7 +14,9 @@ export function applyShield(
   caster: BrawlerEntity,
   amount: number,
   duration: number,
-  radius?: number
+  radius?: number,
+  originX?: number,
+  originY?: number
 ): void {
   if (radius === undefined) {
     applyStatus(caster, { kind: 'shield', duration, magnitude: amount });
@@ -22,10 +24,12 @@ export function applyShield(
   }
 
   const r2 = radius * radius;
+  const ox = originX ?? caster.x;
+  const oy = originY ?? caster.y;
   for (const other of world.brawlers) {
     if (other.team !== caster.team || other.isClone || !other.isAlive) continue;
-    const dx = other.x - caster.x;
-    const dy = other.y - caster.y;
+    const dx = other.x - ox;
+    const dy = other.y - oy;
     if (dx * dx + dy * dy > r2) continue;
     applyStatus(other, { kind: 'shield', duration, magnitude: amount });
   }

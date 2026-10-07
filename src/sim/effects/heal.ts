@@ -15,6 +15,12 @@ export interface HealParams {
   radius?: number;
   includeSelf?: boolean;
   showNumber?: boolean;
+  /**
+   * Centre of the area, when it is not the caster. A healing station pulses
+   * from where it stands, not from wherever its owner has wandered off to.
+   */
+  originX?: number;
+  originY?: number;
 }
 
 export function healOne(target: BrawlerEntity, amount: number): number {
@@ -34,11 +40,13 @@ export function applyHeal(world: SimWorld, caster: BrawlerEntity, p: HealParams)
   }
 
   const r2 = p.radius * p.radius;
+  const ox = p.originX ?? caster.x;
+  const oy = p.originY ?? caster.y;
   for (const other of world.brawlers) {
     if (other.team !== caster.team || other.isClone) continue;
     if (other.id === caster.id && p.includeSelf === false) continue;
-    const dx = other.x - caster.x;
-    const dy = other.y - caster.y;
+    const dx = other.x - ox;
+    const dy = other.y - oy;
     if (dx * dx + dy * dy > r2) continue;
     const healed = healOne(other, p.amount);
     if (healed > 0 && p.showNumber) {

@@ -32,6 +32,7 @@ import {
   placeAt,
   restoreAmmo,
   spawnDecoy,
+  spawnDeployable,
   spawnHazard,
   spawnProjectile,
   teleport,
@@ -48,6 +49,15 @@ export interface AbilityContext {
   /** Power cubes and similar, folded into one factor. */
   damageMultiplier: number;
   isSuper: boolean;
+  /**
+   * Where `self` and `aim` resolve to, and where projectiles leave from.
+   *
+   * Normally the caster's own position. A turret firing its owner's kit needs
+   * the shots to come out of the turret, which is the only reason this is
+   * separate from the caster.
+   */
+  originX: number;
+  originY: number;
   /** Position of whatever triggered this list, for the `here` anchor. */
   hereX: number;
   hereY: number;
@@ -76,6 +86,8 @@ export function makeContext(
     targetY: opts.targetY ?? caster.y,
     damageMultiplier: opts.damageMultiplier ?? 1 + caster.powerCubes * 0.1,
     isSuper: opts.isSuper ?? false,
+    originX: opts.originX ?? caster.x,
+    originY: opts.originY ?? caster.y,
     hereX: opts.hereX ?? caster.x,
     hereY: opts.hereY ?? caster.y,
     scale: opts.scale ?? 1,
@@ -94,9 +106,9 @@ function resolveDamage(spec: DamageSpec, ctx: AbilityContext): number {
 function anchorX(at: Anchor, offset: number, ctx: AbilityContext): number {
   switch (at) {
     case 'self':
-      return ctx.caster.x;
+      return ctx.originX;
     case 'aim':
-      return ctx.caster.x + Math.cos(ctx.aimAngle) * offset;
+      return ctx.originX + Math.cos(ctx.aimAngle) * offset;
     case 'target':
       return ctx.targetX;
     case 'here':
@@ -107,9 +119,9 @@ function anchorX(at: Anchor, offset: number, ctx: AbilityContext): number {
 function anchorY(at: Anchor, offset: number, ctx: AbilityContext): number {
   switch (at) {
     case 'self':
-      return ctx.caster.y;
+      return ctx.originY;
     case 'aim':
-      return ctx.caster.y + Math.sin(ctx.aimAngle) * offset;
+      return ctx.originY + Math.sin(ctx.aimAngle) * offset;
     case 'target':
       return ctx.targetY;
     case 'here':
@@ -184,15 +196,15 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       // range: that is the whole point of arcing over a wall.
       const range =
         spec.motion === 'lob'
-          ? Math.min(spec.range, Math.hypot(ctx.targetX - caster.x, ctx.targetY - caster.y))
+          ? Math.min(spec.range, Math.hypot(ctx.targetX - ctx.originX, ctx.targetY - ctx.originY))
           : undefined;
 
       for (let i = 0; i < count; i++) {
         spawnProjectile(world, {
           spec,
           damage,
-          x: caster.x,
-          y: caster.y,
+          x: ctx.originX,
+          y: ctx.originY,
           angle: angleScratch[i],
           ownerId: caster.id,
           brawlerId: caster.brawlerId,
@@ -278,8 +290,8 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         const friendly = other.team === caster.team;
         if (action.target === 'allies' && !friendly) continue;
         if (action.target === 'enemies' && !world.isHostile(caster.team, other)) continue;
-        const dx = other.x - caster.x;
-        const dy = other.y - caster.y;
+        const dx = other.x - ctx.originX;
+        const dy = other.y - ctx.originY;
         if (dx * dx + dy * dy > r2) continue;
         applyStatuses(other, action.statuses);
       }
@@ -291,6 +303,8 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         amount: action.amount * ctx.scale,
         radius: action.target === 'allies' ? (action.radius ?? 200) : undefined,
         showNumber: ctx.scale === 1,
+        originX: ctx.originX,
+        originY: ctx.originY,
       });
       break;
 
@@ -300,7 +314,9 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         caster,
         action.amount,
         action.duration,
-        action.target === 'allies' ? (action.radius ?? 220) : undefined
+        action.target === 'allies' ? (action.radius ?? 220) : undefined,
+        ctx.originX,
+        ctx.originY
       );
       break;
 
@@ -377,9 +393,29 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       break;
     }
 
-    case 'summon':
-      spawnDecoy(world, { owner: caster, lifetime: action.lifetime, offset: action.offset });
+    case 'summon': {
+      if (action.kind === 'decoy') {
+        spawnDecoy(world, { owner: caster, lifetime: action.lifetime, offset: action.offset });
+        break;
+      }
+      const offset = action.offset ?? 56;
+      const at = action.at ?? 'aim';
+      spawnDeployable(world, {
+        owner: caster,
+        kind: action.kind,
+        x: anchorX(at, offset, ctx),
+        y: anchorY(at, offset, ctx),
+        angle: ctx.aimAngle,
+        lifetime: action.lifetime,
+        hp: action.hp ?? 1000,
+        radius: action.radius,
+        interval: action.interval,
+        range: action.range,
+        speed: action.speed,
+        actionKey: keyFor(action),
+      });
       break;
+    }
 
     case 'vfx': {
       const offset = action.anchorOffset ?? 0;
@@ -453,6 +489,8 @@ export function fireBurstShot(world: SimWorld, b: BrawlerEntity): void {
       targetY: burst.targetY + scatterY,
       damageMultiplier: burst.damageMultiplier,
       isSuper: burst.isSuper,
+      originX: b.x,
+      originY: b.y,
       hereX: b.x,
       hereY: b.y,
       scale: 1,
@@ -494,6 +532,10 @@ export function runProjectileHooks(
     targetY: y,
     damageMultiplier: opts.damageMultiplier,
     isSuper: opts.isSuper,
+    // A projectile's own payload goes off where the projectile stopped, not
+    // back at whoever fired it.
+    originX: x,
+    originY: y,
     hereX: x,
     hereY: y,
     scale: 1,

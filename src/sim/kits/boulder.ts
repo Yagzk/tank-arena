@@ -91,6 +91,14 @@ export const boulderKit: Kit = {
     ],
   },
 
+  bot: {
+    engageRange: 0.97,
+    // The leap needs somewhere to leap to: useless point blank, wasted at
+    // the far end of the map.
+    superRange: { min: 0.6, max: 2.4 },
+    gadget: { when: 'enemyWithin', range: 80 },
+  },
+
   traits: {
     superChargeFromDamageTaken: 75,
   },

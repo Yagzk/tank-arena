@@ -5,6 +5,7 @@ import {
   BrawlerEntity,
   BRAWLERS,
   BrawlerId,
+  DeployedEntity,
 } from '../types/brawl';
 import { MAP_WIDTH, MAP_HEIGHT } from '../game/brawlMaps';
 import {
@@ -581,6 +582,14 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
         // 9. DRAW WALLS
         drawWalls(ctx, snap.walls);
+
+        // 9b. DRAW DEPLOYABLES (turrets, mines, stations, barriers)
+        //     Under the brawlers on purpose: a body standing on a mine must
+        //     not be hidden by it.
+        (snap.deployables ?? []).forEach(d => {
+          if (!inView(d.x - 48, d.y - 48, 96, 96)) return;
+          drawDeployable(ctx, d, performance.now() * 0.001);
+        });
 
         // 10. DRAW BRAWLERS
         snap.brawlers.forEach(b => {
@@ -1769,6 +1778,152 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.strokeText('HAZIRLAN', 0, 76);
     ctx.fillStyle = '#e2e8f0';
     ctx.fillText('HAZIRLAN', 0, 76);
+
+    ctx.restore();
+  };
+
+  /**
+   * A turret, mine, station or barrier.
+   *
+   * Drawn from its owner's palette, so you can tell at a glance whose machine
+   * it is, with a health ring only while it is damaged — a field full of
+   * permanent bars is noise.
+   */
+  const drawDeployable = (
+    ctx: CanvasRenderingContext2D,
+    d: DeployedEntity,
+    /** Seconds, for the blink on an armed mine. */
+    time: number
+  ) => {
+    const style = CHARACTER_STYLES[d.brawlerId];
+    const r = d.radius;
+
+    ctx.save();
+    ctx.translate(d.x, d.y);
+
+    // Contact shadow, so it sits on the ground rather than floating over it.
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.45, r * 0.95, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#15161f';
+
+    if (d.kind === 'turret') {
+      // Hexagonal base and a barrel that follows whatever it is tracking.
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        const px = Math.cos(a) * r;
+        const py = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = style.secondary;
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.rotate(d.angle);
+      ctx.beginPath();
+      ctx.roundRect(0, -r * 0.22, r * 1.25, r * 0.44, r * 0.14);
+      ctx.fillStyle = style.accent;
+      ctx.fill();
+      ctx.stroke();
+      ctx.rotate(-d.angle);
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.34, 0, Math.PI * 2);
+      ctx.fillStyle = style.primary;
+      ctx.fill();
+      ctx.stroke();
+    } else if (d.kind === 'mine') {
+      // Small, low, and blinking — it has to be spottable if you are looking.
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = style.secondary;
+      ctx.fill();
+      ctx.stroke();
+
+      const blink = 0.45 + 0.55 * Math.abs(Math.sin(time * 4));
+      ctx.globalAlpha = blink;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = '#f87171';
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (d.kind === 'healStation') {
+      // A cross on a plate, with the reach drawn as a soft ring so standing
+      // in it is a visible decision.
+      ctx.beginPath();
+      ctx.arc(0, 0, d.range, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(249, 168, 212, 0.12)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(249, 168, 212, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#15161f';
+      ctx.beginPath();
+      ctx.roundRect(-r, -r, r * 2, r * 2, r * 0.3);
+      ctx.fillStyle = style.secondary;
+      ctx.fill();
+      ctx.stroke();
+
+      const arm = r * 0.68;
+      const thick = r * 0.26;
+      ctx.fillStyle = style.accent;
+      ctx.beginPath();
+      ctx.roundRect(-thick / 2, -arm, thick, arm * 2, thick * 0.4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.roundRect(-arm, -thick / 2, arm * 2, thick, thick * 0.4);
+      ctx.fill();
+      ctx.stroke();
+    } else if (d.kind === 'barrier') {
+      // An arc facing the way it was placed: cover, not a wall.
+      ctx.rotate(d.angle);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, -Math.PI * 0.55, Math.PI * 0.55);
+      ctx.lineWidth = r * 0.45;
+      ctx.strokeStyle = style.accent;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = '#15161f';
+      ctx.stroke();
+    } else {
+      // Minion: a small body with a facing notch.
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = style.primary;
+      ctx.fill();
+      ctx.stroke();
+      ctx.rotate(d.angle);
+      ctx.beginPath();
+      ctx.roundRect(r * 0.4, -r * 0.2, r * 0.6, r * 0.4, r * 0.15);
+      ctx.fillStyle = style.accent;
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    if (d.hp < d.maxHp && d.kind !== 'barrier') {
+      ctx.rotate(0);
+      const pct = Math.max(0, d.hp / d.maxHp);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(2, 6, 23, 0.6)';
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 7, -Math.PI / 2, Math.PI * 1.5);
+      ctx.stroke();
+      ctx.strokeStyle = '#4ade80';
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+      ctx.stroke();
+    }
 
     ctx.restore();
   };

@@ -78,6 +78,13 @@ export const rivetKit: Kit = {
     ],
   },
 
+  bot: {
+    engageRange: 0.9,
+    superRange: { max: 1.05 },
+    // Reloading mid-duel is what the gadget is for.
+    gadget: { when: 'outOfAmmo', range: 450 },
+  },
+
   traits: {
     // Light-foot: a permanent edge in a kiting duel, which is the only kind
     // of fight this character wants.

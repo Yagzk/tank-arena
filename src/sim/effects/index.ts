@@ -17,6 +17,7 @@ export { applyStatus, applyStatuses, tickStatuses } from './applyStatus';
 export { spawnProjectile, type SpawnProjectileParams } from './spawnProjectile';
 export { spawnHazard } from './spawnHazard';
 export { spawnDecoy, type SpawnDecoyParams } from './spawnEntity';
+export { spawnDeployable, type SpawnDeployableParams } from './spawnDeployable';
 export { teleport } from './teleport';
 export { applyDash } from './dash';
 export { applyShield, absorbWithShield } from './shield';

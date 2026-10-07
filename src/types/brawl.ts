@@ -1,4 +1,14 @@
-export type BrawlerId = 'mira' | 'rivet' | 'boulder' | 'fuse' | 'thorn' | 'wisp';
+export type BrawlerId =
+  | 'mira'
+  | 'rivet'
+  | 'boulder'
+  | 'fuse'
+  | 'thorn'
+  | 'wisp'
+  | 'molotof'
+  | 'ustabasi'
+  | 'nagme'
+  | 'zirh';
 
 export interface BrawlerConfig {
   id: BrawlerId;
@@ -225,7 +235,141 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     projectileCount: 4,
     spreadAngle: 0.26,
   },
+  molotof: {
+    id: 'molotof',
+    name: 'MOLOTOF',
+    title: 'Ateş Ustası',
+    rarity: 'Ender',
+    color: '#f97316',
+    secondaryColor: '#c2410c',
+    avatarBg: 'from-orange-600 to-red-900',
+    maxHp: 3000,
+    speed: 170,
+    reloadTime: 1.6,
+    attackCooldown: 0.6,
+    acceleration: 1400,
+    superHitsRequired: 2.6,
+    range: 470,
+    damagePerAttack: 900,
+    superChargePerHit: 20,
+    description:
+      'Duvar ardına şişe fırlatır. Vurduğu yeri değil, rakibin gidebileceği yeri kapatır.',
+    attackName: 'Yangın Şişesi',
+    attackDesc:
+      'Duvarları aşan bir yay çizer, indiği noktada patlar ve yeri tutuşturur.',
+    superName: 'Alev Gölü',
+    superDesc: 'Geniş bir alanı 8 saniye yanar hâlde bırakır; o bölgede durulamaz.',
+    gadgetName: 'Ateş Çemberi',
+    gadgetDesc: 'Kendi etrafını kısa süre alev çemberiyle çevirir.',
+    starPowerName: 'Körük',
+    starPowerDesc: 'Alevleri daha geniş yayılır ve daha uzun yanar.',
+    projectileSpeed: 520,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  ustabasi: {
+    id: 'ustabasi',
+    name: 'USTABAŞI',
+    title: 'Hurda Mühendisi',
+    rarity: 'Kupa Yolu',
+    color: '#64748b',
+    secondaryColor: '#334155',
+    avatarBg: 'from-slate-500 to-slate-900',
+    maxHp: 4400,
+    speed: 180,
+    reloadTime: 1.3,
+    attackCooldown: 0.55,
+    acceleration: 1400,
+    superHitsRequired: 3.4,
+    range: 420,
+    damagePerAttack: 240,
+    superChargePerHit: 8,
+    description:
+      'Orta mesafede geniş bir saçma yağdırır. Asıl gücü kurduğu makinelerde: alan tutar, tuzak kurar.',
+    attackName: 'Hurda Yağmuru',
+    attackDesc: '7 parça geniş bir koni hâlinde savrulur; dipten tamamı isabet eder.',
+    superName: 'Otomatik Taret',
+    superDesc: 'Gördüğü rakibe kendi ateş eden, yıkılabilir bir taret kurar.',
+    gadgetName: 'Tuzak',
+    gadgetDesc: 'Yere yaklaşanı havaya savuran bir yakınlık mayını bırakır.',
+    starPowerName: 'Takviye',
+    starPowerDesc: 'Kurduğu makineler daha dayanıklı olur.',
+    projectileSpeed: 500,
+    projectileCount: 7,
+    spreadAngle: 0.5,
+  },
+  nagme: {
+    id: 'nagme',
+    name: 'NAĞME',
+    title: 'Saha Şifacısı',
+    rarity: 'Süper Ender',
+    color: '#ec4899',
+    secondaryColor: '#9d174d',
+    avatarBg: 'from-pink-500 to-fuchsia-900',
+    maxHp: 3600,
+    speed: 175,
+    reloadTime: 1.5,
+    attackCooldown: 0.58,
+    acceleration: 1450,
+    superHitsRequired: 3,
+    range: 450,
+    damagePerAttack: 700,
+    superChargePerHit: 11,
+    description:
+      'Rakiplerin içinden geçen geniş bir dalga gönderir. Süperi takımı bir anda ayağa kaldırır.',
+    attackName: 'Ses Dalgası',
+    attackDesc: 'Önündeki herkesin içinden geçen geniş bir dalga; kalabalığı tek atışta tarar.',
+    superName: 'Diriliş Ezgisi',
+    superDesc: 'Çevresindeki tüm takım arkadaşlarının canını büyük ölçüde yeniler.',
+    gadgetName: 'Şifa İstasyonu',
+    gadgetDesc: 'Yere, çevresindeki takımı sürekli iyileştiren bir istasyon kurar.',
+    starPowerName: 'Yankı',
+    starPowerDesc: 'Dalgası dost değdiğinde onları da iyileştirir.',
+    projectileSpeed: 540,
+    projectileCount: 3,
+    spreadAngle: 0.4,
+  },
+  zirh: {
+    id: 'zirh',
+    name: 'ZIRH',
+    title: 'Ön Saf',
+    rarity: 'Ender',
+    color: '#0d9488',
+    secondaryColor: '#115e59',
+    avatarBg: 'from-teal-600 to-emerald-900',
+    maxHp: 5600,
+    speed: 185,
+    reloadTime: 1.0,
+    attackCooldown: 0.34,
+    acceleration: 1200,
+    superHitsRequired: 2.8,
+    range: 185,
+    damagePerAttack: 420,
+    superChargePerHit: 11,
+    description:
+      'Takımın önünde durur. Hasar aldıkça şarjı dolar ve o şarj takımın hayatta kalmasına gider.',
+    attackName: 'Balyoz',
+    attackDesc: 'Yakın mesafede art arda 3 ağır savurma.',
+    superName: 'Siper Emri',
+    superDesc: 'Kendisi ve yakınındaki takım arkadaşlarına 5 saniyelik kalkan verir.',
+    gadgetName: 'Sarsıntı',
+    gadgetDesc: 'Yere vurarak çevresindekileri savurur ve kendine kalkan alır.',
+    starPowerName: 'Siper',
+    starPowerDesc: 'Kalkanı kırıldığında kısa süre hız kazanır.',
+    projectileSpeed: 430,
+    projectileCount: 3,
+    spreadAngle: 0.2,
+  },
 };
+
+/**
+ * Roster order, for every list the player sees.
+ *
+ * Derived from the config rather than written out again, because three
+ * separate hard-coded arrays — the lobby, the bot filler, the solo match —
+ * meant a new character silently failed to appear in two of them.
+ */
+export const BRAWLER_IDS = Object.keys(BRAWLERS) as BrawlerId[];
 
 export type BrawlGameMode = 'showdown' | 'gem_grab';
 
@@ -406,6 +550,60 @@ export interface BrawlProjectile {
   hitIds?: string[];
 }
 
+/**
+ * Something a brawler left on the battlefield that acts on its own.
+ *
+ * One entity type covers a turret, a chasing minion, a proximity mine, a
+ * healing station and a projectile-blocking barrier, because mechanically they
+ * differ only in how they decide to act and what they do when they act. The
+ * alternative — an entity type per gadget — is the same trap the ability
+ * switches were.
+ */
+export interface DeployedEntity {
+  id: string;
+  ownerId: string;
+  team: number;
+  /** Whose colours it wears. */
+  brawlerId: BrawlerId;
+  kind: DeployedKind;
+  behaviour: DeployedBehaviour;
+  x: number;
+  y: number;
+  /** Facing. A turret tracks its target; everything else keeps its spawn angle. */
+  angle: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  /** Seconds left before it packs up. */
+  lifetime: number;
+  /** Seconds until it may act again. */
+  actTimer: number;
+  /** How often it acts, in seconds. */
+  interval: number;
+  /** How far it looks for something to act on. */
+  range: number;
+  /** Movement speed, for a minion. */
+  speed?: number;
+  /** Registry key of the action list it runs when it acts. */
+  actionKey?: string;
+  /** True once it has gone off, so a mine cannot trigger twice in a tick. */
+  spent?: boolean;
+}
+
+export type DeployedKind = 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier';
+
+export type DeployedBehaviour =
+  /** Shoots the nearest enemy it can see. */
+  | 'turret'
+  /** Walks at the nearest enemy and hits whatever it reaches. */
+  | 'chase'
+  /** Waits, then goes off when an enemy comes close. */
+  | 'proximity'
+  /** Acts on its own team, on a timer, regardless of enemies. */
+  | 'aura'
+  /** Does nothing but stand in the way of projectiles. */
+  | 'blocker';
+
 export interface ThornField {
   id: string;
   ownerId: string;
@@ -551,6 +749,7 @@ export interface BrawlSnapshot {
   starPlayerId: string | null;
   brawlers: BrawlerEntity[];
   projectiles: BrawlProjectile[];
+  deployables: DeployedEntity[];
   thornFields: ThornField[];
   firePatches?: FirePatch[];
   visualEffects?: VisualEffect[];

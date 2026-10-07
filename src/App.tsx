@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   BrawlerId,
+  BRAWLER_IDS,
   PlayerInfo,
   BrawlSnapshot,
   BrawlPlayerInput,
@@ -200,7 +201,11 @@ export const App: React.FC = () => {
     setMyPlayerId(myId);
     myPlayerIdRef.current = myId;
 
-    const botBrawlers: BrawlerId[] = ['rivet', 'boulder', 'fuse', 'thorn', 'wisp', 'mira', 'rivet'];
+    // Filled from the roster, offset by one so the bots are not all the
+    // character the player just picked.
+    const botBrawlers = BRAWLER_IDS.map(
+      (_, i) => BRAWLER_IDS[(i + 1) % BRAWLER_IDS.length]
+    );
     const botNames = [
       'Gunslinger-AI',
       'El-Toro-AI',
@@ -339,8 +344,7 @@ export const App: React.FC = () => {
   // Add Bot (Host action up to 10 players)
   const handleAddBot = () => {
     if (players.length >= 10) return;
-    const brawlerList: BrawlerId[] = ['mira', 'rivet', 'boulder', 'fuse', 'thorn', 'wisp'];
-    const chosenBrawler = brawlerList[players.length % brawlerList.length];
+    const chosenBrawler = BRAWLER_IDS[players.length % BRAWLER_IDS.length];
     const botNum = players.filter(p => p.isBot).length + 1;
 
     peerManagerRef.current?.addBot(`Bot-${botNum}`, chosenBrawler);

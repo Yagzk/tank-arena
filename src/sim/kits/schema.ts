@@ -13,8 +13,7 @@
  * of mechanic adds exactly one.
  */
 
-import type { BrawlerId } from '../../types/brawl';
-import type { VisualEffect } from '../../types/brawl';
+import type { BrawlerId, VisualEffect } from '../../types/brawl';
 import type { BrawlSoundEvent } from '../../game/brawlEngine';
 
 /**
@@ -204,7 +203,25 @@ export type AbilityAction =
       /** Shown when there was nobody to grab. */
       missText?: string;
     }
-  | { type: 'summon'; kind: 'decoy'; lifetime: number; offset?: number }
+  | {
+      type: 'summon';
+      /** `decoy` is a dummy body; everything else acts on its own. */
+      kind: 'decoy' | 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier';
+      lifetime: number;
+      /** Where it goes: ahead of the caster by default, or on the aimed point. */
+      at?: Anchor;
+      offset?: number;
+      hp?: number;
+      radius?: number;
+      /** Seconds between acts. */
+      interval?: number;
+      /** How far it looks for something to act on. */
+      range?: number;
+      /** Movement speed, for a minion. */
+      speed?: number;
+      /** What it does each time it acts — fires, detonates, heals. */
+      onAct?: AbilityAction[];
+    }
   | {
       type: 'vfx';
       at: Anchor;
@@ -256,6 +273,33 @@ export interface KitTraits {
   superChargeFromDamageTaken?: number;
 }
 
+/**
+ * How a bot plays this character.
+ *
+ * The bot had seventeen `brawlerId === '...'` branches for six characters —
+ * the same shape as the ability switches, and the same problem: a new
+ * character meant editing the bot. Ranges are fractions of the brawler's own
+ * configured range, so a character's reach and the distance its bot prefers
+ * stay in step through a balance pass.
+ */
+export interface BotProfile {
+  /** Fraction of its range the bot will open fire at. */
+  engageRange?: number;
+  /** Band, in fractions of range, within which it will fire its Super. */
+  superRange?: { min?: number; max?: number };
+  /** When the gadget is worth spending. */
+  gadget?:
+    | { when: 'enemyWithin'; range: number }
+    | { when: 'enemyBetween'; min: number; max: number }
+    | { when: 'outOfAmmo'; range: number }
+    | { when: 'chance'; range: number; probability: number };
+  /**
+   * True for an attack that arcs over walls. Without it a lobber would never
+   * fire from behind cover, which is the only place it wants to be.
+   */
+  ignoresCover?: boolean;
+}
+
 export interface Kit {
   id: BrawlerId;
   /** Ammo slots. Three is common but not universal. */
@@ -265,4 +309,5 @@ export interface Kit {
   gadget: AbilitySpec;
   passives?: PassiveSpec[];
   traits?: KitTraits;
+  bot?: BotProfile;
 }

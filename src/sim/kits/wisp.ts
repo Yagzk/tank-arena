@@ -70,6 +70,13 @@ export const wispKit: Kit = {
     ],
   },
 
+  bot: {
+    engageRange: 0.85,
+    // Stealth is worth using whenever there is anyone to lose.
+    superRange: { max: 1.2 },
+    gadget: { when: 'chance', range: 300, probability: 0.3 },
+  },
+
   passives: [
     {
       name: 'Sessiz Şifa',

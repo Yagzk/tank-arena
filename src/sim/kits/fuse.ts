@@ -69,6 +69,13 @@ export const fuseKit: Kit = {
     ],
   },
 
+  bot: {
+    engageRange: 0.92,
+    superRange: { max: 0.96 },
+    // The jump is an escape, so it is worth spending when something is close.
+    gadget: { when: 'enemyWithin', range: 120 },
+  },
+
   gadget: {
     name: 'İtki Fişeği',
     actions: [

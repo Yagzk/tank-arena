@@ -174,6 +174,20 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
 
     case 'summon':
       if (!(action.lifetime > 0)) p.at(path, 'a summon needs a positive lifetime');
+      if (action.kind !== 'decoy') {
+        if (!(action.hp! > 0)) p.at(path, 'a deployable needs health, or it cannot be destroyed');
+        if (action.kind !== 'barrier') {
+          if (!action.onAct || action.onAct.length === 0) {
+            p.at(path, 'a ' + action.kind + ' with no onAct list would just sit there');
+          }
+          if (!(action.interval! > 0)) p.at(path, 'a ' + action.kind + ' needs an interval');
+          if (!(action.range! > 0)) p.at(path, 'a ' + action.kind + ' needs a range');
+        }
+        if (action.kind === 'minion' && !(action.speed! > 0)) {
+          p.at(path, 'a minion that cannot move is a turret');
+        }
+      }
+      if (action.onAct) checkActions(p, path + '.onAct', action.onAct, depth + 1);
       break;
 
     case 'vfx':

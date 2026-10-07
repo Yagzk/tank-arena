@@ -1,7 +1,7 @@
 # NOVA ARENA — Geliştirme Planı
 
 > Bu dosya projenin tek yol haritasıdır. Bir iş bitince kutusu işaretlenir.
-> Son güncelleme: 2026-10-07 · Referans commit: `d1491a8`
+> Son güncelleme: 2026-10-07 · Referans commit: `028fcff`
 
 ---
 
@@ -22,7 +22,7 @@ Brawl Stars'ın oynanış mekaniklerini **birebir** veren, web ve mobil tarayıc
 
 ## 1. Nerede duruyoruz
 
-~12.000 satır TypeScript, 119 test, 9 test dosyası. Çalışan: Hesaplaşma ve Elmas
+~13.400 satır TypeScript, 138 test, 10 test dosyası. Çalışan: Hesaplaşma ve Elmas
 Kapmaca modları, 6 karakter, botlar, P2P çok oyunculu, masaüstü + dokunmatik
 kontroller.
 
@@ -34,6 +34,7 @@ kontroller.
 | `sim/abilities.ts` | Kit yorumlayıcısı — switch yalnızca eylem türü üzerinde |
 | `sim/effects/` | 14 efekt ilkeli, simülasyonun tüm sonuç sözlüğü |
 | `sim/entity.ts` | Tek varlık fabrikası + canlanma |
+| `sim/systems/deployables.ts` | Taret/minyon/mayın/istasyon/bariyer, tek varlık beş karar kuralı |
 | `core/loop.ts` | Sabit timestep, rAF'tan ayrık simülasyon, `planSteps` politikası |
 | `core/collision.ts` | Swept (sürekli) çarpışma, görüş hattı |
 | `core/spatialHash.ts` | Uniform grid broadphase |
@@ -188,15 +189,22 @@ dosyası yazmak yetiyor, hiçbir `switch`'e dokunulmuyor.
 - [x] Duvar aşan sıçrama
 - [x] Geri savurma
 
-## 1.4 Konuşlandırılabilirler — tamamı eksik
+## 1.4 Konuşlandırılabilirler
 
-- [ ] Ortak `DeployedEntity` tipi: can, ömür, sahip, takım, hedefleme
-- [ ] Taret (kendi ateş eden, yıkılabilir)
-- [ ] Peşinden koşan minyon
-- [ ] Yaklaşınca patlayan mayın
-- [ ] Geçici duvar inşası (navGrid'i tetikler)
-- [ ] İyileştirme istasyonu
-- [ ] Mermi durduran bariyer
+- [x] Ortak `DeployedEntity` tipi: can, ömür, sahip, takım, hedefleme
+- [x] Taret — gördüğünü vurur, görüş hattı gerektirir, yıkılabilir, sahibinin
+      ölümünden sonra da çalışır
+- [x] Peşinden koşan minyon
+- [x] Yaklaşınca patlayan mayın (kurulum gecikmesi = kurulma süresi, kendi
+      takımı tetiklemez)
+- [x] İyileştirme istasyonu — bulunduğu yerden nabız atar, sahibi uzaklaşınca
+      iyileştirmez
+- [x] Mermi durduran bariyer — düşman mermisini yer, hasar almaz
+- [ ] Geçici duvar inşası (duvarlara ömür alanı + navGrid tetiklemesi gerek)
+
+> Beş davranış tek varlık üzerinde: `turret` · `chase` · `proximity` · `aura` ·
+> `blocker`. Ne yaptıkları kitten gelen eylem listesi, yani bolt atan taret ile
+> iyileştiren taret aynı kod, farklı veri.
 
 ## 1.5 Durum etkileri
 
@@ -237,12 +245,16 @@ Her dalga, kendi karakterlerini mümkün kılan ilkelleri **önce** getirir.
 | THORN | Alan kontrolü |
 | WISP | Suikastçı |
 
-## Dalga 1 — Lob, taret, iyileştirme, kalkan → kadro 10
+## Dalga 1 — Lob, taret, iyileştirme, kalkan → kadro 10 · **bitti**
 
-- [ ] **MOLOTOF** · Alan reddi · Duvar aşıran şişe, yere ateş · Süper: geniş alev gölü
-- [ ] **USTABAŞI** · Konuşlandırıcı · Orta menzil saçma · Süper: otomatik taret
-- [ ] **NAĞME** · Destek · Müttefik iyileştiren dalga · Süper: takımı tam doldurur
-- [ ] **ZIRH** · Tank · Ağır yumruk · Süper: takıma kalkan
+- [x] **MOLOTOF** · Alan reddi · Duvar aşıran şişe, indiği yeri tutuşturur ·
+      Süper: 8 sn yanan geniş alev gölü · Gadget: ateş çemberi · 2 cephane
+- [x] **USTABAŞI** · Konuşlandırıcı · 7 parça geniş saçma · Süper: otomatik
+      taret (2400 can, 24 sn) · Gadget: yakınlık mayını
+- [x] **NAĞME** · Destek · İçinden geçen geniş dalga · Süper: 320 yarıçapta
+      takıma 2600 can · Gadget: şifa istasyonu
+- [x] **ZIRH** · Tank · 3'lü balyoz · Süper: takıma 2600 kalkan · Gadget:
+      savuran sarsıntı + kendine kalkan · Hasar aldıkça şarj
 
 ## Dalga 2 — Sektirme, delen atılım, çekme, köklenme → kadro 14
 
@@ -273,10 +285,17 @@ Her dalga, kendi karakterlerini mümkün kılan ilkelleri **önce** getirir.
 - [ ] **MIKNATIS** · Mermi soğurma / yansıtma
 
 ### Her karakter için bitti sayılma ölçütü
-- [ ] Kit verisi + görsel stil (`characterStyles.ts`) + silüet ayrımı
-- [ ] Bot davranış profili (menzil tercihi, süper kullanım koşulu, kaçınma)
-- [ ] Kit testi: hasar, menzil, süper etkisi
-- [ ] Mobilde ve masaüstünde oynanarak doğrulama
+- [x] Kit verisi + görsel stil (`characterStyles.ts`) + silüet ayrımı —
+      4 yeni silah (şişe, çivi tabancası, rezonatör, balyoz) ve 2 yeni başlık
+- [x] Bot davranış profili **kitte**: `BotProfile` — menzil tercihi, süper
+      bandı, gadget koşulu, duvar aşan saldırı işareti. Botta kalan
+      `brawlerId === '...'` dalı: 0 (önce 17 vardı)
+- [x] Kit testi: hasar, menzil, süper etkisi
+- [ ] Mobilde ve masaüstünde oynanarak doğrulama (Dalga 1 için bekliyor)
+
+> Kadro listeleri artık `BRAWLER_IDS` üzerinden config'den türüyor. Üç ayrı
+> elle yazılmış dizi vardı (lobi, bot doldurma, tek oyunculu maç) ve yeni bir
+> karakter ikisinde sessizce görünmüyordu.
 
 ---
 

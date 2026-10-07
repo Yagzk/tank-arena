@@ -70,6 +70,13 @@ export const miraKit: Kit = {
     ],
   },
 
+  bot: {
+    // A shotgun's useful range is well short of its stated one.
+    engageRange: 0.88,
+    superRange: { max: 0.77 },
+    gadget: { when: 'enemyBetween', min: 90, max: 200 },
+  },
+
   passives: [
     {
       // The heal is deliberately on a long cooldown: it should decide one

@@ -19,6 +19,10 @@ import { boulderKit } from './boulder';
 import { fuseKit } from './fuse';
 import { thornKit } from './thorn';
 import { wispKit } from './wisp';
+import { molotofKit } from './molotof';
+import { ustabasiKit } from './ustabasi';
+import { nagmeKit } from './nagme';
+import { zirhKit } from './zirh';
 
 export const KITS: Record<BrawlerId, Kit> = {
   mira: miraKit,
@@ -27,6 +31,10 @@ export const KITS: Record<BrawlerId, Kit> = {
   fuse: fuseKit,
   thorn: thornKit,
   wisp: wispKit,
+  molotof: molotofKit,
+  ustabasi: ustabasiKit,
+  nagme: nagmeKit,
+  zirh: zirhKit,
 };
 
 /**
@@ -63,6 +71,15 @@ function compileActions(prefix: string, actions: AbilityAction[]): void {
         }
         break;
       }
+
+      case 'summon':
+        if (action.onAct) {
+          const key = path + '.act';
+          assignKey(action, key);
+          registerActions(key, action.onAct);
+          compileActions(key + '.a', action.onAct);
+        }
+        break;
 
       case 'jump':
         if (action.onLand) {

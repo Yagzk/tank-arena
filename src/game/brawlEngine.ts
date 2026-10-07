@@ -1,6 +1,7 @@
 import {
   BrawlerEntity,
   BrawlProjectile,
+  DeployedEntity,
   ThornField,
   FirePatch,
   VisualEffect,
@@ -28,6 +29,7 @@ import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
 import { createBrawlerEntity, respawnBrawler } from '../sim/entity';
+import { updateDeployables } from '../sim/systems/deployables';
 import { getKit } from '../sim/kits';
 import { getActions } from '../sim/kits/registry';
 import {
@@ -128,6 +130,8 @@ export class BrawlEngine {
 
   public brawlers: BrawlerEntity[] = [];
   public projectiles: BrawlProjectile[] = [];
+  /** Turrets, minions, mines, stations and barriers left on the field. */
+  public deployables: DeployedEntity[] = [];
   public thornFields: ThornField[] = [];
   public firePatches: FirePatch[] = [];
   public visualEffects: VisualEffect[] = [];
@@ -204,6 +208,12 @@ export class BrawlEngine {
       set projectiles(v: BrawlProjectile[]) {
         engine.projectiles = v;
       },
+      get deployables() {
+        return engine.deployables;
+      },
+      set deployables(v: DeployedEntity[]) {
+        engine.deployables = v;
+      },
       get thornFields() {
         return engine.thornFields;
       },
@@ -260,7 +270,12 @@ export class BrawlEngine {
    * also stops a summoned decoy from being shot by its own owner.
    */
   private isHostile(team: number, other: BrawlerEntity): boolean {
-    return other.isAlive && other.team !== team;
+    return other.isAlive && this.isHostileTeam(team, other.team);
+  }
+
+  /** Team-level hostility, for things that are not brawlers. */
+  private isHostileTeam(team: number, otherTeam: number): boolean {
+    return otherTeam !== team;
   }
 
   /**
@@ -307,6 +322,7 @@ export class BrawlEngine {
     this.boxes = map.boxes;
     this.gemMine = map.gemMine;
     this.projectiles = [];
+    this.deployables = [];
     this.thornFields = [];
     this.firePatches = [];
     this.visualEffects = [];
@@ -382,6 +398,7 @@ export class BrawlEngine {
 
     this.ensureNavGrid();
     this.updateBrawlers(dt);
+    updateDeployables(this.world, dt);
     this.updateProjectiles(dt);
     this.updateThornFields(dt);
     this.updateFirePatches(dt);
@@ -847,10 +864,11 @@ export class BrawlEngine {
 
       // ---- find the earliest contact along the step --------------------
       let bestT = 1;
-      let hitKind: 'none' | 'wall' | 'box' | 'brawler' = 'none';
+      let hitKind: 'none' | 'wall' | 'box' | 'brawler' | 'deployable' = 'none';
       let hitWallIndex = -1;
       let hitBoxIndex = -1;
       let hitTarget: BrawlerEntity | null = null;
+      let hitDeployable: DeployedEntity | null = null;
       let hitX = p.x + stepX;
       let hitY = p.y + stepY;
 
@@ -905,6 +923,23 @@ export class BrawlEngine {
           bestT = this.sweep.t;
           hitKind = 'brawler';
           hitTarget = target;
+          hitX = this.sweep.x;
+          hitY = this.sweep.y;
+        }
+      }
+
+      for (let i = 0; i < this.deployables.length && !airborne; i++) {
+        const d = this.deployables[i];
+        // Your own turret does not eat your bullets, and a barrier only stops
+        // the team it was not placed by.
+        if (!this.isHostileTeam(p.team, d.team)) continue;
+        if (p.hitIds && p.hitIds.indexOf(d.id) !== -1) continue;
+
+        sweepCircleVsCircle(p.x, p.y, p.radius, stepX, stepY, d.x, d.y, d.radius, this.sweep);
+        if (this.sweep.hit && this.sweep.t < bestT) {
+          bestT = this.sweep.t;
+          hitKind = 'deployable';
+          hitDeployable = d;
           hitX = this.sweep.x;
           hitY = this.sweep.y;
         }
@@ -968,6 +1003,27 @@ export class BrawlEngine {
         if (!p.piercesBodies) {
           toRemove.add(p.id);
         } else {
+          p.x += stepX * (1 - bestT);
+          p.y += stepY * (1 - bestT);
+        }
+        continue;
+      }
+
+      if (hitKind === 'deployable' && hitDeployable) {
+        const d = hitDeployable;
+        // A barrier soaks the shot without taking damage — that is what makes
+        // it cover rather than a target.
+        if (d.behaviour !== 'blocker') {
+          d.hp -= p.damage;
+          this.addFloatingNumber(`-${p.damage}`, d.x, d.y - 18, '#fbbf24');
+        }
+        this.addEffect('hit_spark', hitX, hitY, 12, p.color, 0.18, Math.atan2(p.vy, p.vx), 0.4);
+        this.detonateProjectile(p, hitX, hitY, 'end');
+
+        if (!p.piercesBodies) {
+          toRemove.add(p.id);
+        } else {
+          (p.hitIds ||= []).push(d.id);
           p.x += stepX * (1 - bestT);
           p.y += stepY * (1 - bestT);
         }
@@ -1532,6 +1588,7 @@ export class BrawlEngine {
       starPlayerId: this.starPlayerId,
       brawlers: this.brawlers,
       projectiles: this.projectiles,
+      deployables: this.deployables,
       thornFields: this.thornFields,
       firePatches: this.firePatches,
       visualEffects: this.visualEffects,

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CharacterPortrait } from './CharacterPortrait';
-import { BrawlerId, BRAWLERS, PlayerInfo, BrawlGameMode } from '../types/brawl';
+import { BrawlerId, BRAWLER_IDS, BRAWLERS, PlayerInfo, BrawlGameMode } from '../types/brawl';
 import {
   Users,
   Play,
@@ -63,7 +63,7 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
   onToggleMute,
 }) => {
   const [copied, setCopied] = useState(false);
-  const brawlerList: BrawlerId[] = ['mira', 'rivet', 'boulder', 'fuse', 'thorn', 'wisp'];
+  const brawlerList = BRAWLER_IDS;
   const activeCfg = BRAWLERS[selectedBrawler];
 
   const copyInviteLink = () => {

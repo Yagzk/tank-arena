@@ -16,6 +16,7 @@ import type {
   BrawlerEntity,
   BrawlProjectile,
   BrawlGameMode,
+  DeployedEntity,
   ThornField,
   FirePatch,
   VisualEffect,
@@ -54,6 +55,7 @@ export interface SimWorld {
 
   brawlers: BrawlerEntity[];
   projectiles: BrawlProjectile[];
+  deployables: DeployedEntity[];
   thornFields: ThornField[];
   firePatches: FirePatch[];
   walls: BrawlWall[];

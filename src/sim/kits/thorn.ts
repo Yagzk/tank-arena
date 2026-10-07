@@ -78,6 +78,12 @@ export const thornKit: Kit = {
     ],
   },
 
+  bot: {
+    engageRange: 0.95,
+    superRange: { max: 0.97 },
+    gadget: { when: 'enemyWithin', range: 150 },
+  },
+
   passives: [
     {
       // Fertilizer. Standing in your own garden is the correct play and it

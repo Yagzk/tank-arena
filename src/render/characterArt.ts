@@ -28,9 +28,26 @@ export type WeaponKind =
   | 'gauntlets'
   | 'launcher'
   | 'satchel'
-  | 'blades';
+  | 'blades'
+  /** A bottle held out by the neck, ready to be thrown. */
+  | 'flask'
+  /** A stubby nail gun in one hand, a folded tripod in the other. */
+  | 'toolgun'
+  /** A resonator held two-handed at chest height. */
+  | 'horn'
+  /** A slab hammer carried over one shoulder. */
+  | 'hammer';
 
-export type Headgear = 'hood' | 'cap' | 'mask' | 'goggles' | 'crest';
+export type Headgear =
+  | 'hood'
+  | 'cap'
+  | 'mask'
+  | 'goggles'
+  | 'crest'
+  /** A welder's visor, flipped down. */
+  | 'visor'
+  /** A full helm with a raised comb. */
+  | 'helm';
 
 export interface CharacterStyle {
   /** Jacket / main garment. */
@@ -363,6 +380,92 @@ function drawArmsAndWeapon(
       break;
     }
 
+    case 'flask': {
+      // One arm cocked back with a bottle, the other shielding the face: the
+      // posture of somebody about to throw something they do not want to drop.
+      arm(-1, reach * 0.5, shoulderY * 1.05);
+      arm(1, reach * 0.34, shoulderY * 1.15);
+
+      ctx.save();
+      ctx.translate(reach * 0.34, shoulderY * 1.15);
+      ctx.rotate(-0.5);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.08, -s * 0.1, s * 0.2, s * 0.2, s * 0.05);
+      fillStroke(ctx, style.secondary, outline * 1.4);
+      // Neck and burning rag.
+      ctx.beginPath();
+      ctx.roundRect(s * 0.1, -s * 0.045, s * 0.12, s * 0.09, s * 0.03);
+      fillStroke(ctx, style.accent, outline * 1.1);
+      ctx.restore();
+      break;
+    }
+
+    case 'toolgun': {
+      // Nail gun forward in the lead hand; the spare hand carries the tripod
+      // it is about to put down, which is what the character is actually for.
+      arm(-1, reach * 0.8, shoulderY * 0.5);
+      arm(1, reach * 0.4, shoulderY * 1.1);
+
+      ctx.save();
+      ctx.translate(reach * 0.8, -shoulderY * 0.5);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.06, -s * 0.11, s * 0.4, s * 0.22, s * 0.07);
+      fillStroke(ctx, style.secondary, outline * 1.5);
+      ctx.beginPath();
+      ctx.roundRect(s * 0.26, -s * 0.07, s * 0.14, s * 0.14, s * 0.04);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(reach * 0.4, shoulderY * 1.1);
+      ctx.rotate(0.6);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.05, -s * 0.16, s * 0.1, s * 0.32, s * 0.04);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ctx.restore();
+      break;
+    }
+
+    case 'horn': {
+      // Held two-handed and level, like an instrument rather than a weapon.
+      arm(-1, reach * 0.62, shoulderY * 0.72);
+      arm(1, reach * 0.62, shoulderY * 0.72);
+
+      ctx.save();
+      ctx.translate(reach * 0.62, 0);
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.08, -s * 0.07);
+      ctx.lineTo(s * 0.24, -s * 0.21);
+      ctx.lineTo(s * 0.24, s * 0.21);
+      ctx.lineTo(-s * 0.08, s * 0.07);
+      ctx.closePath();
+      fillStroke(ctx, style.accent, outline * 1.5);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.18, -s * 0.06, s * 0.14, s * 0.12, s * 0.04);
+      fillStroke(ctx, style.secondary, outline * 1.3);
+      ctx.restore();
+      break;
+    }
+
+    case 'hammer': {
+      // Carried over one shoulder, head out past the body so the silhouette
+      // reads as heavy even before it swings.
+      arm(-1, reach * 0.3, shoulderY * 1.25);
+      arm(1, reach * 0.46, shoulderY * 1.0);
+
+      ctx.save();
+      ctx.translate(reach * 0.3, -shoulderY * 1.1);
+      ctx.rotate(-0.95);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.05, -s * 0.05, s * 0.52, s * 0.1, s * 0.04);
+      fillStroke(ctx, style.secondary, outline * 1.4);
+      ctx.beginPath();
+      ctx.roundRect(s * 0.4, -s * 0.2, s * 0.2, s * 0.4, s * 0.06);
+      fillStroke(ctx, style.accent, outline * 1.6);
+      ctx.restore();
+      break;
+    }
+
     case 'blades': {
       // Blades held in reverse grip, angled out from the hips.
       for (const side of [-1, 1]) {
@@ -456,6 +559,40 @@ function drawHeadgear(
         ctx.fill();
         ctx.stroke();
       }
+      break;
+    }
+
+    case 'visor': {
+      // A welder's visor, flipped down over the face.
+      ctx.beginPath();
+      ctx.roundRect(headX - headR * 0.1, -headR * 0.95, headR * 1.25, headR * 1.9, headR * 0.3);
+      fillStroke(ctx, style.secondary, outline * 1.4);
+      // Slit, in the accent colour, so the face still has a focal point.
+      ctx.beginPath();
+      ctx.roundRect(headX + headR * 0.72, -headR * 0.5, headR * 0.3, headR, headR * 0.14);
+      fillStroke(ctx, style.accent, outline);
+      break;
+    }
+
+    case 'helm': {
+      // Full helm with a raised comb along the crown.
+      ctx.beginPath();
+      ctx.arc(headX, 0, headR * 1.12, 0, Math.PI * 2);
+      fillStroke(ctx, style.secondary, outline * 1.5);
+      ctx.beginPath();
+      ctx.roundRect(headX - headR * 0.2, -headR * 0.22, headR * 1.5, headR * 0.44, headR * 0.2);
+      fillStroke(ctx, style.accent, outline * 1.2);
+
+      ctx.fillStyle = style.accent;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = outline;
+      ctx.beginPath();
+      ctx.moveTo(headX - headR * 0.9, 0);
+      ctx.lineTo(headX + headR * 0.3, -headR * 0.1);
+      ctx.lineTo(headX + headR * 0.3, headR * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
       break;
     }
   }
