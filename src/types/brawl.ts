@@ -286,23 +286,79 @@ export interface BrawlerEntity {
   emoteTimer: number;
   isBot?: boolean;
   kills: number;
-  // Queued burst attacks
-  burstRemaining: number;
-  burstInterval: number;
-  burstTimer: number;
-  burstIsSuper: boolean;
-  burstAimAngle: number;
-  burstTargetX: number;
-  burstTargetY: number;
-  burstShotIndex: number;
+  /** Times this brawler has been taken out. Matters in modes with respawn. */
+  deaths: number;
+  /**
+   * Shots still owed by an attack that fires over time — a six-round burst, a
+   * flurry of punches, an artillery barrage. One queue replaces what used to
+   * be eight loose fields, and it carries the key of the action list to run,
+   * so the behaviour lives in the kit rather than in the engine.
+   */
+  pendingBurst: PendingBurst | null;
   // Gadgets & Star Powers
   gadgetCharges: number; // 3 per match
   gadgetCooldown: number;
-  bandAidCooldown: number; // Shelly Band-Aid (15s cooldown)
-  meteorRushTimer: number; // El Primo speed boost after Super
-  burnTimer: number; // El Fuego burn timer
+  /** Remaining cooldown per passive, keyed by the passive's name. */
+  passiveCooldowns: Record<string, number>;
+  burnTimer: number;
   burnDamagePerSec: number;
-  isClone?: boolean; // For Leon Clone
+  /** Multiplier applied while `speedBoostTimer` is running. */
+  speedBoostMagnitude: number;
+
+  // ---- respawn ----
+  /**
+   * Seconds until this brawler comes back. Zero in modes without respawn,
+   * where death is final.
+   */
+  respawnTimer: number;
+  /** Where this brawler returns to — its team's base. */
+  spawnX: number;
+  spawnY: number;
+
+  // ---- status effects ----
+  /** Takes no damage while positive. Used for respawn protection. */
+  immunityTimer: number;
+  /** Damage the shield will absorb before health is touched. */
+  shieldHp: number;
+  shieldTimer: number;
+  /** Cannot fire the Super while positive. */
+  silenceTimer: number;
+  /** Cannot move, can still shoot. */
+  rootTimer: number;
+  /** Visible to enemies even inside a bush. */
+  revealTimer: number;
+
+  /**
+   * Action list to run where an airborne brawler lands, as a registry key so
+   * the payload survives the flight without the entity holding kit objects.
+   */
+  jumpLandKey?: string;
+
+  isClone?: boolean;
+  /** Seconds a summoned decoy has left before it dissipates. */
+  decoyLifetime?: number;
+}
+
+/** An attack that fires over several ticks rather than all at once. */
+export interface PendingBurst {
+  /** Key of the compiled action list each shot runs. */
+  actionKey: string;
+  remaining: number;
+  interval: number;
+  timer: number;
+  /** Which shot of the burst the next one is, from zero. */
+  index: number;
+  /** Total shots the burst started with, so sweeps know their span. */
+  count: number;
+  aim: 'fixed' | 'alternate' | 'sweep' | 'random';
+  amplitude: number;
+  scatter: number;
+  aimAngle: number;
+  targetX: number;
+  targetY: number;
+  isSuper: boolean;
+  /** Damage multiplier captured when the attack was triggered. */
+  damageMultiplier: number;
 }
 
 export interface BrawlProjectile {
@@ -322,11 +378,29 @@ export interface BrawlProjectile {
   color: string;
   piercesWalls: boolean;
   breaksWalls: boolean;
-  burstNeedlesOnEnd?: boolean;
-  isCurvingNeedle?: boolean; // Spike Curveball
-  curveDir?: number;
-  spawnFireOnEnd?: boolean;
+  /** Passes through bodies, damaging each of them once. */
+  piercesBodies?: boolean;
   knockbackForce?: number;
+  /**
+   * How this projectile travels. Anything other than `straight` is steered
+   * each tick by the projectile system.
+   */
+  motion?: 'straight' | 'curve' | 'lob' | 'bounce' | 'boomerang';
+  /** Turn rate in rad/s for `curve`, signed. */
+  curveRate?: number;
+  /** Wall reflections left, for `bounce`. */
+  bouncesLeft?: number;
+  /** Distance at which a `lob` or `boomerang` turns, in pixels. */
+  turnAt?: number;
+  /** Close-range damage bonus: `near` at point blank, `far` at `range`. */
+  falloff?: { near: number; far: number; range: number };
+  /**
+   * Key into the compiled kit registry for this projectile's hooks — the
+   * statuses it applies and the action lists it runs on hit and at rest.
+   * A key rather than the data itself, so network packets stay small and
+   * both peers resolve the same static behaviour.
+   */
+  hooks?: string;
   /** Bodies a piercing projectile has already damaged, so it cannot hit the
    *  same target twice as it passes through. */
   hitIds?: string[];

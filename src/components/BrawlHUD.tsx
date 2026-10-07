@@ -3,6 +3,7 @@ import { getInputMode, onInputModeChange } from '../input/inputMode';
 import { BrawlSnapshot, BRAWLERS, BrawlerEntity } from '../types/brawl';
 import { MAP_WIDTH, MAP_HEIGHT } from '../game/brawlMaps';
 import { Volume2, VolumeX, RotateCcw, Radio } from 'lucide-react';
+import { kitTraitLabels, listCooldownPassives } from '../sim/kitInfo';
 
 interface BrawlHUDProps {
   snapshot: BrawlSnapshot | null;
@@ -293,63 +294,48 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
 
             {/* Star Power & Passive Trait Badges */}
             <div className="flex items-center gap-2 mt-0.5">
-              {myBrawler.brawlerId === 'mira' && (
+              {/* Cooldown-gated passives, read off the kit rather than
+                  hard-coded per character. */}
+              {listCooldownPassives(myBrawler).map(passive => (
                 <div
+                  key={passive.name}
                   className={`px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border transition flex items-center gap-1.5 shadow ${
-                    (myBrawler.bandAidCooldown || 0) <= 0
+                    passive.ready
                       ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.4)]'
                       : 'bg-slate-900/80 border-slate-700 text-slate-400'
                   }`}
                 >
                   <span>🩹</span>
                   <span>
-                    {(myBrawler.bandAidCooldown || 0) <= 0
-                      ? 'YARA BANDI: HAZIR'
-                      : `YARA BANDI: ${Math.ceil(myBrawler.bandAidCooldown || 0)}s`}
+                    {passive.ready
+                      ? `${passive.name.toLocaleUpperCase('tr')}: HAZIR`
+                      : `${passive.name.toLocaleUpperCase('tr')}: ${Math.ceil(passive.remaining)}s`}
                   </span>
                 </div>
-              )}
+              ))}
 
-              {myBrawler.brawlerId === 'rivet' && (
-                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-amber-500/20 border-amber-400/80 text-amber-300 shadow flex items-center gap-1.5">
-                  <span>👟</span>
-                  <span>KAYAN ÇİZMELER: +%12 HIZ</span>
+              {/* Always-on kit traits, and the star power's own name. Five
+                  per-character blocks used to live here, which meant every new
+                  brawler was also a HUD change. */}
+              <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-indigo-500/20 border-indigo-400/80 text-indigo-200 shadow flex items-center gap-1.5">
+                <span>⭐</span>
+                <span>{BRAWLERS[myBrawler.brawlerId].starPowerName.toLocaleUpperCase('tr')}</span>
+              </div>
+
+              {kitTraitLabels(myBrawler).map(label => (
+                <div
+                  key={label}
+                  className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-emerald-500/20 border-emerald-400/80 text-emerald-300 shadow flex items-center gap-1.5"
+                >
+                  <span>🛡️</span>
+                  <span>{label}</span>
                 </div>
-              )}
+              ))}
 
-              {myBrawler.brawlerId === 'boulder' && (
-                <div className="flex items-center gap-1.5">
-                  <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-emerald-500/20 border-emerald-400/80 text-emerald-300 shadow flex items-center gap-1.5">
-                    <span>🛡️</span>
-                    <span>TANK ÖZELLİĞİ: HASARLA ULTİ DOLAR</span>
-                  </div>
-                  {(myBrawler.meteorRushTimer || 0) > 0 && (
-                    <div className="px-2.5 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-amber-500/30 border-amber-400 text-amber-200 animate-pulse flex items-center gap-1">
-                      <span>☄️</span>
-                      <span>METEOR HIZI!</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {myBrawler.brawlerId === 'fuse' && (
-                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-orange-500/20 border-orange-400/80 text-orange-300 shadow flex items-center gap-1.5">
-                  <span>🔥</span>
-                  <span>ALEV İZLERİ: PATLAMA YAKAR</span>
-                </div>
-              )}
-
-              {myBrawler.brawlerId === 'thorn' && (
-                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-lime-500/20 border-lime-400/80 text-lime-300 shadow flex items-center gap-1.5">
-                  <span>🌵</span>
-                  <span>FİDANLIK & KAVİSLİ İĞNELER</span>
-                </div>
-              )}
-
-              {myBrawler.brawlerId === 'wisp' && (
-                <div className="px-3 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-indigo-500/20 border-indigo-400/80 text-indigo-300 shadow flex items-center gap-1.5">
-                  <span>💨</span>
-                  <span>GİZLİ İYİLEŞME & SİS İZLERİ</span>
+              {(myBrawler.speedBoostTimer || 0) > 0 && (
+                <div className="px-2.5 py-1 rounded-xl text-[10px] font-arcade font-bold tracking-wide border bg-amber-500/30 border-amber-400 text-amber-200 animate-pulse flex items-center gap-1">
+                  <span>☄️</span>
+                  <span>+%{Math.round(((myBrawler.speedBoostMagnitude || 1) - 1) * 100)} HIZ</span>
                 </div>
               )}
             </div>

@@ -27,6 +27,29 @@ import { Rng } from '../core/rng';
 import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
+import { createBrawlerEntity, respawnBrawler } from '../sim/entity';
+import { getKit } from '../sim/kits';
+import { getActions } from '../sim/kits/registry';
+import {
+  executeAbility,
+  fireBurstShot,
+  makeContext,
+  projectileStatuses,
+  runActions,
+  runPassives,
+  runProjectileHooks,
+  type AbilityContext,
+} from '../sim/abilities';
+import {
+  absorbWithShield,
+  applyKnockback,
+  applyStatus,
+  chargeSuperFlat,
+  chargeSuperForDamage,
+  spawnHazard,
+  tickStatuses,
+} from '../sim/effects';
+import type { ExplosionParams, SimWorld } from '../sim/world';
 
 export interface BrawlSoundEvent {
   type:
@@ -61,6 +84,37 @@ const INTRO_DURATION = 3.0;
 
 /** Collision radius shared by every brawler body. */
 const BRAWLER_RADIUS = 22;
+
+/** Seconds a gadget is locked out for after use. */
+const GADGET_COOLDOWN = 4.5;
+
+/** How far a placed Super reaches when the player gave only a direction. */
+const SUPER_DEFAULT_REACH = 360;
+
+/**
+ * What death means, per mode.
+ *
+ * This table is the fix for the single worst bug in the project: `isAlive`
+ * used to be a one-way door. Nothing anywhere set it back to true, so a Gem
+ * Grab player who died was gone for the rest of the match and the mode could
+ * not actually be played. Elimination is a *rule*, not a property of the
+ * engine, and it belongs in one place that every future mode reads.
+ */
+interface ModeRules {
+  /** Seconds before a downed brawler returns. Zero means death is final. */
+  respawnDelay: number;
+  /** Seconds of protection on return, so a base camper cannot farm the spawn. */
+  respawnImmunity: number;
+  /** Fraction of the Super bar carried through a death. */
+  superRetention: number;
+}
+
+const MODE_RULES: Record<BrawlGameMode, ModeRules> = {
+  showdown: { respawnDelay: 0, respawnImmunity: 0, superRetention: 0 },
+  // Three seconds is long enough to be a real cost and short enough that the
+  // objective does not go uncontested while you wait.
+  gem_grab: { respawnDelay: 3, respawnImmunity: 1.5, superRetention: 0.25 },
+};
 
 export class BrawlEngine {
   public phase: BrawlSnapshot['phase'] = 'waiting';
@@ -112,11 +166,122 @@ export class BrawlEngine {
   private navWallCount = -1;
   private navBoxCount = -1;
 
+  /**
+   * The capability surface the kit interpreter runs against.
+   *
+   * Effects are handed this, never the engine. The getters matter: the engine
+   * reassigns `projectiles` and `brawlers` wholesale when it filters them, so
+   * a plain snapshot of the arrays would go stale within a tick.
+   */
+  private readonly world: SimWorld;
+
   constructor() {
     const map = generateBrawlMap('showdown');
     this.walls = map.walls;
     this.bushes = map.bushes;
     this.boxes = map.boxes;
+    this.world = this.createWorld();
+  }
+
+  private createWorld(): SimWorld {
+    const engine = this;
+    return {
+      get mode() {
+        return engine.mode;
+      },
+      get matchTimer() {
+        return engine.matchTimer;
+      },
+      get brawlers() {
+        return engine.brawlers;
+      },
+      set brawlers(v: BrawlerEntity[]) {
+        engine.brawlers = v;
+      },
+      get projectiles() {
+        return engine.projectiles;
+      },
+      set projectiles(v: BrawlProjectile[]) {
+        engine.projectiles = v;
+      },
+      get thornFields() {
+        return engine.thornFields;
+      },
+      set thornFields(v: ThornField[]) {
+        engine.thornFields = v;
+      },
+      get firePatches() {
+        return engine.firePatches;
+      },
+      set firePatches(v: FirePatch[]) {
+        engine.firePatches = v;
+      },
+      get walls() {
+        return engine.walls;
+      },
+      set walls(v: BrawlWall[]) {
+        engine.walls = v;
+      },
+      get bushes() {
+        return engine.bushes;
+      },
+      set bushes(v: Bush[]) {
+        engine.bushes = v;
+      },
+      get boxes() {
+        return engine.boxes;
+      },
+      set boxes(v: PowerCubeBox[]) {
+        engine.boxes = v;
+      },
+      get rng() {
+        return engine.rng;
+      },
+      nextId: (prefix: string) => prefix + '-' + this.nextEntityId++,
+      damage: (target, amount, sourceId, showNumber) =>
+        this.damageBrawler(target, amount, sourceId, showNumber),
+      explode: params => this.explode(params),
+      isHostile: (team, other) => this.isHostile(team, other),
+      sound: type => this.onSoundTriggered?.({ type }),
+      vfx: (type, x, y, radius, color, duration, angle, intensity) =>
+        this.addEffect(type, x, y, radius, color, duration, angle, intensity),
+      banner: (text, x, y, color) => this.addFloatingNumber(text, x, y, color),
+      invalidateGeometry: () => {
+        this.wallGridDirty = true;
+      },
+    };
+  }
+
+  /**
+   * Whether `other` is a legitimate target for someone on `team`.
+   *
+   * Showdown gives every player their own team number, so one rule covers
+   * both modes — and unlike the old scattered `mode === 'gem_grab'` checks, it
+   * also stops a summoned decoy from being shot by its own owner.
+   */
+  private isHostile(team: number, other: BrawlerEntity): boolean {
+    return other.isAlive && other.team !== team;
+  }
+
+  /**
+   * Builds the context a kit ability runs in.
+   *
+   * A placed ability falls back to a point out along the aim line when the
+   * player gave only a direction, which is what happens on a keyboard and on
+   * a quick tap of the Super button.
+   */
+  private contextFor(
+    b: BrawlerEntity,
+    input: BrawlPlayerInput,
+    isSuper: boolean
+  ): AbilityContext {
+    const reach = isSuper ? SUPER_DEFAULT_REACH : BRAWLERS[b.brawlerId].range;
+    return makeContext(this.world, b, {
+      aimAngle: input.aimAngle,
+      targetX: input.superTargetX ?? b.x + Math.cos(input.aimAngle) * reach,
+      targetY: input.superTargetY ?? b.y + Math.sin(input.aimAngle) * reach,
+      isSuper,
+    });
   }
 
   public initMatch(
@@ -135,6 +300,7 @@ export class BrawlEngine {
     this.winnerPlayerId = null;
     this.starPlayerId = null;
 
+    this.botControllers = {};
     const map = generateBrawlMap(mode);
     this.walls = map.walls;
     this.bushes = map.bushes;
@@ -158,7 +324,6 @@ export class BrawlEngine {
 
     // Initialize brawlers (up to 10 players)
     this.brawlers = players.map((p, idx) => {
-      const cfg = BRAWLERS[p.brawler || 'mira'];
       const team = mode === 'gem_grab' ? idx % 2 : idx;
       // Gem Grab spawn points are grouped by team (first half blue, second
       // half red). Indexing them by raw player order dropped half the lobby
@@ -174,66 +339,20 @@ export class BrawlEngine {
         this.botControllers[p.id] = new BrawlBot();
       }
 
-      return {
+      const entity = createBrawlerEntity({
         id: p.id,
         name: p.name,
         brawlerId: p.brawler || 'mira',
         team,
         x: spawn.x,
         y: spawn.y,
-        angle: 0,
-        aimAngle: 0,
-        vx: 0,
-        vy: 0,
-        knockbackVx: 0,
-        knockbackVy: 0,
-        stunTimer: 0,
-        speedBoostTimer: 0,
-        hp: cfg.maxHp,
-        maxHp: cfg.maxHp,
-        ammo: 3,
-        maxAmmo: 3,
-        reloadTimer: 0,
-        attackCooldown: 0,
-        prevX: spawn.x,
-        prevY: spawn.y,
-        superCharge: 0,
-        isAlive: true,
-        powerCubes: 0,
-        gemsCarried: 0,
-        isInBush: false,
-        isVisibleToEnemies: true,
-        invisibilityTimer: 0,
-        isJumping: false,
-        jumpProgress: 0,
-        jumpStartX: 0,
-        jumpStartY: 0,
-        jumpTargetX: 0,
-        jumpTargetY: 0,
-        timeSinceLastDamage: 99,
-        timeSinceLastAttack: 99,
-        slowTimer: 0,
-        activeEmote: null,
-        emoteTimer: 0,
         isBot: p.isBot,
-        kills: 0,
-        burstRemaining: 0,
-        burstInterval: 0,
-        burstTimer: 0,
-        burstIsSuper: false,
-        burstAimAngle: 0,
-        burstTargetX: 0,
-        burstTargetY: 0,
-        burstShotIndex: 0,
-        // Star Powers & Gadgets
-        gadgetCharges: 3,
-        gadgetCooldown: 0,
-        bandAidCooldown: 0,
-        meteorRushTimer: 0,
-        burnTimer: 0,
-        burnDamagePerSec: 0,
-        isClone: false,
-      };
+      });
+      // Where this brawler returns to if the mode allows it, fixed for the
+      // whole match so a death never relocates someone's base.
+      entity.spawnX = spawn.x;
+      entity.spawnY = spawn.y;
+      return entity;
     });
   }
 
@@ -279,9 +398,31 @@ export class BrawlEngine {
 
     for (let bi = this.brawlers.length - 1; bi >= 0; bi--) {
       const b = this.brawlers[bi];
-      if (!b.isAlive) continue;
+
+      if (!b.isAlive) {
+        // A decoy that goes down is simply gone; there is nothing to respawn.
+        if (b.isClone) {
+          this.addEffect('smoke_poof', b.x, b.y, 40, '#06b6d4', 0.35);
+          this.brawlers.splice(bi, 1);
+          continue;
+        }
+        if (b.respawnTimer > 0) {
+          b.respawnTimer -= dt;
+          if (b.respawnTimer <= 0) {
+            const rules = MODE_RULES[this.mode];
+            respawnBrawler(b, {
+              immunity: rules.respawnImmunity,
+              superRetention: rules.superRetention,
+            });
+            this.addEffect('smoke_poof', b.x, b.y, 56, '#38bdf8', 0.45);
+            this.addFloatingNumber('GERİ DÖNDÜ', b.x, b.y - 30, '#38bdf8');
+          }
+        }
+        continue;
+      }
 
       const cfg = BRAWLERS[b.brawlerId];
+      const kit = getKit(b.brawlerId);
 
       // Remember where the body was so the renderer can interpolate between
       // simulation ticks instead of snapping once every 1/60 s.
@@ -315,21 +456,15 @@ export class BrawlEngine {
         }
       }
 
-      // Timers: Stun, Slow, Speed Boost, Invisibility, Emote, Gadget, Star Powers
-      if (b.stunTimer > 0) b.stunTimer -= dt;
-      if (b.slowTimer > 0) b.slowTimer -= dt;
-      if (b.speedBoostTimer > 0) b.speedBoostTimer -= dt;
-      if (b.invisibilityTimer > 0) b.invisibilityTimer -= dt;
+      tickStatuses(b, dt);
       if (b.gadgetCooldown > 0) b.gadgetCooldown -= dt;
-      if (b.bandAidCooldown > 0) b.bandAidCooldown -= dt;
-      if (b.meteorRushTimer > 0) b.meteorRushTimer -= dt;
 
       if (b.emoteTimer > 0) {
         b.emoteTimer -= dt;
         if (b.emoteTimer <= 0) b.activeEmote = null;
       }
 
-      // El Fuego Burn Tick
+      // Burning ground and burning bodies both land here.
       if (b.burnTimer > 0) {
         b.burnTimer -= dt;
         const burnDmg = Math.round(b.burnDamagePerSec * dt);
@@ -342,38 +477,13 @@ export class BrawlEngine {
         }
       }
 
-      // Shelly Star Power: Band-Aid (Instant heal when HP < 40%)
-      if (b.brawlerId === 'mira' && b.hp < b.maxHp * 0.4 && b.bandAidCooldown <= 0) {
-        b.hp = Math.min(b.maxHp, b.hp + 1800);
-        b.bandAidCooldown = 15.0;
-        this.addFloatingNumber('+1800 YARA BANDI!', b.x, b.y - 30, '#4ade80');
-        this.visualEffects.push({
-          id: `fx-${this.nextEntityId++}`,
-          type: 'band_aid',
-          x: b.x,
-          y: b.y,
-          radius: 50,
-          color: '#22c55e',
-          duration: 0.6,
-          progress: 0,
-        });
-        this.onSoundTriggered?.({ type: 'band_aid' });
-      }
+      // Star powers and other conditional, always-on behaviour. This used to
+      // be three hand-written `b.brawlerId === '...'` blocks in the middle of
+      // the movement code.
+      runPassives(this.world, b, kit.passives, dt);
 
-      // Spike Star Power: Fertilizer (Heals +700 HP/sec in own Thorn Field)
-      if (b.brawlerId === 'thorn') {
-        const inOwnThorn = this.thornFields.some(tf => tf.ownerId === b.id && dist(b.x, b.y, tf.x, tf.y) <= tf.radius);
-        if (inOwnThorn) {
-          b.hp = Math.min(b.maxHp, b.hp + 700 * dt);
-        }
-      }
-
-      // Leon Star Power: Invisiheal (Heals +700 HP/sec in Stealth)
-      if (b.brawlerId === 'wisp' && b.invisibilityTimer > 0) {
-        b.hp = Math.min(b.maxHp, b.hp + 700 * dt);
-      }
-
-      // Leon Holographic Clone AI
+      // A decoy walks at whatever it can see and does nothing else. It exists
+      // to draw fire, which it can only do by being a real body.
       if (b.isClone) {
         // Clone charges toward nearest enemy
         const enemy = this.brawlers.find(e => e.id !== b.id && e.isAlive && e.team !== b.team && !e.isClone);
@@ -383,8 +493,8 @@ export class BrawlEngine {
           b.y += Math.sin(ang) * 190 * dt;
           b.aimAngle = ang;
         }
-        b.timeSinceLastDamage += dt;
-        if (b.timeSinceLastDamage > 8.0 || b.hp <= 0) {
+        b.decoyLifetime = (b.decoyLifetime ?? 0) - dt;
+        if (b.decoyLifetime <= 0 || b.hp <= 0) {
           this.visualEffects.push({
             id: `fx-${this.nextEntityId++}`,
             type: 'smoke_poof',
@@ -433,21 +543,28 @@ export class BrawlEngine {
           b.isJumping = false;
           b.x = b.jumpTargetX;
           b.y = b.jumpTargetY;
-          if (b.brawlerId === 'boulder') {
-            this.triggerSlamLanding(b);
+
+          // Whatever the kit said to do on landing. The key travels on the
+          // entity because the landing happens long after the Super was fired.
+          const landing = b.jumpLandKey ? getActions(b.jumpLandKey) : undefined;
+          b.jumpLandKey = undefined;
+          if (landing) {
+            runActions(makeContext(this.world, b, { hereX: b.x, hereY: b.y }), landing);
           }
         }
         continue; // Airborne brawler skips ground collisions & input
       }
 
-      // Process Queued Burst Attacks (Deterministic tick-based burst shooting)
-      if (b.burstRemaining > 0) {
-        b.burstTimer -= dt;
-        if (b.burstTimer <= 0) {
-          this.fireQueuedBurstShot(b);
-          b.burstRemaining--;
-          b.burstShotIndex++;
-          b.burstTimer = b.burstInterval;
+      // Attacks that fire over several ticks rather than all at once.
+      const burst = b.pendingBurst;
+      if (burst) {
+        burst.timer -= dt;
+        if (burst.timer <= 0) {
+          fireBurstShot(this.world, b);
+          burst.remaining--;
+          burst.index++;
+          burst.timer = burst.interval;
+          if (burst.remaining <= 0) b.pendingBurst = null;
         }
       }
 
@@ -484,11 +601,9 @@ export class BrawlEngine {
         continue;
       }
 
-      // Movement Calculations with Speed Modifiers & Star Powers
-      let speed = cfg.speed;
-      if (b.slowTimer > 0) speed *= 0.5; // Spike slow
-      if (b.speedBoostTimer > 0) speed *= 1.3; // Leon Smoke Trails (+30%)
-      if (b.meteorRushTimer > 0) speed *= 1.32; // El Primo Meteor Rush (+32%)
+      let speed = cfg.speed * (kit.traits?.speedMultiplier ?? 1);
+      if (b.slowTimer > 0) speed *= 0.5;
+      if (b.speedBoostTimer > 0) speed *= b.speedBoostMagnitude;
 
       // Velocity ramps toward the input rather than snapping to it. Instant
       // full-speed starts and dead stops are why movement felt like sliding
@@ -496,7 +611,8 @@ export class BrawlEngine {
       let targetVx = 0;
       let targetVy = 0;
       const inputLen = Math.hypot(input.moveX, input.moveY);
-      const isPushing = inputLen > 0.001;
+      // Rooted brawlers keep shooting; they just cannot reposition.
+      const isPushing = inputLen > 0.001 && b.rootTimer <= 0;
       if (isPushing) {
         const scale = Math.min(1, inputLen) / inputLen;
         targetVx = input.moveX * scale * speed;
@@ -549,7 +665,11 @@ export class BrawlEngine {
       }
 
       // Visibility: visible if attacking or damaged within 1.5s
-      b.isVisibleToEnemies = !b.isInBush || b.timeSinceLastAttack < 1.5 || b.timeSinceLastDamage < 1.5;
+      b.isVisibleToEnemies =
+        !b.isInBush ||
+        b.revealTimer > 0 ||
+        b.timeSinceLastAttack < 1.5 ||
+        b.timeSinceLastDamage < 1.5;
 
       // Super Sound Trigger (Iconic chime when super reaches 100%)
       const wasSuperReady = this.prevSuperReadyState[b.id] || false;
@@ -559,642 +679,73 @@ export class BrawlEngine {
       }
       this.prevSuperReadyState[b.id] = isSuperReady;
 
-      // GADGET ACTIVATION (E Key / Mobile Gadget button)
+      // Gadget, Super, attack. Three `switch (b.brawlerId)` blocks with
+      // eighteen branches between them used to live below this point; all of
+      // it is kit data now, run by one interpreter that never learns a
+      // character's name.
       if (input.gadget && b.gadgetCharges > 0 && b.gadgetCooldown <= 0) {
         b.gadgetCharges--;
-        b.gadgetCooldown = 4.5;
-        this.executeGadget(b);
+        b.gadgetCooldown = GADGET_COOLDOWN;
+        this.onSoundTriggered?.({ type: 'gadget_activate' });
+        executeAbility(this.contextFor(b, input, false), kit.gadget);
       }
 
-      // ATTACK & SUPER TRIGGERING
-      if (input.superAttack && b.superCharge >= 100) {
+      if (input.superAttack && b.superCharge >= 100 && b.silenceTimer <= 0) {
         b.superCharge = 0;
         b.timeSinceLastAttack = 0;
-        if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking cancels stealth
-        this.executeSuper(b, input);
-      } else if (
-        input.attack &&
-        b.ammo >= 1 &&
-        b.attackCooldown <= 0 &&
-        b.burstRemaining <= 0
-      ) {
+        if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking breaks stealth
+        executeAbility(this.contextFor(b, input, true), kit.super);
+      } else if (input.attack && b.ammo >= 1 && b.attackCooldown <= 0 && !b.pendingBurst) {
         b.ammo -= 1;
         // A fixed post-attack delay, separate from ammo, stops a full clip
         // from leaving the barrel inside a couple of frames.
         b.attackCooldown = cfg.attackCooldown;
         b.timeSinceLastAttack = 0;
-        if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking cancels stealth
-        this.executeAttack(b, input);
+        if (b.invisibilityTimer > 0) b.invisibilityTimer = 0;
+
+        // Flash at the barrel so firing has a visible origin, rather than
+        // projectiles appearing a few pixels ahead of the body.
+        this.addEffect(
+          'muzzle_flash',
+          b.x + Math.cos(input.aimAngle) * 24,
+          b.y + Math.sin(input.aimAngle) * 24,
+          17,
+          cfg.color,
+          0.1,
+          input.aimAngle,
+          0.45
+        );
+        executeAbility(this.contextFor(b, input, false), kit.attack);
       }
     }
   }
 
-  // Gadgets Execution
-  private executeGadget(b: BrawlerEntity) {
-    this.onSoundTriggered?.({ type: 'gadget_activate' });
+  /**
+   * A blast: damage and knockback to hostile bodies, and demolition of
+   * whatever terrain it covers.
+   *
+   * It always spares the owner. That is not a nicety — before, the tank's
+   * landing took 1300 off his own health bar and the artillery gadget blew its
+   * user up on the way out.
+   */
+  private explode(params: ExplosionParams) {
+    const { x, y, ownerId, team, damage, radius } = params;
 
-    switch (b.brawlerId) {
-      case 'mira': {
-        // Fast Forward: Dash 140px in aim direction
-        this.addFloatingNumber('İLERİ ATILMA!', b.x, b.y - 25, '#c084fc');
-        b.knockbackVx = Math.cos(b.aimAngle) * 580;
-        b.knockbackVy = Math.sin(b.aimAngle) * 580;
-        this.visualEffects.push({
-          id: `fx-${this.nextEntityId++}`,
-          type: 'dash',
-          x: b.x,
-          y: b.y,
-          radius: 50,
-          color: '#a855f7',
-          duration: 0.3,
-          progress: 0,
-        });
-        break;
-      }
-
-      case 'rivet': {
-        // Speedloader: Instantly reload 2 ammo
-        b.ammo = Math.min(b.maxAmmo, b.ammo + 2);
-        this.addFloatingNumber('+2 CEPHANE!', b.x, b.y - 25, '#ef4444');
-        this.onSoundTriggered?.({ type: 'rapid_reload' });
-        break;
-      }
-
-      case 'boulder': {
-        // Suplex Supplement: Grab nearest enemy (< 90px) and throw behind
-        let nearest: BrawlerEntity | null = null;
-        let minDist = 90;
-        for (const other of this.brawlers) {
-          if (other.id === b.id || !other.isAlive || other.team === b.team) continue;
-          const d = dist(b.x, b.y, other.x, other.y);
-          if (d < minDist) {
-            minDist = d;
-            nearest = other;
-          }
-        }
-        if (nearest) {
-          const flingAng = b.aimAngle + Math.PI;
-          nearest.x = b.x + Math.cos(flingAng) * 140;
-          nearest.y = b.y + Math.sin(flingAng) * 140;
-          nearest.stunTimer = 0.6;
-          this.damageBrawler(nearest, 480, b.id);
-          this.addFloatingNumber('SUPLEX!', nearest.x, nearest.y - 25, '#0284c7');
-          this.onSoundTriggered?.({ type: 'super_blast' });
-        } else {
-          this.addFloatingNumber('HEDEF YOK!', b.x, b.y - 25, '#94a3b8');
-        }
-        break;
-      }
-
-      case 'fuse': {
-        // Rocket Laces: Jump in air, push and damage nearby enemies
-        this.addFloatingNumber('ROKET BAĞCIKLARI!', b.x, b.y - 25, '#f59e0b');
-        b.isJumping = true;
-        b.jumpProgress = 0;
-        b.jumpStartX = b.x;
-        b.jumpStartY = b.y;
-        b.jumpTargetX = b.x + Math.cos(b.aimAngle) * 120;
-        b.jumpTargetY = b.y + Math.sin(b.aimAngle) * 120;
-
-        this.triggerExplosionAt(b.x, b.y, b.id, b.team, 500, 75, true, 250);
-        this.onSoundTriggered?.({ type: 'rocket_launch' });
-        break;
-      }
-
-      case 'thorn': {
-        // Popping Pincushion: 360-degree burst of 16 needles
-        this.addFloatingNumber('DİKEN YAĞMURU!', b.x, b.y - 25, '#10b981');
-        for (let i = 0; i < 16; i++) {
-          const ang = (i * Math.PI * 2) / 16;
-          this.projectiles.push({
-            id: `proj-${this.nextEntityId++}`,
-            ownerId: b.id,
-            brawlerId: 'thorn',
-            team: b.team,
-            x: b.x + Math.cos(ang) * 15,
-            y: b.y + Math.sin(ang) * 15,
-            vx: Math.cos(ang) * 480,
-            vy: Math.sin(ang) * 480,
-            radius: 4.5,
-            damage: 420,
-            maxRange: 240,
-            traveled: 0,
-            isSuper: false,
-            color: '#10b981',
-            piercesWalls: false,
-            breaksWalls: false,
-          });
-        }
-        break;
-      }
-
-      case 'wisp': {
-        // Clone Projector: Spawn holographic decoy clone
-        this.addFloatingNumber('KLON OLUŞTURULDU!', b.x, b.y - 25, '#06b6d4');
-        const cloneId = `clone-${this.nextEntityId++}`;
-        this.brawlers.push({
-          id: cloneId,
-          name: `${b.name} (KLON)`,
-          brawlerId: 'wisp',
-          team: b.team,
-          x: b.x + 20,
-          y: b.y + 20,
-          angle: b.angle,
-          aimAngle: b.aimAngle,
-          vx: 0,
-          vy: 0,
-          knockbackVx: 0,
-          knockbackVy: 0,
-          stunTimer: 0,
-          speedBoostTimer: 0,
-          hp: b.hp,
-          maxHp: b.maxHp,
-          ammo: 0,
-          maxAmmo: 3,
-          reloadTimer: 0,
-          attackCooldown: 0,
-          prevX: b.x + 20,
-          prevY: b.y + 20,
-          superCharge: 0,
-          isAlive: true,
-          powerCubes: b.powerCubes,
-          gemsCarried: 0,
-          isInBush: false,
-          isVisibleToEnemies: true,
-          invisibilityTimer: 0,
-          isJumping: false,
-          jumpProgress: 0,
-          jumpStartX: 0,
-          jumpStartY: 0,
-          jumpTargetX: 0,
-          jumpTargetY: 0,
-          timeSinceLastDamage: 0,
-          timeSinceLastAttack: 99,
-          slowTimer: 0,
-          activeEmote: '🤖',
-          emoteTimer: 3,
-          isBot: true,
-          kills: 0,
-          burstRemaining: 0,
-          burstInterval: 0,
-          burstTimer: 0,
-          burstIsSuper: false,
-          burstAimAngle: 0,
-          burstTargetX: 0,
-          burstTargetY: 0,
-          burstShotIndex: 0,
-          gadgetCharges: 0,
-          gadgetCooldown: 99,
-          bandAidCooldown: 99,
-          meteorRushTimer: 0,
-          burnTimer: 0,
-          burnDamagePerSec: 0,
-          isClone: true,
-        });
-        break;
-      }
-    }
-  }
-
-  // Basic Attacks Implementation (Authentic to Nova Arena)
-  private executeAttack(b: BrawlerEntity, input: BrawlPlayerInput) {
-    const cfg = BRAWLERS[b.brawlerId];
-    const dmgMultiplier = 1 + b.powerCubes * 0.1;
-
-    // Flash at the barrel so firing has a visible origin, not just projectiles
-    // appearing a few pixels ahead of the body.
-    this.addEffect(
-      'muzzle_flash',
-      b.x + Math.cos(input.aimAngle) * 24,
-      b.y + Math.sin(input.aimAngle) * 24,
-      17,
-      cfg.color,
-      0.1,
-      input.aimAngle,
-      0.45
-    );
-
-    switch (b.brawlerId) {
-      case 'mira': {
-        // Shelly Buckshot: 5 spread pellets simultaneously! Devastating point blank
-        this.onSoundTriggered?.({ type: 'scatter_shot' });
-        const pelletCount = 5;
-        const spread = cfg.spreadAngle;
-        const baseDmg = Math.round(cfg.damagePerAttack * dmgMultiplier);
-
-        for (let i = 0; i < pelletCount; i++) {
-          const offset = ((i / (pelletCount - 1)) - 0.5) * spread;
-          const ang = input.aimAngle + offset;
-          this.projectiles.push({
-            id: `proj-${this.nextEntityId++}`,
-            ownerId: b.id,
-            brawlerId: b.brawlerId,
-            team: b.team,
-            x: b.x + Math.cos(ang) * 22,
-            y: b.y + Math.sin(ang) * 22,
-            vx: Math.cos(ang) * cfg.projectileSpeed,
-            vy: Math.sin(ang) * cfg.projectileSpeed,
-            radius: 5,
-            damage: baseDmg,
-            maxRange: cfg.range,
-            traveled: 0,
-            isSuper: false,
-            color: '#c084fc',
-            piercesWalls: false,
-            breaksWalls: false,
-          });
-        }
-        break;
-      }
-
-      case 'rivet': {
-        // Colt Six-Shooters: 6 high-speed bullets in rapid burst!
-        this.onSoundTriggered?.({ type: 'rapid_shot' });
-        b.burstRemaining = 6;
-        b.burstInterval = 0.065;
-        b.burstTimer = 0; // Fire first bullet immediately
-        b.burstIsSuper = false;
-        b.burstAimAngle = input.aimAngle;
-        b.burstShotIndex = 0;
-        break;
-      }
-
-      case 'boulder': {
-        // El Primo Fists of Fury: 4 rapid alternating boxing punches!
-        this.onSoundTriggered?.({ type: 'heavy_punch' });
-        b.burstRemaining = 4;
-        b.burstInterval = 0.08;
-        b.burstTimer = 0;
-        b.burstIsSuper = false;
-        b.burstAimAngle = input.aimAngle;
-        b.burstShotIndex = 0;
-        break;
-      }
-
-      case 'fuse': {
-        // Brock Rockin' Rocket: Single rocket with splash AoE and incendiary fire patch!
-        this.onSoundTriggered?.({ type: 'rocket_launch' });
-        const baseDmg = Math.round(cfg.damagePerAttack * dmgMultiplier);
-        this.projectiles.push({
-          id: `proj-${this.nextEntityId++}`,
-          ownerId: b.id,
-          brawlerId: b.brawlerId,
-          team: b.team,
-          x: b.x + Math.cos(input.aimAngle) * 25,
-          y: b.y + Math.sin(input.aimAngle) * 25,
-          vx: Math.cos(input.aimAngle) * cfg.projectileSpeed,
-          vy: Math.sin(input.aimAngle) * cfg.projectileSpeed,
-          radius: 8,
-          damage: baseDmg,
-          maxRange: cfg.range,
-          traveled: 0,
-          isSuper: false,
-          color: '#fbbf24',
-          piercesWalls: false,
-          breaksWalls: false,
-          spawnFireOnEnd: true,
-        });
-        break;
-      }
-
-      case 'thorn': {
-        // Spike Needle Grenade: Explodes into 6 sharp needles at 60° increments with Curveball!
-        this.onSoundTriggered?.({ type: 'scatter_shot' });
-        const baseDmg = Math.round(cfg.damagePerAttack * dmgMultiplier);
-        this.projectiles.push({
-          id: `proj-${this.nextEntityId++}`,
-          ownerId: b.id,
-          brawlerId: b.brawlerId,
-          team: b.team,
-          x: b.x + Math.cos(input.aimAngle) * 20,
-          y: b.y + Math.sin(input.aimAngle) * 20,
-          vx: Math.cos(input.aimAngle) * cfg.projectileSpeed,
-          vy: Math.sin(input.aimAngle) * cfg.projectileSpeed,
-          radius: 9,
-          damage: baseDmg,
-          maxRange: cfg.range,
-          traveled: 0,
-          isSuper: false,
-          color: '#34d399',
-          piercesWalls: false,
-          breaksWalls: false,
-          burstNeedlesOnEnd: true,
-        });
-        break;
-      }
-
-      case 'wisp': {
-        // Leon Spinner Blades: 4 shurikens in a sweep! Assassin close-range burst
-        this.onSoundTriggered?.({ type: 'blade_throw' });
-        b.burstRemaining = 4;
-        b.burstInterval = 0.055;
-        b.burstTimer = 0;
-        b.burstIsSuper = false;
-        b.burstAimAngle = input.aimAngle;
-        b.burstShotIndex = 0;
-        break;
-      }
-    }
-  }
-
-  // Firing one shot from the active burst queue
-  private fireQueuedBurstShot(b: BrawlerEntity) {
-    const cfg = BRAWLERS[b.brawlerId];
-    const dmgMultiplier = 1 + b.powerCubes * 0.1;
-
-    if (b.brawlerId === 'rivet') {
-      if (b.burstIsSuper) {
-        // Colt Super: Bullet Storm (12 giant piercing bullets)
-        const spread = (this.rng.next() - 0.5) * 0.05;
-        const ang = b.burstAimAngle + spread;
-        this.projectiles.push({
-          id: `proj-${this.nextEntityId++}`,
-          ownerId: b.id,
-          brawlerId: b.brawlerId,
-          team: b.team,
-          x: b.x + Math.cos(ang) * 26,
-          y: b.y + Math.sin(ang) * 26,
-          vx: Math.cos(ang) * 800,
-          vy: Math.sin(ang) * 800,
-          radius: 7,
-          damage: Math.round(440 * dmgMultiplier),
-          maxRange: 580,
-          traveled: 0,
-          isSuper: true,
-          color: '#f43f5e',
-          piercesWalls: true,
-          breaksWalls: true,
-        });
-        if (b.burstShotIndex % 3 === 0) this.onSoundTriggered?.({ type: 'rapid_shot' });
-      } else {
-        // Colt Basic: Six-Shooters (6 rapid bullets)
-        const spread = (this.rng.next() - 0.5) * 0.04;
-        const ang = b.burstAimAngle + spread;
-        this.projectiles.push({
-          id: `proj-${this.nextEntityId++}`,
-          ownerId: b.id,
-          brawlerId: b.brawlerId,
-          team: b.team,
-          x: b.x + Math.cos(ang) * 22,
-          y: b.y + Math.sin(ang) * 22,
-          vx: Math.cos(ang) * cfg.projectileSpeed,
-          vy: Math.sin(ang) * cfg.projectileSpeed,
-          radius: 4.5,
-          damage: Math.round(cfg.damagePerAttack * dmgMultiplier),
-          maxRange: cfg.range,
-          traveled: 0,
-          isSuper: false,
-          color: '#f87171',
-          piercesWalls: false,
-          breaksWalls: false,
-        });
-      }
-    } else if (b.brawlerId === 'boulder') {
-      // El Primo Fists of Fury (alternating left/right punches)
-      const offset = (b.burstShotIndex % 2 === 0 ? 1 : -1) * 0.14;
-      const ang = b.burstAimAngle + offset;
-      this.projectiles.push({
-        id: `proj-${this.nextEntityId++}`,
-        ownerId: b.id,
-        brawlerId: b.brawlerId,
-        team: b.team,
-        x: b.x + Math.cos(ang) * 20,
-        y: b.y + Math.sin(ang) * 20,
-        vx: Math.cos(ang) * cfg.projectileSpeed,
-        vy: Math.sin(ang) * cfg.projectileSpeed,
-        radius: 9,
-        damage: Math.round(cfg.damagePerAttack * dmgMultiplier),
-        maxRange: cfg.range,
-        traveled: 0,
-        isSuper: false,
-        color: '#38bdf8',
-        piercesWalls: false,
-        breaksWalls: false,
-      });
-    } else if (b.brawlerId === 'wisp') {
-      // Leon Spinner Blades (sweeping arc from left to right)
-      const offset = ((b.burstShotIndex / 3) - 0.5) * 0.28;
-      const ang = b.burstAimAngle + offset;
-      this.projectiles.push({
-        id: `proj-${this.nextEntityId++}`,
-        ownerId: b.id,
-        brawlerId: b.brawlerId,
-        team: b.team,
-        x: b.x + Math.cos(ang) * 20,
-        y: b.y + Math.sin(ang) * 20,
-        vx: Math.cos(ang) * cfg.projectileSpeed,
-        vy: Math.sin(ang) * cfg.projectileSpeed,
-        radius: 6,
-        damage: Math.round(cfg.damagePerAttack * dmgMultiplier),
-        maxRange: cfg.range,
-        traveled: 0,
-        isSuper: false,
-        color: '#22d3ee',
-        piercesWalls: false,
-        breaksWalls: false,
-      });
-    } else if (b.brawlerId === 'fuse' && b.burstIsSuper) {
-      // Brock Super: Rocket Rain (9 artillery rockets)
-      const rx = b.burstTargetX + (this.rng.next() - 0.5) * 170;
-      const ry = b.burstTargetY + (this.rng.next() - 0.5) * 170;
-      this.triggerExplosionAt(rx, ry, b.id, b.team, Math.round(950 * dmgMultiplier), 85, true);
-      this.onSoundTriggered?.({ type: 'rocket_launch' });
-    }
-  }
-
-  // Super Attacks Implementation
-  private executeSuper(b: BrawlerEntity, input: BrawlPlayerInput) {
-    const dmgMultiplier = 1 + b.powerCubes * 0.1;
-
-    switch (b.brawlerId) {
-      case 'mira': {
-        // Super Shell: 9 heavy buckshot shells that break walls, shear bushes, knock back, and stun!
-        this.onSoundTriggered?.({ type: 'super_blast' });
-        const pelletCount = 9;
-        const spread = 0.55;
-        const superDmg = Math.round(440 * dmgMultiplier);
-
-        this.visualEffects.push({
-          id: `fx-${this.nextEntityId++}`,
-          type: 'shockwave',
-          x: b.x + Math.cos(input.aimAngle) * 30,
-          y: b.y + Math.sin(input.aimAngle) * 30,
-          radius: 90,
-          color: '#e879f9',
-          duration: 0.35,
-          progress: 0,
-        });
-
-        for (let i = 0; i < pelletCount; i++) {
-          const offset = ((i / (pelletCount - 1)) - 0.5) * spread;
-          const ang = input.aimAngle + offset;
-          this.projectiles.push({
-            id: `proj-${this.nextEntityId++}`,
-            ownerId: b.id,
-            brawlerId: b.brawlerId,
-            team: b.team,
-            x: b.x + Math.cos(ang) * 26,
-            y: b.y + Math.sin(ang) * 26,
-            vx: Math.cos(ang) * 680,
-            vy: Math.sin(ang) * 680,
-            radius: 7.5,
-            damage: superDmg,
-            maxRange: 400,
-            traveled: 0,
-            isSuper: true,
-            color: '#e879f9',
-            piercesWalls: false,
-            breaksWalls: true,
-            knockbackForce: 380,
-          });
-        }
-        break;
-      }
-
-      case 'rivet': {
-        // Bullet Storm: 12 long-range piercing bullets breaking through obstacles!
-        this.onSoundTriggered?.({ type: 'super_blast' });
-        b.burstRemaining = 12;
-        b.burstInterval = 0.045;
-        b.burstTimer = 0;
-        b.burstIsSuper = true;
-        b.burstAimAngle = input.aimAngle;
-        b.burstShotIndex = 0;
-        break;
-      }
-
-      case 'boulder': {
-        // Flying Elbow Drop: Airborne leap over walls and landing earthquake shockwave!
-        this.onSoundTriggered?.({ type: 'heavy_leap' });
-        b.isJumping = true;
-        b.jumpProgress = 0;
-        b.jumpStartX = b.x;
-        b.jumpStartY = b.y;
-
-        const leapDist = Math.min(380, dist(b.x, b.y, input.superTargetX || b.x, input.superTargetY || b.y) || 280);
-        const ang = Math.atan2((input.superTargetY || b.y) - b.y, (input.superTargetX || b.x) - b.x);
-        b.jumpTargetX = b.x + Math.cos(ang) * leapDist;
-        b.jumpTargetY = b.y + Math.sin(ang) * leapDist;
-        break;
-      }
-
-      case 'fuse': {
-        // Rocket Rain: 9 heavy incendiary rockets raining from above!
-        this.onSoundTriggered?.({ type: 'super_blast' });
-        const targetX = input.superTargetX || (b.x + Math.cos(b.aimAngle) * 360);
-        const targetY = input.superTargetY || (b.y + Math.sin(b.aimAngle) * 360);
-
-        b.burstRemaining = 9;
-        b.burstInterval = 0.12;
-        b.burstTimer = 0;
-        b.burstIsSuper = true;
-        b.burstTargetX = targetX;
-        b.burstTargetY = targetY;
-        b.burstShotIndex = 0;
-        break;
-      }
-
-      case 'thorn': {
-        // Stick Around!: Giant thorny garden slowing enemies by 50% and dealing rapid damage
-        this.onSoundTriggered?.({ type: 'super_blast' });
-        const targetX = input.superTargetX || (b.x + Math.cos(b.aimAngle) * 320);
-        const targetY = input.superTargetY || (b.y + Math.sin(b.aimAngle) * 320);
-
-        this.thornFields.push({
-          id: `tf-${this.nextEntityId++}`,
-          ownerId: b.id,
-          team: b.team,
-          x: targetX,
-          y: targetY,
-          radius: 135,
-          duration: 5.0,
-          damagePerSec: Math.round(600 * dmgMultiplier),
-        });
-        break;
-      }
-
-      case 'wisp': {
-        // Smoke Bomb: Smoke cloud puff, 6s Invisibility AND +30% Assassin Speed Boost & Invisiheal!
-        this.onSoundTriggered?.({ type: 'super_blast' });
-        b.invisibilityTimer = 6.0;
-        b.speedBoostTimer = 6.0;
-
-        this.visualEffects.push({
-          id: `fx-${this.nextEntityId++}`,
-          type: 'smoke_poof',
-          x: b.x,
-          y: b.y,
-          radius: 65,
-          color: '#06b6d4',
-          duration: 0.5,
-          progress: 0,
-        });
-
-        this.addFloatingNumber('GÖRÜNMEZLİK AKTİF!', b.x, b.y - 30, '#06b6d4');
-        break;
-      }
-    }
-  }
-
-  private triggerSlamLanding(b: BrawlerEntity) {
-    this.onSoundTriggered?.({ type: 'super_blast' });
-    const blastRadius = 125;
-    const dmg = Math.round(1300 * (1 + b.powerCubes * 0.1));
-
-    // El Primo Meteor Rush Star Power (+32% speed for 4s)
-    b.meteorRushTimer = 4.0;
-
-    // Spawn earthquake crater shockwave
-    this.visualEffects.push({
-      id: `fx-${this.nextEntityId++}`,
-      type: 'ground_slam',
-      x: b.x,
-      y: b.y,
-      radius: blastRadius,
-      color: '#f59e0b',
-      duration: 0.45,
-      progress: 0,
-    });
-
-    this.triggerExplosionAt(b.x, b.y, b.id, b.team, dmg, blastRadius, false, 420, true);
-  }
-
-  private triggerExplosionAt(
-    x: number,
-    y: number,
-    ownerId: string,
-    team: number,
-    damage: number,
-    radius: number,
-    spawnFire: boolean = false,
-    knockbackForce: number = 0,
-    applyPrimoBurn: boolean = false
-  ) {
-    // Damage and knockback enemies
     for (const b of this.brawlers) {
       if (!b.isAlive || b.isJumping) continue;
-      // El Primo's landing used to take 1300 off his own health bar, and
-      // Brock's Rocket Laces blew him up on the way out.
-      if (b.id === ownerId) continue;
-      if (b.team === team && this.mode === 'gem_grab') continue;
+      if (b.id === ownerId || b.id === params.excludeId) continue;
+      if (!this.isHostile(team, b)) continue;
 
-      const d = dist(x, y, b.x, b.y);
-      if (d <= radius + 22) {
+      if (dist(x, y, b.x, b.y) <= radius + BRAWLER_RADIUS) {
         this.damageBrawler(b, damage, ownerId);
-
-        // El Fuego Star Power: Burns hit enemies for 4s
-        if (applyPrimoBurn) {
-          b.burnTimer = 4.0;
-          b.burnDamagePerSec = 300;
+        if (params.burn) {
+          applyStatus(b, {
+            kind: 'burn',
+            duration: params.burn.duration,
+            magnitude: params.burn.damagePerSec,
+          });
         }
-
-        // Apply knockback away from explosion
-        if (knockbackForce > 0) {
-          const ang = Math.atan2(b.y - y, b.x - x);
-          b.knockbackVx += Math.cos(ang) * knockbackForce;
-          b.knockbackVy += Math.sin(ang) * knockbackForce;
-          b.stunTimer = Math.max(b.stunTimer, 0.35);
-        }
+        if (params.knockback) applyKnockback(b, x, y, params.knockback, 0.35);
       }
     }
 
@@ -1211,14 +762,17 @@ export class BrawlEngine {
     }
 
     // Destroy breakable walls
+    let brokeWalls = false;
     for (let i = this.walls.length - 1; i >= 0; i--) {
       const w = this.walls[i];
       if (w.isDestructible) {
         if (dist(x, y, w.x + w.w / 2, w.y + w.h / 2) <= radius + 20) {
           this.walls.splice(i, 1);
+          brokeWalls = true;
         }
       }
     }
+    if (brokeWalls) this.wallGridDirty = true;
 
     // Clear bushes in blast radius
     for (let i = this.bushes.length - 1; i >= 0; i--) {
@@ -1228,18 +782,15 @@ export class BrawlEngine {
       }
     }
 
-    // Spawn Incendiary Fire Patch if requested (Brock)
-    if (spawnFire) {
-      this.firePatches.push({
-        id: `fire-${this.nextEntityId++}`,
-        ownerId,
-        team,
+    if (params.spawnFire) {
+      spawnHazard(
+        this.world,
+        { kind: 'fire', radius: 44, duration: 2.0, damagePerSec: 420 },
         x,
         y,
-        radius: 44,
-        duration: 2.0,
-        damagePerSec: 420,
-      });
+        ownerId,
+        team
+      );
     }
   }
 
@@ -1258,13 +809,26 @@ export class BrawlEngine {
     const toRemove = new Set<string>();
 
     for (const p of this.projectiles) {
-      // Spike's needles curve as they fly.
-      if (p.isCurvingNeedle) {
-        const curAng = Math.atan2(p.vy, p.vx) + 2.5 * dt;
+      // ---- steering, for anything that does not fly straight -----------
+      if (p.motion === 'curve' && p.curveRate) {
+        const curAng = Math.atan2(p.vy, p.vx) + p.curveRate * dt;
         const spd = Math.hypot(p.vx, p.vy);
         p.vx = Math.cos(curAng) * spd;
         p.vy = Math.sin(curAng) * spd;
+      } else if (p.motion === 'boomerang' && p.turnAt !== undefined && p.traveled >= p.turnAt) {
+        // Turns once, then runs back down its own line. Its range has to grow
+        // by the distance it already covered or it would expire on the spot,
+        // and its hit list clears so the return leg can connect again.
+        p.vx = -p.vx;
+        p.vy = -p.vy;
+        p.turnAt = undefined;
+        p.maxRange += p.traveled;
+        p.hitIds = [];
       }
+
+      // A lobbed projectile is in the air: it passes over walls, boxes and
+      // bodies alike and only matters where it comes down.
+      const airborne = p.motion === 'lob';
 
       let stepX = p.vx * dt;
       let stepY = p.vy * dt;
@@ -1290,7 +854,7 @@ export class BrawlEngine {
       let hitX = p.x + stepX;
       let hitY = p.y + stepY;
 
-      if (!p.piercesWalls) {
+      if (!p.piercesWalls && !airborne) {
         const nearWalls = this.wallGrid.querySweep(p.x, p.y, stepX, stepY, p.radius);
         for (let i = 0; i < nearWalls.length; i++) {
           const wall = this.walls[nearWalls[i]];
@@ -1306,7 +870,7 @@ export class BrawlEngine {
         }
       }
 
-      for (let i = 0; i < this.boxes.length; i++) {
+      for (let i = 0; i < this.boxes.length && !airborne; i++) {
         sweepCircleVsRect(p.x, p.y, p.radius, stepX, stepY, this.boxes[i], this.sweep);
         if (this.sweep.hit && this.sweep.t < bestT) {
           bestT = this.sweep.t;
@@ -1318,8 +882,11 @@ export class BrawlEngine {
       }
 
       for (const target of this.brawlers) {
+        if (airborne) break;
         if (!target.isAlive || target.isJumping || target.id === p.ownerId) continue;
-        if (this.mode === 'gem_grab' && target.team === p.team) continue;
+        if (!this.isHostile(p.team, target)) continue;
+        // Respawn protection should stop the shot, not eat it silently.
+        if (target.immunityTimer > 0) continue;
         // A piercing shot may only touch each body once.
         if (p.hitIds && p.hitIds.indexOf(target.id) !== -1) continue;
 
@@ -1353,7 +920,7 @@ export class BrawlEngine {
       if (hitKind === 'none') {
         if (expiresThisStep) {
           toRemove.add(p.id);
-          this.detonateProjectile(p, p.x, p.y);
+          this.detonateProjectile(p, p.x, p.y, 'end');
         }
         continue;
       }
@@ -1365,9 +932,28 @@ export class BrawlEngine {
           this.wallGridDirty = true;
           continue; // carries on through the hole it just made
         }
+
+        // A bouncing shot reflects off the face it struck instead of dying on
+        // it. The sweep hands back the surface normal, so this is the same
+        // mirror for a flat face and for a corner.
+        if (p.motion === 'bounce' && (p.bouncesLeft ?? 0) > 0) {
+          p.bouncesLeft = (p.bouncesLeft ?? 0) - 1;
+          const nx = this.sweep.nx;
+          const ny = this.sweep.ny;
+          const vdotn = p.vx * nx + p.vy * ny;
+          p.vx -= 2 * vdotn * nx;
+          p.vy -= 2 * vdotn * ny;
+          // Nudge clear of the surface so the next sweep does not start
+          // already touching it.
+          p.x += nx * 0.5;
+          p.y += ny * 0.5;
+          this.addEffect('hit_spark', hitX, hitY, 9, p.color, 0.12, Math.atan2(p.vy, p.vx), 0.25);
+          continue;
+        }
+
         toRemove.add(p.id);
         this.addEffect('hit_spark', hitX, hitY, 11, '#cbd5e1', 0.16, Math.atan2(p.vy, p.vx), 0.3);
-        this.detonateProjectile(p, hitX, hitY);
+        this.detonateProjectile(p, hitX, hitY, 'end');
         continue;
       }
 
@@ -1378,8 +964,8 @@ export class BrawlEngine {
           this.addFloatingNumber(`-${p.damage}`, box.x + box.w / 2, box.y, '#f59e0b');
           if (box.hp <= 0) this.destroyBox(hitBoxIndex);
         }
-        this.detonateProjectile(p, hitX, hitY);
-        if (!p.piercesWalls) {
+        this.detonateProjectile(p, hitX, hitY, 'end');
+        if (!p.piercesBodies) {
           toRemove.add(p.id);
         } else {
           p.x += stepX * (1 - bestT);
@@ -1416,10 +1002,8 @@ export class BrawlEngine {
           hitTarget.knockbackVy += (p.vy / speed) * nudge;
         }
 
-        // Shelly's Super slows whatever it catches.
-        if (p.brawlerId === 'mira' && p.isSuper) {
-          hitTarget.slowTimer = 3.0;
-        }
+        // Whatever statuses the kit hung on this projectile.
+        projectileStatuses(p.hooks, hitTarget);
 
         if (p.knockbackForce && p.knockbackForce > 0) {
           const ang = Math.atan2(hitTarget.y - hitY, hitTarget.x - hitX);
@@ -1428,20 +1012,15 @@ export class BrawlEngine {
           hitTarget.stunTimer = Math.max(hitTarget.stunTimer, 0.35);
         }
 
+        const owner = this.brawlers.find(o => o.id === p.ownerId);
         // Supers do not charge the next Super.
-        if (!p.isSuper) {
-          const owner = this.brawlers.find(o => o.id === p.ownerId);
-          if (owner) {
-            owner.superCharge = Math.min(
-              100,
-              owner.superCharge + this.superChargeFor(owner, effectiveDmg)
-            );
-          }
+        if (!p.isSuper && owner) {
+          chargeSuperForDamage(owner, effectiveDmg);
         }
 
-        this.detonateProjectile(p, hitX, hitY);
+        this.detonateProjectile(p, hitX, hitY, 'hit', hitTarget.id);
 
-        if (!p.piercesWalls) {
+        if (!p.piercesBodies) {
           toRemove.add(p.id);
         } else {
           (p.hitIds ||= []).push(hitTarget.id);
@@ -1457,37 +1036,44 @@ export class BrawlEngine {
     }
   }
 
-  /** Secondary effects a projectile triggers wherever it comes to rest. */
-  private detonateProjectile(p: BrawlProjectile, x: number, y: number) {
-    if (p.burstNeedlesOnEnd) {
-      this.burstSpikeNeedles(x, y, p.ownerId, p.team, Math.round(p.damage * 0.6));
-    }
-    if (p.spawnFireOnEnd) {
-      this.triggerExplosionAt(x, y, p.ownerId, p.team, p.damage, 65, true);
-    }
+  /**
+   * Runs whatever the kit attached to this projectile, wherever it stopped.
+   *
+   * `kind` distinguishes the two endings: a shot that connected with a body
+   * also runs the on-hit list, and its splash is told to spare that body so a
+   * direct hit is one instance of damage rather than two.
+   */
+  private detonateProjectile(
+    p: BrawlProjectile,
+    x: number,
+    y: number,
+    kind: 'hit' | 'end',
+    hitId?: string
+  ) {
+    if (!p.hooks) return;
+    const owner = this.brawlers.find(o => o.id === p.ownerId);
+    runProjectileHooks(this.world, owner, p.hooks, x, y, {
+      isSuper: p.isSuper,
+      damageMultiplier: owner ? 1 + owner.powerCubes * 0.1 : 1,
+      kind,
+      aimAngle: Math.atan2(p.vy, p.vx),
+      excludeId: hitId,
+    });
   }
 
   /**
-   * Leon's close-range bonus as a smooth curve. The old version used two hard
-   * brackets, so a blade crossing an invisible 130 px line changed its damage
-   * by 55% from one pixel to the next.
+   * Close-range damage bonus, as a smooth curve.
+   *
+   * The curve is data on the projectile rather than a check for one
+   * character's name. Smooth, because the version before this used two hard
+   * brackets: a blade crossing an invisible line changed its damage by 55%
+   * from one pixel to the next.
    */
   private applyDamageFalloff(p: BrawlProjectile, damage: number): number {
-    if (p.brawlerId !== 'wisp' || p.isSuper) return damage;
-    const t = clamp(p.traveled / 320, 0, 1);
-    return Math.round(damage * (1.7 - 0.95 * smoothstep(t)));
-  }
-
-  /**
-   * Super charge is proportional to damage dealt, not to how many projectiles
-   * happened to connect. Charging a flat amount per pellet meant Shelly's
-   * five-pellet shot filled 52% of her Super on one trigger pull and Colt's
-   * six-round burst 54% — two attacks and the Super was back.
-   */
-  private superChargeFor(owner: BrawlerEntity, damage: number): number {
-    const cfg = BRAWLERS[owner.brawlerId];
-    const fullAttackDamage = cfg.damagePerAttack * Math.max(1, cfg.projectileCount);
-    return (damage * 100) / (fullAttackDamage * cfg.superHitsRequired);
+    if (!p.falloff || p.isSuper) return damage;
+    const t = clamp(p.traveled / p.falloff.range, 0, 1);
+    const mult = p.falloff.near + (p.falloff.far - p.falloff.near) * smoothstep(t);
+    return Math.round(damage * mult);
   }
 
   /**
@@ -1544,32 +1130,6 @@ export class BrawlEngine {
     }
   }
 
-  // Spike's 6 Needle Burst at 60-degree increments (With Curveball)
-  private burstSpikeNeedles(x: number, y: number, ownerId: string, team: number, damage: number) {
-    for (let i = 0; i < 6; i++) {
-      const ang = (i * Math.PI) / 3;
-      this.projectiles.push({
-        id: `proj-${this.nextEntityId++}`,
-        ownerId,
-        brawlerId: 'thorn',
-        team,
-        x,
-        y,
-        vx: Math.cos(ang) * 460,
-        vy: Math.sin(ang) * 460,
-        radius: 4.5,
-        damage,
-        maxRange: 210,
-        traveled: 0,
-        isSuper: false,
-        color: '#10b981',
-        piercesWalls: false,
-        breaksWalls: false,
-        isCurvingNeedle: true,
-      });
-    }
-  }
-
   private updateThornFields(dt: number) {
     for (let i = this.thornFields.length - 1; i >= 0; i--) {
       const tf = this.thornFields[i];
@@ -1581,10 +1141,10 @@ export class BrawlEngine {
         // Showdown is free-for-all, so the old gem-grab-only check left
         // Spike standing in his own Super taking 600 damage a second.
         if (b.id === tf.ownerId) continue;
-        if (this.mode === 'gem_grab' && b.team === tf.team) continue;
+        if (!this.isHostile(tf.team, b)) continue;
 
         if (dist(tf.x, tf.y, b.x, b.y) <= tf.radius) {
-          b.slowTimer = 0.5; // 50% slow down
+          b.slowTimer = Math.max(b.slowTimer, 0.5);
           this.damageBrawler(b, Math.round(tf.damagePerSec * dt), tf.ownerId, false);
         }
       }
@@ -1604,7 +1164,7 @@ export class BrawlEngine {
       for (const b of this.brawlers) {
         if (!b.isAlive || b.isJumping) continue;
         if (b.id === fp.ownerId) continue;
-        if (this.mode === 'gem_grab' && b.team === fp.team) continue;
+        if (!this.isHostile(fp.team, b)) continue;
 
         if (dist(fp.x, fp.y, b.x, b.y) <= fp.radius + 18) {
           this.damageBrawler(b, Math.round(fp.damagePerSec * dt), fp.ownerId, false);
@@ -1655,28 +1215,63 @@ export class BrawlEngine {
     });
   }
 
-  private damageBrawler(b: BrawlerEntity, damage: number, killerId: string, showFloating: boolean = true) {
-    b.hp -= damage;
+  /**
+   * Every point of damage in the game goes through here — bullets, burning
+   * ground, hazards, the closing gas. Having exactly one funnel is what lets
+   * immunity and shields be a rule rather than something each source has to
+   * remember.
+   */
+  private damageBrawler(
+    b: BrawlerEntity,
+    damage: number,
+    killerId: string,
+    showFloating: boolean = true
+  ) {
+    if (!b.isAlive || damage <= 0) return;
+
+    if (b.immunityTimer > 0) {
+      if (showFloating) this.addFloatingNumber('ENGELLENDİ', b.x, b.y - 22, '#93c5fd');
+      return;
+    }
+
+    const through = absorbWithShield(b, damage);
+    const absorbed = damage - through;
+    if (absorbed > 0 && showFloating) {
+      this.addFloatingNumber(`-${Math.round(absorbed)} KALKAN`, b.x, b.y - 34, '#60a5fa');
+    }
+    if (through <= 0) return;
+
+    b.hp -= through;
     b.timeSinceLastDamage = 0;
 
-    // El Primo Tank Trait: Charges super when receiving damage!
-    if (b.brawlerId === 'boulder' && !b.isClone) {
-      b.superCharge = Math.min(100, b.superCharge + (damage / b.maxHp) * 75);
+    // A tank's Super filling from damage taken is what makes its engage
+    // inevitable rather than optional. It is a kit trait, not a name check.
+    const traits = getKit(b.brawlerId).traits;
+    if (traits?.superChargeFromDamageTaken && !b.isClone) {
+      chargeSuperFlat(b, (through / b.maxHp) * traits.superChargeFromDamageTaken);
     }
 
     if (showFloating) {
-      this.addFloatingNumber(`-${damage}`, b.x, b.y - 20, '#ef4444');
+      this.addFloatingNumber(`-${Math.round(through)}`, b.x, b.y - 20, '#ef4444');
     }
 
-    if (b.hp <= 0 && b.isAlive) {
+    if (b.hp <= 0) {
       b.isAlive = false;
       b.hp = 0;
+      b.pendingBurst = null;
+      b.isJumping = false;
+      b.deaths++;
 
       const killer = this.brawlers.find(k => k.id === killerId);
       if (killer) killer.kills++;
 
+      const rules = MODE_RULES[this.mode];
+      b.respawnTimer = b.isClone ? 0 : rules.respawnDelay;
+
       if (!b.isClone) {
-        this.eliminationOrder.push(b.id);
+        // Placement is only meaningful where death is final; in a mode with
+        // respawn, being downed is a setback, not an exit.
+        if (rules.respawnDelay <= 0) this.eliminationOrder.push(b.id);
         this.killFeed.push({
           id: `kf-${this.nextEntityId++}`,
           killerName: killer ? killer.name : killerId === 'gas' ? 'Zehirli Gaz' : 'Çevre',

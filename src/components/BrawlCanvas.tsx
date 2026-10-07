@@ -19,6 +19,7 @@ import { TouchControls } from '../input/touchControls';
 import { getInputMode, onInputModeChange } from '../input/inputMode';
 import { profiler } from '../core/profiler';
 import { clamp } from '../core/math';
+import { hasArmedPassive } from '../sim/kitInfo';
 
 /**
  * How much of the world the camera should cover, in world units.
@@ -634,6 +635,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
       if (snap && snap.introCountdown > 0) {
         drawIntroCountdown(ctx, view, snap.introCountdown);
+      } else if (myBrawler && !myBrawler.isAlive) {
+        drawDeathOverlay(ctx, view, myBrawler.respawnTimer, spectateIdRef.current, snap);
       }
 
       profiler.render.end();
@@ -1362,8 +1365,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.beginPath();
       ctx.arc(-16 + (Math.random() - 0.5) * 6, 16, 3, 0, Math.PI * 2);
       ctx.fill();
-    } else if (b.meteorRushTimer > 0 && isMoving) {
-      // El Primo Meteor Rush flame sparks
+    } else if (b.speedBoostTimer > 0 && b.speedBoostMagnitude >= 1.3 && isMoving) {
+      // Sparks off a brawler running on a speed buff.
       ctx.fillStyle = '#f97316';
       ctx.beginPath();
       ctx.arc(-16, 16, 4, 0, Math.PI * 2);
@@ -1420,7 +1423,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       b.name +
       (b.powerCubes > 0 ? ` [⚡${b.powerCubes}]` : '') +
       (b.gemsCarried > 0 ? ` [💎${b.gemsCarried}]` : '') +
-      (b.brawlerId === 'mira' && b.bandAidCooldown <= 0 ? ' [✚]' : '');
+      (hasArmedPassive(b) ? ' [✚]' : '');
     ctx.fillText(badgeText, 0, -42);
 
     // Segmented Health Bar
@@ -1766,6 +1769,67 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.strokeText('HAZIRLAN', 0, 76);
     ctx.fillStyle = '#e2e8f0';
     ctx.fillText('HAZIRLAN', 0, 76);
+
+    ctx.restore();
+  };
+
+  /**
+   * What you see while you are waiting to come back.
+   *
+   * Two different situations share this overlay, and they need to read
+   * differently: in a mode with respawn the wait is a countdown you can plan
+   * around, and in an elimination mode it is over and the camera is now
+   * following somebody else.
+   */
+  const drawDeathOverlay = (
+    ctx: CanvasRenderingContext2D,
+    view: ViewMetrics,
+    respawnTimer: number,
+    spectatingId: string | null,
+    snap: BrawlSnapshot | null
+  ) => {
+    ctx.save();
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.45)';
+    ctx.fillRect(0, 0, view.w, view.h);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.translate(view.w / 2, view.h * 0.4);
+
+    if (respawnTimer > 0) {
+      const whole = Math.ceil(respawnTimer);
+      ctx.font = 'bold 84px Orbitron, system-ui, sans-serif';
+      ctx.lineWidth = 9;
+      ctx.strokeStyle = '#0f172a';
+      ctx.strokeText(`${whole}`, 0, 0);
+      ctx.fillStyle = '#60a5fa';
+      ctx.fillText(`${whole}`, 0, 0);
+
+      ctx.font = 'bold 18px Orbitron, system-ui, sans-serif';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#0f172a';
+      ctx.strokeText('GERİ DÖNÜYORSUN', 0, 68);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillText('GERİ DÖNÜYORSUN', 0, 68);
+    } else {
+      ctx.font = 'bold 34px Orbitron, system-ui, sans-serif';
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = '#0f172a';
+      ctx.strokeText('ELENDİN', 0, 0);
+      ctx.fillStyle = '#f87171';
+      ctx.fillText('ELENDİN', 0, 0);
+
+      const watched = snap?.brawlers.find(b => b.id === spectatingId);
+      const label = watched ? `İZLENİYOR: ${watched.name}` : 'MAÇ İZLENİYOR';
+      ctx.font = 'bold 16px Orbitron, system-ui, sans-serif';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0f172a';
+      ctx.strokeText(label, 0, 46);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(label, 0, 46);
+    }
 
     ctx.restore();
   };
