@@ -329,6 +329,56 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
               </div>
             )}
 
+            {/* Changing your pick without leaving.
+
+                This used to live only on the screen before a room existed, so
+                switching character meant going back out and setting the room
+                up again — and everybody in it had to type a new code. */}
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Brawler Seçimi
+                </span>
+                <span
+                  style={{ color: activeCfg.color }}
+                  className="font-arcade text-xs font-black"
+                >
+                  {activeCfg.name}
+                </span>
+              </div>
+
+              {/* A single scrolling row: the roster is ten and growing, and it
+                  must not push the room code and the player list off screen. */}
+              <div className="flex gap-2 overflow-x-auto pb-1.5 -mx-1 px-1 snap-x">
+                {brawlerList.map(bId => {
+                  const bCfg = BRAWLERS[bId];
+                  const isSelected = selectedBrawler === bId;
+
+                  return (
+                    <button
+                      key={bId}
+                      onClick={() => setSelectedBrawler(bId)}
+                      title={bCfg.name}
+                      style={{
+                        borderColor: isSelected ? bCfg.color : '#334155',
+                        backgroundColor: isSelected ? bCfg.color + '25' : '#0f172a',
+                      }}
+                      className={`shrink-0 snap-start flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border-2 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'ring-2 ring-yellow-400/50 shadow-[0_0_14px_rgba(234,179,8,0.35)]'
+                          : 'hover:border-slate-600'
+                      }`}
+                    >
+                      <CharacterPortrait brawlerId={bId} size={40} />
+                      <span className="font-arcade text-[9px] font-bold text-slate-200">
+                        {bCfg.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Player Slots (Up to 10 players) */}
             <div className="flex flex-col gap-2.5">
               <div className="flex items-center justify-between">

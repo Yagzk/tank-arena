@@ -36,7 +36,19 @@ export const App: React.FC = () => {
   const [playerName, setPlayerName] = useState<string>(() => {
     return localStorage.getItem('brwl_player_name') || `Brawler-${Math.floor(100 + Math.random() * 900)}`;
   });
-  const [selectedBrawler, setSelectedBrawler] = useState<BrawlerId>('mira');
+  const [selectedBrawler, setSelectedBrawlerState] = useState<BrawlerId>('mira');
+
+  /**
+   * Picking a character, before a room exists and from inside one.
+   *
+   * Changing your pick used to mean leaving the room, which hands everybody
+   * a new code to type in. In a room the host owns the roster, so this asks
+   * rather than tells and the answer comes back as a room update.
+   */
+  const setSelectedBrawler = (brawler: BrawlerId) => {
+    setSelectedBrawlerState(brawler);
+    peerManagerRef.current?.setBrawler(brawler);
+  };
   const [gameMode, setGameMode] = useState<BrawlGameMode>('showdown');
   const [roomCode, setRoomCode] = useState<string>('');
 
@@ -141,6 +153,10 @@ export const App: React.FC = () => {
       },
       onPlayersChanged: updatedPlayers => {
         setPlayers([...updatedPlayers]);
+        // The host owns the roster, so the picker shows what was actually
+        // accepted rather than what this client asked for.
+        const me = updatedPlayers.find(p => p.id === myPlayerIdRef.current);
+        if (me) setSelectedBrawlerState(me.brawler);
       },
       onInputReceived: (pId, input) => {
         engineRef.current?.setPlayerInput(pId, input);
@@ -170,6 +186,10 @@ export const App: React.FC = () => {
       },
       onPlayersChanged: updatedPlayers => {
         setPlayers([...updatedPlayers]);
+        // The host owns the roster, so the picker shows what was actually
+        // accepted rather than what this client asked for.
+        const me = updatedPlayers.find(p => p.id === myPlayerIdRef.current);
+        if (me) setSelectedBrawlerState(me.brawler);
       },
       onGameStart: mode => {
         setGameMode(mode);

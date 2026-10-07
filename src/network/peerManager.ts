@@ -4,6 +4,8 @@ import { BrawlSoundEvent } from '../game/brawlEngine';
 
 export type NetworkMessage =
   | { type: 'JOIN'; name: string; brawler: BrawlerId }
+  /** A client changing its pick while sitting in the room. */
+  | { type: 'PICK_BRAWLER'; brawler: BrawlerId }
   | { type: 'ROOM_UPDATE'; players: PlayerInfo[]; mode: BrawlGameMode }
   | { type: 'START_MATCH'; mode: BrawlGameMode }
   | { type: 'INPUT'; input: BrawlPlayerInput }
@@ -167,6 +169,16 @@ export class PeerManager {
         players: this.players,
         mode: this.mode,
       });
+    } else if (msg.type === 'PICK_BRAWLER') {
+      const player = this.players.find(p => p.id === conn.peer);
+      if (!player) return;
+      player.brawler = msg.brawler;
+      this.callbacks.onPlayersChanged?.(this.players);
+      this.broadcast({
+        type: 'ROOM_UPDATE',
+        players: this.players,
+        mode: this.mode,
+      });
     } else if (msg.type === 'INPUT') {
       this.callbacks.onInputReceived?.(conn.peer, msg.input);
     }
@@ -238,6 +250,44 @@ export class PeerManager {
       this.connections.delete(playerId);
     }
     this.players = this.players.filter(p => p.id !== playerId);
+    this.callbacks.onPlayersChanged?.(this.players);
+    this.broadcast({
+      type: 'ROOM_UPDATE',
+      players: this.players,
+      mode: this.mode,
+    });
+  }
+
+  /**
+   * Changes which character you are playing, from inside the room.
+   *
+   * Before this, picking a different character meant leaving and setting the
+   * room up again — which hands everybody a new code to type in. The host
+   * owns the roster either way, so a client asks rather than tells.
+   */
+  public setBrawler(brawler: BrawlerId) {
+    if (!this.isHost) {
+      this.sendToHost({ type: 'PICK_BRAWLER', brawler });
+      return;
+    }
+
+    const me = this.players.find(p => p.id === this.myId);
+    if (!me || me.brawler === brawler) return;
+    me.brawler = brawler;
+    this.callbacks.onPlayersChanged?.(this.players);
+    this.broadcast({
+      type: 'ROOM_UPDATE',
+      players: this.players,
+      mode: this.mode,
+    });
+  }
+
+  /** Changes a bot's character. Host only; bots have nobody to ask. */
+  public setBotBrawler(botId: string, brawler: BrawlerId) {
+    if (!this.isHost) return;
+    const bot = this.players.find(p => p.id === botId && p.isBot);
+    if (!bot) return;
+    bot.brawler = brawler;
     this.callbacks.onPlayersChanged?.(this.players);
     this.broadcast({
       type: 'ROOM_UPDATE',
