@@ -34,6 +34,24 @@ import { hasArmedPassive } from '../sim/kitInfo';
 const DESIGN_VIEW_LANDSCAPE = { w: 1280, h: 720 };
 const DESIGN_VIEW_PORTRAIT = { w: 640, h: 1100 };
 
+/** How long a body stays lit after taking a hit. */
+const HIT_FLASH_SECONDS = 0.11;
+
+/** A character drawn entirely in white, for the hit flash. */
+const HIT_FLASH_STYLE = {
+  primary: '#ffffff',
+  secondary: '#ffffff',
+  accent: '#ffffff',
+  skin: '#ffffff',
+  hair: '#ffffff',
+  build: 'medium',
+  weapon: 'scattergun',
+  headgear: 'hood',
+} as const;
+
+/** Seconds the edge marker stays up after you are hit. */
+const DAMAGE_MARKER_SECONDS = 1.1;
+
 interface ViewMetrics {
   /** Viewport size in CSS pixels. */
   w: number;
@@ -71,6 +89,10 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   // Smooth Camera Coordinates & Screen Shake
   const cameraRef = useRef<{ x: number; y: number }>({ x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 });
   const screenShakeRef = useRef<{ intensity: number; timer: number }>({ intensity: 0, timer: 0 });
+  /** Kills the local player had last frame, to notice a new one. */
+  const myKillsRef = useRef(0);
+  /** Seconds left on the flash that marks a kill you just got. */
+  const killFlashRef = useRef(0);
 
   // Super Aiming Mode Toggle (Space / Right-Click / Touch Super Button)
   const isSuperAimingRef = useRef<boolean>(false);
@@ -1332,6 +1354,25 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       recoil01: Math.max(0, 1 - b.timeSinceLastAttack / 0.18),
       scale: 54,
     });
+
+    // Hit flash: the same silhouette again, in white, fading over about a
+    // tenth of a second. A connecting shot used to produce a number and
+    // nothing else, so the body taking the damage never reacted at all.
+    const flash = 1 - b.timeSinceLastDamage / HIT_FLASH_SECONDS;
+    if (flash > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, flash) * 0.75;
+      ctx.globalCompositeOperation = 'lighter';
+      drawCharacter(ctx, HIT_FLASH_STYLE, {
+        aimAngle: b.aimAngle,
+        moveAngle: isMoving ? Math.atan2(b.vy, b.vx) : b.aimAngle,
+        speed01: Math.min(1, moveSpeed / (cfg.speed || 180)),
+        time: performance.now() / 1000,
+        recoil01: Math.max(0, 1 - b.timeSinceLastAttack / 0.18),
+        scale: 54,
+      });
+      ctx.restore();
+    }
     
 
     ctx.restore(); // Restore body transform

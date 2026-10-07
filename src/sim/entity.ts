@@ -92,6 +92,7 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     silenceTimer: 0,
     rootTimer: 0,
     revealTimer: 0,
+    lastDamageAngle: 0,
     isClone: opts.isClone ?? false,
     decoyLifetime: opts.decoyLifetime,
   };

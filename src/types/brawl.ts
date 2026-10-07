@@ -471,6 +471,14 @@ export interface BrawlerEntity {
   rootTimer: number;
   /** Visible to enemies even inside a bush. */
   revealTimer: number;
+  /**
+   * World direction the last damage arrived from.
+   *
+   * Taking fire from somewhere you cannot see is the most common way a player
+   * dies without understanding why. This is what the edge-of-screen indicator
+   * points along.
+   */
+  lastDamageAngle: number;
 
   /**
    * Action list to run where an airborne brawler lands, as a registry key so

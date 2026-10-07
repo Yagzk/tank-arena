@@ -1305,6 +1305,11 @@ export class BrawlEngine {
     b.hp -= through;
     b.timeSinceLastDamage = 0;
 
+    const source = this.brawlers.find(s => s.id === killerId);
+    if (source && source.id !== b.id) {
+      b.lastDamageAngle = Math.atan2(source.y - b.y, source.x - b.x);
+    }
+
     // A tank's Super filling from damage taken is what makes its engage
     // inevitable rather than optional. It is a kit trait, not a name check.
     const traits = getKit(b.brawlerId).traits;
@@ -1323,8 +1328,8 @@ export class BrawlEngine {
       b.isJumping = false;
       b.deaths++;
 
-      const killer = this.brawlers.find(k => k.id === killerId);
-      if (killer) killer.kills++;
+      if (source) source.kills++;
+      const killer = source;
 
       const rules = MODE_RULES[this.mode];
       b.respawnTimer = b.isClone ? 0 : rules.respawnDelay;
