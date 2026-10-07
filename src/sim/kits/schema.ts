@@ -181,7 +181,7 @@ export type AbilityAction =
   | { type: 'ammo'; amount: number }
   | { type: 'superCharge'; percent: number }
   /** A short burst of speed along the aim angle. */
-  | { type: 'dash'; speed: number; throughBodies?: boolean; statuses?: StatusSpec[] }
+  | { type: 'dash'; speed: number; statuses?: StatusSpec[] }
   /** An arc over walls, with an optional landing payload. */
   | {
       type: 'jump';

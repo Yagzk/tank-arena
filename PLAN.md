@@ -1,7 +1,7 @@
 # NOVA ARENA — Geliştirme Planı
 
 > Bu dosya projenin tek yol haritasıdır. Bir iş bitince kutusu işaretlenir.
-> Son güncelleme: 2026-10-07 · Referans commit: `f9652c0`
+> Son güncelleme: 2026-10-07 · Referans commit: `d1491a8`
 
 ---
 
@@ -22,7 +22,7 @@ Brawl Stars'ın oynanış mekaniklerini **birebir** veren, web ve mobil tarayıc
 
 ## 1. Nerede duruyoruz
 
-~10.500 satır TypeScript, 72 test, 6 test dosyası. Çalışan: Hesaplaşma ve Elmas
+~12.000 satır TypeScript, 119 test, 9 test dosyası. Çalışan: Hesaplaşma ve Elmas
 Kapmaca modları, 6 karakter, botlar, P2P çok oyunculu, masaüstü + dokunmatik
 kontroller.
 
@@ -30,6 +30,10 @@ kontroller.
 
 | Modül | İş |
 |---|---|
+| `sim/kits/` | Yetenekler veri: 6 kit, şema, doğrulayıcı, derleyici |
+| `sim/abilities.ts` | Kit yorumlayıcısı — switch yalnızca eylem türü üzerinde |
+| `sim/effects/` | 14 efekt ilkeli, simülasyonun tüm sonuç sözlüğü |
+| `sim/entity.ts` | Tek varlık fabrikası + canlanma |
 | `core/loop.ts` | Sabit timestep, rAF'tan ayrık simülasyon, `planSteps` politikası |
 | `core/collision.ts` | Swept (sürekli) çarpışma, görüş hattı |
 | `core/spatialHash.ts` | Uniform grid broadphase |
@@ -43,10 +47,8 @@ kontroller.
 
 **Bilinen açıklar** (detayı aşağıdaki fazlarda)
 
-- Canlanma sistemi **hiç yok** — `isAlive = false` bir kez set ediliyor, geri alan
-  kod yok. Elmas Kapmaca bu yüzden fiilen bozuk.
-- Yetenekler `brawlEngine.ts` içinde dev `switch` blokları (1957 satır, 18 `case`).
 - Ses katmanı ince sentez.
+- Motor tek dosya (1552 satır) — sistemlere bölünmesi Faz 0.4.
 - Harita mod başına 1 adet ve elle kodlanmış.
 - İlerleme/meta sistemi yok.
 
@@ -92,30 +94,42 @@ yazılamaz. Yetenekleri veriye çevirince yeni karakter yeni **kod** değil, yen
 **JSON** olur.
 
 ### 0.1 Efekt ilkel kütüphanesi
-- [ ] `src/sim/effects/` — her ilkel ayrı dosya, hepsi aynı arayüz
-- [ ] `damage`, `areaDamage`, `heal`, `knockback`, `pull`, `applyStatus`,
+- [x] `src/sim/effects/` — her ilkel ayrı dosya, hepsi aynı arayüz
+- [x] `damage`, `areaDamage`, `heal`, `knockback`, `pull`, `applyStatus`,
       `spawnProjectile`, `spawnHazard`, `spawnEntity`, `teleport`, `dash`,
       `shield`, `chargeSuper`, `restoreAmmo`
-- [ ] Her ilkel saf: dünya durumu + parametre → mutasyon, dönüş değeri yok
+- [x] Her ilkel saf: dünya durumu + parametre → mutasyon, dönüş değeri yok
+- [x] `src/sim/world.ts` — ilkellerin dokunmasına izin verilen tek yüzey;
+      motor, React ve canvas efektlerden tamamen gizli
 
 ### 0.2 Kit şeması
-- [ ] `src/sim/kits/schema.ts` — `AttackSpec`, `SuperSpec`, `GadgetSpec`,
-      `StarPowerSpec` tipleri
-- [ ] Teslim biçimleri: `direct` · `spread` · `burst` · `lob` · `bounce` ·
-      `beam` · `melee` · `boomerang` · `charged`
-- [ ] Şema doğrulayıcı — bozuk kit açılışta hata versin, maçta değil
+- [x] `src/sim/kits/schema.ts` — `Kit`, `AbilitySpec`, `AbilityAction`,
+      `ProjectileSpec`, `StatusSpec`, `PassiveSpec`, `KitTraits`
+- [x] Teslim biçimleri: `single` · `spread` · `radial` · `burst` (aim kuralı:
+      fixed/alternate/sweep/random) · `lob` · `bounce` · `boomerang` · `curve`
+- [ ] Kalan teslim biçimleri: `beam` · `melee` · `charged` (Faz 1.2)
+- [x] Şema doğrulayıcı — bozuk kit **açılışta** hata veriyor, maçta değil
+      (`validateKit`, 11 test)
 
 ### 0.3 Taşıma
-- [ ] Mevcut 6 karakter `src/sim/kits/*.ts` dosyalarına taşınır
-- [ ] `executeAttack` / `executeSuper` / `executeGadget` switch'leri silinir
-- [ ] Yorumlayıcı: kit verisi → efekt çağrıları
-- [ ] Davranışın değişmediğini kanıtlayan determinizm testi (taşıma öncesi/sonrası
-      aynı tohum + aynı input = aynı dünya)
+- [x] Mevcut 6 karakter `src/sim/kits/*.ts` dosyalarına taşındı
+- [x] `executeAttack` / `executeSuper` / `executeGadget` switch'leri silindi —
+      motorda **0 karakter dalı** kaldı (1957 → 1552 satır)
+- [x] Yorumlayıcı: `src/sim/abilities.ts`, switch yalnızca *eylem türü* üzerinde
+- [x] Yıldız güçleri ve pasifler de veriye taşındı (`PassiveSpec`, `KitTraits`) —
+      hareket kodunun ortasındaki `brawlerId === '...'` blokları gitti
+- [x] Determinizm testi geçiyor (aynı tohum + aynı input = aynı dünya)
 
-### 0.4 Motoru bölme
-- [ ] `brawlEngine.ts` (1957 satır) → `sim/systems/` altında sistemlere:
-      `movement`, `combat`, `projectiles`, `hazards`, `pickups`, `status`,
-      `modes/`
+**Taşımada düzeltilen iki hata** (birebir kopyalamak yerine):
+- Roketin alan hasarı artık doğrudan vurduğu bedeni ikinci kez vurmuyor
+  (direkt isabet 2720 değil 1360).
+- Hedef dostluğu tek kural oldu; çağrılan kopya artık sahibinin hedefi değil.
+
+### 0.4 Motoru bölme — **sıradaki iş**
+- [ ] `brawlEngine.ts` (1552 satır) → `sim/systems/` altında sistemlere:
+      `movement`, `combat`, `projectiles`, `hazards`, `pickups`, `modes/`
+- [ ] `SimContext`: sistemlerin ihtiyaç duyduğu dahili yüzey (broadphase,
+      navGrid, sweep tamponu) — `SimWorld`'ün üstüne
 - [ ] Motor sınıfı sadece sistemleri sırayla çağırır
 
 **Bitti sayılma ölçütü:** yeni bir karakter eklemek için tek bir `.ts` veri
@@ -125,15 +139,18 @@ dosyası yazmak yetiyor, hiçbir `switch`'e dokunulmuyor.
 
 # FAZ 1 — Canlanma ve motor ilkelleri
 
-## 1.1 Canlanma sistemi — **en acil madde**
+## 1.1 Canlanma sistemi — **bitti**
 
-- [ ] `BrawlerEntity.respawnTimer`
-- [ ] Mod başına kural: Hesaplaşma'da canlanma yok; Elmas Kapmaca, Brawl Ball,
-      Bounty, Heist, Hot Zone'da ~3 sn
-- [ ] Takım üssünde doğma, kısa dokunulmazlık (i-frame)
-- [ ] Ölüm ekranı: geri sayım + izleyici kamerası (kamera zaten var)
-- [ ] Ölünce süperin bir kısmını koruma kuralı
-- [ ] Testler: canlanma süresi, doğma konumu, i-frame penceresi
+- [x] `BrawlerEntity.respawnTimer`
+- [x] Mod başına kural (`MODE_RULES`): Hesaplaşma'da canlanma yok; Elmas
+      Kapmaca 3 sn. Yeni modlar bu tabloya bir satır ekleyecek.
+- [x] Takım üssünde doğma (`spawnX`/`spawnY` maç boyunca sabit)
+- [x] 1.5 sn dokunulmazlık — üs kampı yapan rakip spawn'ı sömüremiyor
+- [x] Ölüm ekranı: geri sayım + izleyici kamerası; elenmede farklı metin
+- [x] Ölünce süper şarjının %25'i korunuyor
+- [x] Canlanırken önceki hayatın her izi siliniyor: durumlar, momentum, kuyruk
+- [x] Testler: 13 test — süre, konum, i-frame penceresi, süper korunumu,
+      eleme sırasının yalnızca Hesaplaşma'da işlenmesi
 
 ## 1.2 Mermi ve saldırı teslimi
 
@@ -153,15 +170,20 @@ dosyası yazmak yetiyor, hiçbir `switch`'e dokunulmuyor.
 > Not: `bounceBulletAgainstWall` eski `physics.ts`'te yazılmıştı ama hiç
 > kullanılmadı; swept çarpışmaya uyarlanarak geri getirilecek.
 
-- [ ] Lob · [ ] Sektirme · [ ] Bumerang · [ ] Işın · [ ] Yakın dövüş yayı
+- [x] Lob · [x] Sektirme · [x] Bumerang · [ ] Işın · [ ] Yakın dövüş yayı
 - [ ] Şarjlı atış · [ ] Kombo · [ ] Zincirleme
+
+> Lob havadayken duvar, sandık ve bedenleri aşıyor ve nişan noktasında iniyor.
+> Sektirme swept çarpışmanın verdiği yüzey normaliyle yansıyor, köşede de
+> doğru. Bumerang dönüş bacağında yeniden isabet edebiliyor.
 
 ## 1.3 Hareket
 
-- [ ] Atılım'ı genel ilkel yap (şu an sadece gadget, tek biçim)
+- [x] Atılım'ı genel ilkel yap — momentum kanalında, yani duvarlarla normal
+      çarpışıyor; duvarın içinde kalmak imkânsız
 - [ ] Düşmanın içinden geçen atılım
-- [ ] Işınlanma (hedefin arkasına)
-- [ ] Çekme / kanca
+- [x] Işınlanma (hedefin arkasına dahil)
+- [x] Çekme / kanca — mesafeyle sınırlanmış itki, hedefi öteye savurmuyor
 - [ ] Duvarlardan geçme
 - [x] Duvar aşan sıçrama
 - [x] Geri savurma
@@ -179,17 +201,20 @@ dosyası yazmak yetiyor, hiçbir `switch`'e dokunulmuyor.
 ## 1.5 Durum etkileri
 
 - [x] Yavaşlatma · [x] Sersemletme · [x] Yanma · [x] Hız artışı
-- [ ] Kalkan / hasar azaltma
-- [ ] Dokunulmazlık (i-frame)
-- [ ] Susturma (süper kullanamaz)
-- [ ] Köklenme (hareket edemez, ateş eder)
-- [ ] Görüş açma (çalıdakini ifşa)
+- [x] Kalkan — tek hasar hunisinden geçiyor: mermi, yangın, gaz hepsi
+- [x] Dokunulmazlık (i-frame)
+- [x] Susturma (süper kullanamaz)
+- [x] Köklenme (hareket edemez, ateş eder)
+- [x] Görüş açma (çalıdakini ifşa)
 - [ ] Yansıtma / soğurma
-- [ ] Ortak durum yığını: süre, yenileme, birikme kuralları
+- [x] Ortak durum yığını: `applyStatus` tek eşleme noktası, `tickStatuses` tek
+      sayaç noktası, yenileme kuralı "uzun olan kazanır". Nesne listesi değil
+      sabit alanlar — sıcak döngüde tahsisat yok, pakette düz sayı.
 
 ## 1.6 Kaynak mekanikleri
 
-- [ ] Karakter başına cephane sayısı (2/3/4 — şu an herkes 3)
+- [x] Karakter başına cephane sayısı — kitte `maxAmmo`, doğrulayıcı 1..6 arası
+      zorunlu tutuyor (şu an hepsi 3, artık karakter başına değiştirilebilir)
 - [ ] Şarj gerektirmeyen, bekleme süreli süper
 - [ ] İyileştirme ve asistle süper doldurma
 - [ ] İsabette cephane dolduran saldırılar
