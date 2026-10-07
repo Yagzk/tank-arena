@@ -18,6 +18,9 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'medium',
     weapon: 'scattergun',
     headgear: 'hood',
+    // A scavenger's cape: the one silhouette that trails behind her.
+    back: 'cape',
+    eyes: '#4c1d95',
   },
   rivet: {
     primary: '#dc2626',
@@ -28,6 +31,8 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'light',
     weapon: 'twin_blasters',
     headgear: 'cap',
+    back: 'drum',
+    eyes: '#7f1d1d',
   },
   boulder: {
     primary: '#0369a1',
@@ -38,6 +43,7 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'heavy',
     weapon: 'gauntlets',
     headgear: 'mask',
+    back: 'wings',
   },
   fuse: {
     primary: '#d97706',
@@ -48,6 +54,9 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'medium',
     weapon: 'launcher',
     headgear: 'goggles',
+    // Fuel bottles, so the artillery reads as artillery from behind too.
+    back: 'tank',
+    eyes: '#78350f',
   },
   thorn: {
     primary: '#15803d',
@@ -58,6 +67,8 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'light',
     weapon: 'satchel',
     headgear: 'crest',
+    back: 'pack',
+    eyes: '#14532d',
   },
   wisp: {
     primary: '#0891b2',
@@ -68,6 +79,8 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'light',
     weapon: 'blades',
     headgear: 'hood',
+    back: 'cape',
+    eyes: '#0e7490',
   },
   molotof: {
     primary: '#c2410c',
@@ -78,6 +91,7 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'medium',
     weapon: 'flask',
     headgear: 'mask',
+    back: 'tank',
   },
   ustabasi: {
     // Grey on grey, with the accent doing all the identifying work: the
@@ -90,6 +104,7 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'heavy',
     weapon: 'toolgun',
     headgear: 'visor',
+    back: 'pack',
   },
   nagme: {
     primary: '#be185d',
@@ -100,6 +115,8 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'light',
     weapon: 'horn',
     headgear: 'crest',
+    back: 'coil',
+    eyes: '#831843',
   },
   zirh: {
     primary: '#0f766e',
@@ -110,5 +127,6 @@ export const CHARACTER_STYLES: Record<BrawlerId, CharacterStyle> = {
     build: 'heavy',
     weapon: 'hammer',
     headgear: 'helm',
+    back: 'drum',
   },
 };

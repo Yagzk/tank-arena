@@ -49,6 +49,15 @@ export type Headgear =
   /** A full helm with a raised comb. */
   | 'helm';
 
+/**
+ * What the character carries on its back.
+ *
+ * Seen from above, two characters of the same build are the same blob. The
+ * back item is the cheapest way to break that: it changes the outline, which
+ * is the only thing you can actually read at gameplay zoom.
+ */
+export type BackItem = 'none' | 'tank' | 'cape' | 'pack' | 'coil' | 'drum' | 'wings';
+
 export interface CharacterStyle {
   /** Jacket / main garment. */
   primary: string;
@@ -61,6 +70,10 @@ export interface CharacterStyle {
   build: Build;
   weapon: WeaponKind;
   headgear: Headgear;
+  /** Silhouette breaker. Defaults to nothing. */
+  back?: BackItem;
+  /** Eye colour. Defaults to near-black. */
+  eyes?: string;
 }
 
 export interface CharacterPose {
@@ -79,6 +92,29 @@ export interface CharacterPose {
 }
 
 const OUTLINE = '#15161f';
+
+/**
+ * Lightens or darkens a hex colour.
+ *
+ * Flat fills read as paper cut-outs from above. One lighter band along the
+ * lit edge and one darker band under it is enough to make a body look round,
+ * and it costs nothing next to a gradient.
+ */
+function shade(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (channel: number) =>
+    Math.max(0, Math.min(255, Math.round(amount > 0
+      ? channel + (255 - channel) * amount
+      : channel * (1 + amount))));
+  const r = mix((n >> 16) & 255);
+  const g = mix((n >> 8) & 255);
+  const b = mix(n & 255);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+/** Where the light comes from, in the body's own frame. Constant, so every
+ *  character is lit the same way and the set reads as one piece of art. */
+const LIGHT_ANGLE = -Math.PI * 0.72;
 
 interface BuildMetrics {
   shoulder: number;
@@ -186,10 +222,16 @@ export function drawCharacter(
   // Recoil pushes the whole upper body back along the aim axis.
   const kick = pose.recoil01 * s * 0.1;
 
+  // Standing still is not the same as being a still image. A slow swell on
+  // the chest is the difference between a character and a sprite.
+  const breath = (1 - pose.speed01) * Math.sin(pose.time * 1.9) * s * 0.012;
+
   ctx.save();
   ctx.rotate(pose.aimAngle);
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+
+  drawBackItem(ctx, style, m, s, outline, pose, kick);
 
   /* ---- legs ------------------------------------------------------------
    * Drawn in the movement frame rather than the aim frame. A character
@@ -214,8 +256,38 @@ export function drawCharacter(
 
   /* ---- torso ---------------------------------------------------------- */
   const torsoX = -kick;
-  ellipsePath(ctx, torsoX, 0, m.chest * s + bob, m.shoulder * s);
+  const chestR = m.chest * s + bob + breath;
+  const shoulderR = m.shoulder * s + breath;
+  ellipsePath(ctx, torsoX, 0, chestR, shoulderR);
   fillStroke(ctx, style.primary, outline * 2);
+
+  // Round the torso off: a lit crescent along the light side and a shadow
+  // under the opposite one, both clipped to the body.
+  ctx.save();
+  ellipsePath(ctx, torsoX, 0, chestR, shoulderR);
+  ctx.clip();
+  ctx.globalAlpha = 0.55;
+  ellipsePath(
+    ctx,
+    torsoX + Math.cos(LIGHT_ANGLE) * chestR * 0.45,
+    Math.sin(LIGHT_ANGLE) * shoulderR * 0.5,
+    chestR * 0.82,
+    shoulderR * 0.72
+  );
+  ctx.fillStyle = shade(style.primary, 0.3);
+  ctx.fill();
+  ctx.globalAlpha = 0.4;
+  ellipsePath(
+    ctx,
+    torsoX - Math.cos(LIGHT_ANGLE) * chestR * 0.7,
+    -Math.sin(LIGHT_ANGLE) * shoulderR * 0.78,
+    chestR * 0.9,
+    shoulderR * 0.78
+  );
+  ctx.fillStyle = shade(style.primary, -0.45);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.restore();
 
   // Chest accent: a wedge pointing forward. Doubles as a facing cue when the
   // character is small on screen.
@@ -251,6 +323,23 @@ export function drawCharacter(
   ellipsePath(ctx, headX, 0, headR, headR * 0.96);
   fillStroke(ctx, style.skin, outline * 1.8);
 
+  ctx.save();
+  ellipsePath(ctx, headX, 0, headR, headR * 0.96);
+  ctx.clip();
+  ctx.globalAlpha = 0.45;
+  ellipsePath(
+    ctx,
+    headX - Math.cos(LIGHT_ANGLE) * headR * 0.75,
+    -Math.sin(LIGHT_ANGLE) * headR * 0.8,
+    headR * 0.95,
+    headR * 0.85
+  );
+  ctx.fillStyle = shade(style.skin, -0.4);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  drawFace(ctx, style, headX, headR, outline);
   drawHeadgear(ctx, style, headX, headR, outline);
 
   /* ---- arms and weapon -------------------------------------------------
@@ -261,6 +350,177 @@ export function drawCharacter(
   drawArmsAndWeapon(ctx, style, m, s, outline, kick);
 
   ctx.restore();
+}
+
+/**
+ * Eyes.
+ *
+ * The single largest return on effort in the whole set. A plain disc for a
+ * head reads as a prop; two eyes looking the way the character is aiming
+ * reads as somebody, and it costs eight lines. They sit forward of centre
+ * because the head is seen from above and in front.
+ */
+function drawFace(
+  ctx: CanvasRenderingContext2D,
+  style: CharacterStyle,
+  headX: number,
+  headR: number,
+  outline: number
+): void {
+  // A visor or a full helm covers the face; drawing eyes under it would show
+  // them through the metal.
+  if (style.headgear === 'visor' || style.headgear === 'helm' || style.headgear === 'mask') {
+    return;
+  }
+
+  const eyeX = headX + headR * 0.42;
+  const eyeY = headR * 0.42;
+  const eyeR = headR * 0.2;
+
+  for (const side of [-1, 1]) {
+    ellipsePath(ctx, eyeX, side * eyeY, eyeR * 1.05, eyeR);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = outline * 0.9;
+    ctx.stroke();
+
+    // Pupil pushed forward, so the gaze follows the aim rather than staring
+    // blankly out of the middle of the eye.
+    ellipsePath(ctx, eyeX + eyeR * 0.3, side * eyeY, eyeR * 0.55, eyeR * 0.6);
+    ctx.fillStyle = style.eyes ?? '#1e1b2e';
+    ctx.fill();
+  }
+
+  // Brow: one dark wedge across both eyes. Gives the face an expression
+  // without needing a mouth, which would be unreadable at this size.
+  ctx.beginPath();
+  ctx.moveTo(eyeX - eyeR * 0.6, -eyeY - eyeR * 1.25);
+  ctx.lineTo(eyeX + eyeR * 0.9, -eyeY - eyeR * 0.5);
+  ctx.lineTo(eyeX + eyeR * 0.9, eyeY + eyeR * 0.5);
+  ctx.lineTo(eyeX - eyeR * 0.6, eyeY + eyeR * 1.25);
+  ctx.closePath();
+  ctx.fillStyle = shade(style.hair, -0.15);
+  ctx.globalAlpha = 0.9;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * Whatever the character wears on its back, drawn under the body.
+ *
+ * From directly above, two characters of the same build are the same blob
+ * with different colours. Colour is the first thing to go when the screen is
+ * busy, so identity has to live in the outline — which is what this is for.
+ */
+function drawBackItem(
+  ctx: CanvasRenderingContext2D,
+  style: CharacterStyle,
+  m: BuildMetrics,
+  s: number,
+  outline: number,
+  pose: CharacterPose,
+  kick: number
+): void {
+  const back = style.back ?? 'none';
+  if (back === 'none') return;
+
+  const x = -m.chest * s * 0.75 - kick * 0.4;
+
+  switch (back) {
+    case 'tank': {
+      // Twin cylinders, like a pair of pressure bottles strapped on.
+      for (const side of [-1, 1]) {
+        ellipsePath(ctx, x, side * m.shoulder * s * 0.4, m.chest * s * 0.3, m.chest * s * 0.19);
+        fillStroke(ctx, shade(style.secondary, 0.12), outline * 1.5);
+        ellipsePath(
+          ctx,
+          x - m.chest * s * 0.12,
+          side * m.shoulder * s * 0.4,
+          m.chest * s * 0.11,
+          m.chest * s * 0.11
+        );
+        fillStroke(ctx, style.accent, outline);
+      }
+      break;
+    }
+
+    case 'cape': {
+      // Trails behind and sways out of phase with the walk, so the body does
+      // not look like it is sliding.
+      const sway = Math.sin(pose.time * 6 + 1) * 0.22 * (0.35 + pose.speed01);
+      ctx.save();
+      ctx.translate(x, 0);
+      ctx.rotate(sway);
+      ctx.beginPath();
+      ctx.moveTo(m.chest * s * 0.4, -m.shoulder * s * 0.8);
+      ctx.quadraticCurveTo(-m.chest * s * 1.3, -m.shoulder * s * 0.5, -m.chest * s * 1.5, 0);
+      ctx.quadraticCurveTo(-m.chest * s * 1.3, m.shoulder * s * 0.5, m.chest * s * 0.4, m.shoulder * s * 0.8);
+      ctx.closePath();
+      fillStroke(ctx, shade(style.accent, -0.25), outline * 1.6);
+      ctx.restore();
+      break;
+    }
+
+    case 'pack': {
+      ctx.beginPath();
+      ctx.roundRect(
+        x - m.chest * s * 0.42,
+        -m.shoulder * s * 0.62,
+        m.chest * s * 0.8,
+        m.shoulder * s * 1.24,
+        m.chest * s * 0.22
+      );
+      fillStroke(ctx, shade(style.secondary, 0.1), outline * 1.7);
+      // Buckle strip, so it does not read as a second torso.
+      ctx.beginPath();
+      ctx.roundRect(
+        x - m.chest * s * 0.3,
+        -m.shoulder * s * 0.16,
+        m.chest * s * 0.56,
+        m.shoulder * s * 0.32,
+        m.chest * s * 0.1
+      );
+      fillStroke(ctx, style.accent, outline);
+      break;
+    }
+
+    case 'coil': {
+      // Three rings stacked outward: reads as machinery at a glance.
+      for (let i = 0; i < 3; i++) {
+        const r = m.chest * s * (0.4 - i * 0.09);
+        ellipsePath(ctx, x - i * m.chest * s * 0.14, 0, r, r * 1.35);
+        fillStroke(ctx, i % 2 === 0 ? style.accent : shade(style.secondary, 0.15), outline * 1.3);
+      }
+      break;
+    }
+
+    case 'drum': {
+      ellipsePath(ctx, x, 0, m.chest * s * 0.44, m.shoulder * s * 0.66);
+      fillStroke(ctx, shade(style.secondary, 0.14), outline * 1.7);
+      ellipsePath(ctx, x, 0, m.chest * s * 0.2, m.shoulder * s * 0.3);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      break;
+    }
+
+    case 'wings': {
+      // Two swept blades that flare when the character moves.
+      const flare = 0.3 + pose.speed01 * 0.5;
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.translate(x + m.chest * s * 0.2, side * m.shoulder * s * 0.3);
+        ctx.rotate(side * flare);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(-m.chest * s * 0.9, side * m.shoulder * s * 0.3, -m.chest * s * 1.25, side * m.shoulder * s * 1.0);
+        ctx.quadraticCurveTo(-m.chest * s * 0.5, side * m.shoulder * s * 0.55, 0, side * m.shoulder * s * 0.3);
+        ctx.closePath();
+        fillStroke(ctx, shade(style.accent, -0.1), outline * 1.4);
+        ctx.restore();
+      }
+      break;
+    }
+  }
 }
 
 function drawArmsAndWeapon(
