@@ -21,7 +21,7 @@ import {
   BrawlerId,
   BrawlGameMode,
 } from '../types/brawl';
-import { generateBrawlMap, MAP_WIDTH, MAP_HEIGHT } from './brawlMaps';
+import { generateBrawlMap, MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import { circleRectCollision, circleIntersect, sweepCircleVsRect, sweepCircleVsCircle, createSweepHit } from '../core/collision';
 import { dist, clamp, moveTowards, smoothstep } from '../core/math';
 import { Rng } from '../core/rng';
@@ -144,6 +144,8 @@ export class BrawlEngine {
   public poisonGas: PoisonGas = { inset: 0, damageTimer: 0, isActive: false };
   public floatingNumbers: FloatingNumber[] = [];
   /** Recent kills, newest last. */
+  /** The map this match is being played on, for the HUD. */
+  public mapName: string = '';
   public killFeed: KillFeedEntry[] = [];
   /** Player ids in elimination order, used to work out Showdown placement. */
   public eliminationOrder: string[] = [];
@@ -180,7 +182,9 @@ export class BrawlEngine {
   private readonly world: SimWorld;
 
   constructor() {
-    const map = generateBrawlMap('showdown');
+    // A placeholder board, so the engine is never in an undefined state
+    // before a match has been set up. `initMatch` replaces all of it.
+    const map = generateBrawlMap('showdown', 1);
     this.walls = map.walls;
     this.bushes = map.bushes;
     this.boxes = map.boxes;
@@ -316,11 +320,12 @@ export class BrawlEngine {
     this.starPlayerId = null;
 
     this.botControllers = {};
-    const map = generateBrawlMap(mode);
+    const map = generateBrawlMap(mode, seed);
     this.walls = map.walls;
     this.bushes = map.bushes;
     this.boxes = map.boxes;
     this.gemMine = map.gemMine;
+    this.mapName = map.name;
     this.projectiles = [];
     this.deployables = [];
     this.thornFields = [];
@@ -1604,6 +1609,7 @@ export class BrawlEngine {
       eliminationOrder: this.eliminationOrder,
       introCountdown:
         this.phase === 'starting' ? Math.max(0, INTRO_DURATION - this.matchTimer) : 0,
+      mapName: this.mapName,
     };
   }
 }

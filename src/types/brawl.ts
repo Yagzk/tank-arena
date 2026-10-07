@@ -770,6 +770,8 @@ export interface BrawlSnapshot {
   eliminationOrder: string[];
   /** Seconds remaining in the pre-match countdown; zero once play has begun. */
   introCountdown: number;
+  /** The map being played, shown during the countdown. */
+  mapName: string;
 }
 
 export interface BrawlPlayerInput {

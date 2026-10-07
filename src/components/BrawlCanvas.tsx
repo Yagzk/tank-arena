@@ -7,7 +7,7 @@ import {
   BrawlerId,
   DeployedEntity,
 } from '../types/brawl';
-import { MAP_WIDTH, MAP_HEIGHT } from '../game/brawlMaps';
+import { MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import {
   drawCharacter,
   drawCharacterShadow,
@@ -643,7 +643,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       }
 
       if (snap && snap.introCountdown > 0) {
-        drawIntroCountdown(ctx, view, snap.introCountdown);
+        drawIntroCountdown(ctx, view, snap.introCountdown, snap.mapName);
       } else if (myBrawler && !myBrawler.isAlive) {
         drawDeathOverlay(ctx, view, myBrawler.respawnTimer, spectateIdRef.current, snap);
       }
@@ -1746,7 +1746,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   const drawIntroCountdown = (
     ctx: CanvasRenderingContext2D,
     view: ViewMetrics,
-    remaining: number
+    remaining: number,
+    mapName: string
   ) => {
     const whole = Math.ceil(remaining);
     // Each number swells as it appears and settles, so the beat is readable
@@ -1778,6 +1779,15 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.strokeText('HAZIRLAN', 0, 76);
     ctx.fillStyle = '#e2e8f0';
     ctx.fillText('HAZIRLAN', 0, 76);
+
+    if (mapName) {
+      ctx.font = 'bold 15px Orbitron, system-ui, sans-serif';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0f172a';
+      ctx.strokeText(mapName, 0, 108);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(mapName, 0, 108);
+    }
 
     ctx.restore();
   };

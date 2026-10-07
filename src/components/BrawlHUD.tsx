@@ -1,7 +1,7 @@
 import React from 'react';
 import { getInputMode, onInputModeChange } from '../input/inputMode';
 import { BrawlSnapshot, BRAWLERS, BrawlerEntity } from '../types/brawl';
-import { MAP_WIDTH, MAP_HEIGHT } from '../game/brawlMaps';
+import { MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import { Volume2, VolumeX, RotateCcw, Radio } from 'lucide-react';
 import { kitTraitLabels, listCooldownPassives } from '../sim/kitInfo';
 

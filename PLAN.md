@@ -1,7 +1,7 @@
 # NOVA ARENA — Geliştirme Planı
 
 > Bu dosya projenin tek yol haritasıdır. Bir iş bitince kutusu işaretlenir.
-> Son güncelleme: 2026-10-07 · Referans commit: `028fcff`
+> Son güncelleme: 2026-10-07 · Referans commit: `2e22edb`
 
 ---
 
@@ -22,7 +22,7 @@ Brawl Stars'ın oynanış mekaniklerini **birebir** veren, web ve mobil tarayıc
 
 ## 1. Nerede duruyoruz
 
-~13.400 satır TypeScript, 138 test, 10 test dosyası. Çalışan: Hesaplaşma ve Elmas
+~14.300 satır TypeScript, 164 test, 11 test dosyası. Çalışan: Hesaplaşma ve Elmas
 Kapmaca modları, 6 karakter, botlar, P2P çok oyunculu, masaüstü + dokunmatik
 kontroller.
 
@@ -35,6 +35,7 @@ kontroller.
 | `sim/effects/` | 14 efekt ilkeli, simülasyonun tüm sonuç sözlüğü |
 | `sim/entity.ts` | Tek varlık fabrikası + canlanma |
 | `sim/systems/deployables.ts` | Taret/minyon/mayın/istasyon/bariyer, tek varlık beş karar kuralı |
+| `maps/` | Tile tabanlı harita formatı, doğrulayıcı, 10 haritalık havuz |
 | `core/loop.ts` | Sabit timestep, rAF'tan ayrık simülasyon, `planSteps` politikası |
 | `core/collision.ts` | Swept (sürekli) çarpışma, görüş hattı |
 | `core/spatialHash.ts` | Uniform grid broadphase |
@@ -50,7 +51,6 @@ kontroller.
 
 - Ses katmanı ince sentez.
 - Motor tek dosya (1552 satır) — sistemlere bölünmesi Faz 0.4.
-- Harita mod başına 1 adet ve elle kodlanmış.
 - İlerleme/meta sistemi yok.
 
 ---
@@ -332,13 +332,27 @@ Her mod için: kurallar · kazanma koşulu · HUD · harita tipi · bot davranı
 
 # FAZ 5 — Haritalar
 
-- [ ] **Tile tabanlı JSON harita formatı**
-      (şu an `brawlMaps.ts` içinde elle `walls.push(...)`)
-- [ ] Yükleyici + doğrulayıcı
-- [ ] **Simetri doğrulayıcı** — rekabetçi modlarda şart
-- [ ] Mod başına **8-12 elle tasarlanmış harita**
-- [ ] Harita rotasyonu
+- [x] **Tile tabanlı harita formatı** — `src/maps/format.ts`, 40x30 ızgara,
+      60 px tile. `brawlMaps.ts` silindi.
+- [x] Yükleyici + derleyici — bitişik tile'lar tek dikdörtgene birleşiyor
+      (tile başına bir duvar, bir bedeni aynı adımda on kez iterdi)
+- [x] **Simetri garantili** — harita yarım (takım modları) veya çeyrek
+      (Hesaplaşma) olarak yazılıyor, gerisi üretiliyor. Doğrulanmıyor,
+      *imkânsız* hâle getiriliyor; aynalanırken doğma noktaları takım
+      değiştiriyor.
+- [x] Doğrulayıcı: ızgara boyutu, lejant, kapalı kenarlık, doğma sayısı ve
+      denkliği, hedef erişilebilirliği, **bağlantı** (çıkılamayan üs), ve
+      **siper yoğunluğu**
+- [x] Harita rotasyonu — tohumdan seçiliyor, yani eşler aynı haritaya düşüyor
+      ve harita ağdan gönderilmiyor
+- [x] 10 harita (5 Elmas Kapmaca + 5 Hesaplaşma)
+- [ ] Mod başına 8-12'ye çıkarmak (şu an 5+5)
 - [ ] Harita editörü (uzun vadeli)
+
+> **Yoğunluk kuralı neden var:** havuzun ilk hâli kenarlık hariç %14 siperdi ve
+> tek uzun bir nişan hattı gibi oynanıyordu — yaklaşılacak yer yok, en uzağa
+> vuran kazanıyor, oyunun geri kalanı anlamsız. Artık %26-50 arası siper ve en
+> az %7 çalı zorunlu; ilk havuzun **onu da** bu kurala takıldı.
 
 ---
 
