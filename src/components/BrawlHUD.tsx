@@ -12,6 +12,8 @@ interface BrawlHUDProps {
   onToggleMute: () => void;
   onLeaveGame: () => void;
   onSendEmote: (emote: string) => void;
+  /** Round trip to the host or server in milliseconds, if it is being measured. */
+  ping?: number | null;
 }
 
 /**
@@ -73,6 +75,7 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
   onToggleMute,
   onLeaveGame,
   onSendEmote,
+  ping = null,
 }) => {
   if (!snapshot) return null;
 
@@ -117,6 +120,19 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
           >
             {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
+
+          {/* Coloured by what it means for play, not by an arbitrary scale:
+              under 60 ms is invisible, past 130 it is felt in every shot. */}
+          {ping !== null && (
+            <div
+              title="Sunucuya gecikme"
+              className={`px-2.5 py-1.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-lg font-arcade text-[11px] font-bold tabular-nums ${
+                ping < 60 ? 'text-emerald-400' : ping < 130 ? 'text-amber-300' : 'text-rose-400'
+              }`}
+            >
+              {ping} ms
+            </div>
+          )}
         </div>
 
         {/* Center: Match Mode Status */}

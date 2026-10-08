@@ -45,6 +45,12 @@ Her karakterin ayrıca bir **aksesuarı** (3 kullanım) ve bir **yıldız gücü
 
 ---
 
+## 🌐 Sunucu
+
+Odalar varsayılan olarak P2P kurulur (odayı kuranın bilgisayarı maçı çalıştırır).
+Kendi sunucunuzda çalıştırmak için `npm run server` — kurulum, TLS ve ayarlar
+[docs/SUNUCU.md](docs/SUNUCU.md) içinde.
+
 ## 🗺️ Yol Haritası
 
 Tüm geliştirme planı — mekanik envanteri, 24 kişilik kadro planı, modlar,

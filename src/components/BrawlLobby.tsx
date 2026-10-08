@@ -30,6 +30,8 @@ interface BrawlLobbyProps {
   isHost: boolean;
   players: PlayerInfo[];
   onHostGame: () => void;
+  /** True when rooms live on the game server rather than in a player's browser. */
+  usesServer?: boolean;
   onJoinGame: () => void;
   onStartSingleplayer: () => void;
   onStartMatch: () => void;
@@ -53,6 +55,7 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
   isHost,
   players,
   onHostGame,
+  usesServer = false,
   onJoinGame,
   onStartSingleplayer,
   onStartMatch,
@@ -231,6 +234,23 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
 
             {/* Play Actions */}
             <div className="flex flex-col gap-3">
+              {/* Which kind of room this will be. It decides who carries the
+                  match's traffic, which is the thing players ask about when it
+                  lags, so it is stated rather than left to be guessed. */}
+              <div
+                className={`self-center inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-bold ${
+                  usesServer
+                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-400'
+                }`}
+              >
+                <span>{usesServer ? '🌐' : '🔗'}</span>
+                <span>
+                  {usesServer
+                    ? 'Oda sunucuda kurulur (düşük ping)'
+                    : 'Oda senin bilgisayarında kurulur (P2P)'}
+                </span>
+              </div>
               <button
                 onClick={onHostGame}
                 className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-arcade font-black text-sm tracking-wider transition shadow-[0_0_25px_rgba(245,158,11,0.4)] flex items-center justify-center gap-2 cursor-pointer"

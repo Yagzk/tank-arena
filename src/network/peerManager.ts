@@ -11,6 +11,9 @@ export type NetworkMessage =
   | { type: 'START_MATCH'; mode: BrawlGameMode }
   /** The host ending the round and bringing everybody back to the room. */
   | { type: 'RETURN_TO_LOBBY' }
+  /** Round-trip measurement: the host echoes the timestamp straight back. */
+  | { type: 'PING'; ts: number }
+  | { type: 'PONG'; ts: number }
   | { type: 'INPUT'; input: BrawlPlayerInput }
   | { type: 'STATE'; snapshot: NetSnapshot }
   | { type: 'SOUND'; event: BrawlSoundEvent };
@@ -21,6 +24,8 @@ export interface PeerManagerCallbacks {
   onGameStart?: (mode: BrawlGameMode) => void;
   onStateReceived?: (snapshot: NetSnapshot) => void;
   onReturnToLobby?: () => void;
+  /** Round trip to the host in milliseconds, smoothed. */
+  onPing?: (rttMs: number) => void;
   onInputReceived?: (playerId: string, input: BrawlPlayerInput) => void;
   onSoundReceived?: (event: BrawlSoundEvent) => void;
   onError?: (err: string) => void;
@@ -125,6 +130,7 @@ export class PeerManager {
       this.hostConn = conn;
 
       conn.on('open', () => {
+        this.startPinging();
         this.callbacks.onConnected?.(this.roomCode);
         conn.send({
           type: 'JOIN',
@@ -192,6 +198,8 @@ export class PeerManager {
         players: this.players,
         mode: this.mode,
       });
+    } else if (msg.type === 'PING') {
+      conn.send({ type: 'PONG', ts: msg.ts });
     } else if (msg.type === 'INPUT') {
       this.callbacks.onInputReceived?.(conn.peer, msg.input);
     }
@@ -210,6 +218,12 @@ export class PeerManager {
       case 'RETURN_TO_LOBBY':
         this.callbacks.onReturnToLobby?.();
         break;
+      case 'PONG': {
+        const sample = performance.now() - msg.ts;
+        this.rtt = this.rtt === null ? sample : this.rtt * 0.7 + sample * 0.3;
+        this.callbacks.onPing?.(Math.round(this.rtt));
+        break;
+      }
       case 'STATE':
         this.callbacks.onStateReceived?.(msg.snapshot);
         break;
@@ -369,7 +383,21 @@ export class PeerManager {
     });
   }
 
+  /** Smoothed round trip to the host, or null before the first answer. */
+  public rtt: number | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+
+  private startPinging() {
+    this.sendToHost({ type: 'PING', ts: performance.now() });
+    this.pingTimer = setInterval(
+      () => this.sendToHost({ type: 'PING', ts: performance.now() }),
+      2000
+    );
+  }
+
   public destroy() {
+    if (this.pingTimer !== null) clearInterval(this.pingTimer);
+    this.pingTimer = null;
     this.connections.forEach(conn => conn.close());
     this.connections.clear();
     if (this.hostConn) {

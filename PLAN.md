@@ -407,11 +407,20 @@ Her mod için: kurallar · kazanma koşulu · HUD · harita tipi · bot davranı
 
 # FAZ 8 — Ağ ve altyapı
 
-- [ ] **İkili/delta paket** — host hâlâ her pakette statik duvarları gönderiyor
+- [x] **Delta paket** — statik geometri yalnızca değişince, brawler'lar varsayılandan
+      farkıyla, sayılar tam sayıya yuvarlanmış: paket 16–20 KB → 2,4–3,8 KB
+      (PeerJS'in kendi serileştiricisiyle ölçüldü). İkili çerçeve (JSON yerine)
+      hâlâ yok.
 - [ ] **Client-side prediction + reconciliation** (kendi karakterin için;
       interpolasyon sadece rakipleri kapsıyor)
 - [ ] **Lag compensation** — isabetler sunucuda geri sarılarak doğrulanır
-- [ ] **Otoriter sunucu** (Node + uWebSockets / Colyseus) — P2P'de host avantajı ve hile var
+- [x] **Otoriter sunucu** (Node + `ws`) — `server/`, odayı ve maçı sunucuda
+      çalıştırır; motor DOM'suz olduğu için aynen çalışıyor. Gelen her mesaj
+      doğrulanır, hız/boyut/IP/oda sınırları var. P2P hâlâ yedek olarak duruyor.
+      Kurulum: `docs/SUNUCU.md`
+- [x] **Ping göstergesi** — HUD'da, hem sunucu hem P2P modunda
+- [x] **Arka planda donmama** — simülasyon saati Web Worker'da; host alt-tab
+      yapınca maç artık saniyede bir sıçramıyor
 - [ ] **Eşleştirme** + bölge seçimi
 - [ ] **Yeniden bağlanma**
 - [ ] **Hesap + kalıcılık** (şu an her şey `localStorage`)

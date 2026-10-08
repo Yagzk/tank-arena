@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   BrawlerId,
   BRAWLER_IDS,
@@ -9,7 +9,9 @@ import {
 } from './types/brawl';
 import { BrawlEngine, BrawlSoundEvent } from './game/brawlEngine';
 import { PeerManager } from './network/peerManager';
-import { SnapshotDecoder, SnapshotEncoder } from './network/codec';
+import { SnapshotDecoder, SnapshotEncoder, type NetSnapshot } from './network/codec';
+import { ServerManager } from './network/serverManager';
+import { getServerUrl } from './network/config';
 import { SnapshotInterpolator } from './net/interpolation';
 import { brawlAudio } from './audio/brawlAudio';
 import { BrawlLobby } from './components/BrawlLobby';
@@ -60,6 +62,7 @@ export const App: React.FC = () => {
   const setSelectedBrawler = (brawler: BrawlerId) => {
     setSelectedBrawlerState(brawler);
     peerManagerRef.current?.setBrawler(brawler);
+    serverRef.current?.pick(brawler);
   };
   const [gameMode, setGameMode] = useState<BrawlGameMode>('showdown');
   const [roomCode, setRoomCode] = useState<string>('');
@@ -96,6 +99,19 @@ export const App: React.FC = () => {
   const inGameRef = useRef(false);
   /** Counts rounds in a room, so a rematch is not the same match again. */
   const matchCountRef = useRef(0);
+
+  /**
+   * Where the game server is, if there is one. With it, rooms live there and no
+   * browser runs a match; without it the game is peer-to-peer as before.
+   */
+  const serverUrl = useMemo(() => getServerUrl(), []);
+  const serverRef = useRef<ServerManager | null>(null);
+  /** Whether this connection has actually been put in a room yet. */
+  const joinedRef = useRef(false);
+  /** Numbers each input, so the server can say how many it has applied. */
+  const inputSeqRef = useRef(0);
+  /** Round trip to the host or server, in milliseconds. */
+  const [ping, setPing] = useState<number | null>(null);
   const lastClientHudRef = useRef(0);
   const lastClientPhaseRef = useRef<string>('');
 
@@ -161,8 +177,107 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  /**
+   * A state packet from whoever runs the match — a host's browser or the
+   * server. Both end up here, so a client behaves the same whichever it is.
+   */
+  const receiveState = (net: NetSnapshot) => {
+    // Late packets from a round that has already ended are noise.
+    if (!inGameRef.current) return;
+
+    const snap = decoderRef.current.decode(net);
+    // Every packet goes straight to the interpolator, so motion is smooth at
+    // the rate packets arrive. React only needs the HUD's rate: it used to
+    // re-render the whole tree on every packet.
+    interpolatorRef.current.push(snap, performance.now());
+
+    const now = performance.now();
+    const phaseChanged = snap.phase !== lastClientPhaseRef.current;
+    if (phaseChanged || now - lastClientHudRef.current >= HUD_REFRESH_INTERVAL * 1000) {
+      lastClientPhaseRef.current = snap.phase;
+      lastClientHudRef.current = now;
+      setSnapshot(snap);
+    }
+  };
+
+  /**
+   * Opens the game server and then creates a room on it or joins one.
+   *
+   * Nobody here runs a match, the room's owner included: they are a client
+   * like everyone else, and "host" in the interface only means the person who
+   * may start the round.
+   */
+  const connectToServer = async (action: 'create' | 'join') => {
+    if (!serverUrl) return;
+    // A previous attempt that never got into a room must not be left open.
+    serverRef.current?.destroy();
+    joinedRef.current = false;
+    setIsSingleplayer(false);
+
+    const manager = new ServerManager(serverUrl, {
+      onJoined: (code, you) => {
+        joinedRef.current = true;
+        myPlayerIdRef.current = you;
+        setMyPlayerId(you);
+        setRoomCode(code);
+        setIsInRoom(true);
+      },
+      onRoom: (list, mode, owner) => {
+        setPlayers([...list]);
+        setGameMode(mode);
+        setIsHost(owner === myPlayerIdRef.current);
+        const me = list.find(p => p.id === myPlayerIdRef.current);
+        if (me) setSelectedBrawlerState(me.brawler);
+      },
+      onStart: mode => {
+        setGameMode(mode);
+        beginClientMatch();
+        setIsInGame(true);
+      },
+      onState: net => receiveState(net),
+      onSound: event => handleSoundEvent(event),
+      onLobby: () => stopMatchKeepRoom(),
+      onPing: rtt => setPing(rtt),
+      onError: message => {
+        alert(message);
+        // An error before a room was entered — wrong code, server full — leaves
+        // a connection open to nothing. Close it, so the next try starts clean.
+        if (!joinedRef.current) {
+          manager.destroy();
+          if (serverRef.current === manager) serverRef.current = null;
+        }
+      },
+      onClosed: () => {
+        alert('Sunucu ile bağlantı kesildi.');
+        handleLeaveGame();
+      },
+    });
+    serverRef.current = manager;
+
+    try {
+      await manager.connect();
+    } catch (error) {
+      serverRef.current = null;
+      alert(error instanceof Error ? error.message : 'Sunucuya bağlanılamadı.');
+      return;
+    }
+
+    if (action === 'create') manager.create(playerName, selectedBrawler, gameMode);
+    else manager.join(roomCode, playerName, selectedBrawler);
+  };
+
+  // The owner picking a mode in the room. Everybody else follows the room.
+  const handleSetGameMode = (mode: BrawlGameMode) => {
+    setGameMode(mode);
+    serverRef.current?.setMode(mode);
+  };
+
   // Host Game
   const handleHostGame = () => {
+    if (serverUrl) {
+      void connectToServer('create');
+      return;
+    }
     const code = PeerManager.generateRoomCode();
     setRoomCode(code);
     setIsHost(true);
@@ -198,6 +313,10 @@ export const App: React.FC = () => {
   // Join Game
   const handleJoinGame = () => {
     if (!roomCode.trim()) return;
+    if (serverUrl) {
+      void connectToServer('join');
+      return;
+    }
     setIsHost(false);
     setIsSingleplayer(false);
 
@@ -224,24 +343,8 @@ export const App: React.FC = () => {
       onReturnToLobby: () => {
         stopMatchKeepRoom();
       },
-      onStateReceived: net => {
-        // Late packets from a round that has already ended are noise.
-        if (!inGameRef.current) return;
-
-        const snap = decoderRef.current.decode(net);
-        // Every packet goes straight to the interpolator, so motion is smooth
-        // at the rate packets arrive. React only needs the HUD's rate: it used
-        // to re-render the whole tree on every packet.
-        interpolatorRef.current.push(snap, performance.now());
-
-        const now = performance.now();
-        const phaseChanged = snap.phase !== lastClientPhaseRef.current;
-        if (phaseChanged || now - lastClientHudRef.current >= HUD_REFRESH_INTERVAL * 1000) {
-          lastClientPhaseRef.current = snap.phase;
-          lastClientHudRef.current = now;
-          setSnapshot(snap);
-        }
-      },
+      onPing: rtt => setPing(rtt),
+      onStateReceived: net => receiveState(net),
       onSoundReceived: event => {
         handleSoundEvent(event);
       },
@@ -308,6 +411,10 @@ export const App: React.FC = () => {
 
   // Start Match (Host action)
   const handleStartMatch = () => {
+    if (serverRef.current) {
+      serverRef.current.start();
+      return;
+    }
     if (!isHost || players.length < 4) return;
 
     peerManagerRef.current?.broadcast({
@@ -401,6 +508,11 @@ export const App: React.FC = () => {
 
   // Send local input
   const handleSendInput = useCallback((input: BrawlPlayerInput) => {
+    const server = serverRef.current;
+    if (server) {
+      server.sendInput(++inputSeqRef.current, input);
+      return;
+    }
     if (isHost || isSingleplayer) {
       engineRef.current?.setPlayerInput(myPlayerIdRef.current, input);
     } else {
@@ -426,6 +538,10 @@ export const App: React.FC = () => {
   // Add Bot (Host action up to 10 players)
   const handleAddBot = () => {
     if (players.length >= 10) return;
+    if (serverRef.current) {
+      serverRef.current.addBot();
+      return;
+    }
     const chosenBrawler = BRAWLER_IDS[players.length % BRAWLER_IDS.length];
     const botNum = players.filter(p => p.isBot).length + 1;
 
@@ -434,11 +550,16 @@ export const App: React.FC = () => {
 
   // Remove Player/Bot
   const handleRemovePlayer = (id: string) => {
+    serverRef.current?.remove(id);
     peerManagerRef.current?.removePlayer(id);
   };
 
   // Restart match after game over
   const handleRestartMatch = () => {
+    if (serverRef.current) {
+      serverRef.current.restart();
+      return;
+    }
     if (!isHost) return;
     // Clients that went back to the room while the host was still looking at
     // the results are brought back in by the start signal, so a rematch does
@@ -481,6 +602,14 @@ export const App: React.FC = () => {
   // Back to the room after a match. The host takes everybody with it; a
   // client goes back on its own and is brought in again by the next start.
   const handleReturnToLobby = () => {
+    const server = serverRef.current;
+    if (server) {
+      // The owner ends the round for the room and the server tells everybody,
+      // them included. Anyone else just steps back to the room on their own.
+      if (isHost) server.returnToLobby();
+      else stopMatchKeepRoom();
+      return;
+    }
     const pm = peerManagerRef.current;
     if (!pm || isSingleplayer) {
       handleLeaveGame();
@@ -492,6 +621,10 @@ export const App: React.FC = () => {
 
   // Leave Game: the room goes too.
   const handleLeaveGame = () => {
+    serverRef.current?.destroy();
+    serverRef.current = null;
+    joinedRef.current = false;
+    setPing(null);
     gameLoopRef.current?.stop();
     gameLoopRef.current = null;
     snapshotSourceRef.current = undefined;
@@ -528,13 +661,14 @@ export const App: React.FC = () => {
           selectedBrawler={selectedBrawler}
           setSelectedBrawler={setSelectedBrawler}
           gameMode={gameMode}
-          setGameMode={setGameMode}
+          setGameMode={handleSetGameMode}
           roomCode={roomCode}
           setRoomCode={setRoomCode}
           isInRoom={isInRoom}
           isHost={isHost}
           players={players}
           onHostGame={handleHostGame}
+          usesServer={serverUrl !== null}
           onJoinGame={handleJoinGame}
           onStartSingleplayer={handleStartSingleplayer}
           onStartMatch={handleStartMatch}
@@ -560,6 +694,7 @@ export const App: React.FC = () => {
             onToggleMute={handleToggleMute}
             onLeaveGame={handleLeaveGame}
             onSendEmote={handleSendEmote}
+            ping={ping}
           />
 
           {snapshot?.phase === 'match_end' && (
