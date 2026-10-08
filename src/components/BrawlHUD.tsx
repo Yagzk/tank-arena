@@ -4,6 +4,7 @@ import { BrawlSnapshot, BRAWLERS, BrawlerEntity } from '../types/brawl';
 import { MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import { Volume2, VolumeX, RotateCcw, Radio } from 'lucide-react';
 import { kitTraitLabels, listCooldownPassives } from '../sim/kitInfo';
+import { ModeStatus } from './ModeStatus';
 
 interface BrawlHUDProps {
   snapshot: BrawlSnapshot | null;
@@ -138,40 +139,9 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
           )}
         </div>
 
-        {/* Center: Match Mode Status */}
+        {/* Center: how the match is going, which depends on the mode */}
         <div className="flex flex-col items-center">
-          {snapshot.mode === 'showdown' ? (
-            <div className="px-5 py-2 rounded-2xl bg-slate-900/90 border border-amber-500/50 backdrop-blur shadow-2xl flex items-center gap-2.5">
-              <span className="text-xl">💀</span>
-              <span className="font-arcade text-base font-black text-amber-400 tracking-wider">
-                {aliveCount} / {snapshot.brawlers.length} KALDI
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              {/* Blue Team Gems */}
-              <div className="px-4 py-2 rounded-2xl bg-blue-950/90 border border-blue-500/80 shadow-lg flex items-center gap-2">
-                <span className="text-sm">💎</span>
-                <span className="font-arcade text-lg font-bold text-blue-300">{blueGems}</span>
-              </div>
-
-              {/* Countdown Banner if active */}
-              {snapshot.countdownTeam !== null && (
-                <div className="px-5 py-2 rounded-2xl bg-rose-950 border-2 border-rose-500 shadow-2xl flex items-center gap-2 animate-bounce">
-                  <Radio size={16} className="text-rose-400 animate-spin" />
-                  <span className="font-arcade text-sm font-black text-rose-200">
-                    GERİ SAYIM: {Math.ceil(snapshot.countdownTimer)}s
-                  </span>
-                </div>
-              )}
-
-              {/* Red Team Gems */}
-              <div className="px-4 py-2 rounded-2xl bg-rose-950/90 border border-rose-500/80 shadow-lg flex items-center gap-2">
-                <span className="text-sm">💎</span>
-                <span className="font-arcade text-lg font-bold text-rose-300">{redGems}</span>
-              </div>
-            </div>
-          )}
+          <ModeStatus snapshot={snapshot} myPlayerId={myPlayerId} />
         </div>
 
         {/* Right: Holographic Minimap Radar */}
@@ -189,6 +159,25 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
             />
           )}
 
+          {/* Hot Zone's zone */}
+          {snapshot.zone && (
+            <span
+              style={{
+                top: `${(snapshot.zone.y / MAP_HEIGHT) * 100}%`,
+                left: `${(snapshot.zone.x / MAP_WIDTH) * 100}%`,
+                width: `${(snapshot.zone.radius * 2 / MAP_WIDTH) * 100}%`,
+                height: `${(snapshot.zone.radius * 2 / MAP_HEIGHT) * 100}%`,
+              }}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border ${
+                snapshot.zone.controller === null
+                  ? 'border-amber-300/80 bg-amber-300/10'
+                  : snapshot.zone.controller === 0
+                    ? 'border-blue-400 bg-blue-500/30'
+                    : 'border-rose-400 bg-rose-500/30'
+              }`}
+            />
+          )}
+
           {/* Brawler blips */}
           {snapshot.brawlers.map(b => {
             if (!b.isAlive) return null;
@@ -203,7 +192,7 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
                 className={`absolute w-2 h-2 rounded-full -translate-x-1 -translate-y-1 ${
                   isMe
                     ? 'bg-sky-400 ring-2 ring-white z-10'
-                    : b.team === 0
+                    : myBrawler && b.team === myBrawler.team
                     ? 'bg-blue-400'
                     : 'bg-rose-400'
                 }`}

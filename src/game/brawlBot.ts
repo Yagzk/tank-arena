@@ -50,7 +50,8 @@ export class BrawlBot {
     powerCubes: PowerCubeDrop[],
     gems: GemDrop[],
     dt: number,
-    nav: NavGrid
+    nav: NavGrid,
+    objective?: { x: number; y: number }
   ): BrawlPlayerInput {
     this.changeMoveTimer -= dt;
     this.attackCooldown -= dt;
@@ -111,7 +112,19 @@ export class BrawlBot {
     const lootIsCloser = nearestBox !== null && minBoxDist < minEnemyDist * 0.85;
     const enemyIsOnTopOfUs = minEnemyDist < ENGAGE_DISTANCE;
 
-    if (nearestEnemy && (!isWeak || enemyIsOnTopOfUs || !lootIsCloser)) {
+    // Heading for an objective rather than a fight. Such a bot must not fire at
+    // the empty ground it is walking toward.
+    let objectiveOnly = false;
+
+    if (objective && !(nearestEnemy && enemyIsOnTopOfUs)) {
+      // A mode with something to hold gives bots something to do besides hunt.
+      // They still defend themselves — an enemy on top of them wins the choice
+      // above — but otherwise they go to it and stay.
+      targetX = objective.x;
+      targetY = objective.y;
+      hasTarget = true;
+      objectiveOnly = true;
+    } else if (nearestEnemy && (!isWeak || enemyIsOnTopOfUs || !lootIsCloser)) {
       targetX = nearestEnemy.x;
       targetY = nearestEnemy.y;
       hasTarget = true;
@@ -159,19 +172,19 @@ export class BrawlBot {
       const lineOfSight = hasLineOfSight(bot.x, bot.y, targetX, targetY, walls);
       canSeeTarget = lineOfSight || profile?.ignoresCover === true;
 
-      if (targetDist <= maxRange && canSeeTarget && bot.ammo >= 1 && this.attackCooldown <= 0) {
+      if (!objectiveOnly && targetDist <= maxRange && canSeeTarget && bot.ammo >= 1 && this.attackCooldown <= 0) {
         shouldAttack = true;
         this.attackCooldown = 0.45 + Math.random() * 0.35;
       }
 
-      if (bot.superCharge >= 100 && canSeeTarget) {
+      if (bot.superCharge >= 100 && canSeeTarget && !objectiveOnly) {
         const min = (profile?.superRange?.min ?? 0) * reach;
         const max = (profile?.superRange?.max ?? 1.1) * reach;
         shouldSuper = targetDist >= min && targetDist <= max;
       }
 
       const gadget = profile?.gadget;
-      if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0 && gadget) {
+      if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0 && gadget && !objectiveOnly) {
         switch (gadget.when) {
           case 'enemyWithin':
             this.wantsGadget = targetDist < gadget.range;

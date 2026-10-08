@@ -13,6 +13,7 @@ import { SnapshotDecoder, SnapshotEncoder, type NetSnapshot } from './network/co
 import { ServerManager } from './network/serverManager';
 import { getServerUrl } from './network/config';
 import { SnapshotInterpolator } from './net/interpolation';
+import { MODES } from './game/modes';
 import { Predictor } from './net/prediction';
 import { brawlAudio } from './audio/brawlAudio';
 import { BrawlLobby } from './components/BrawlLobby';
@@ -150,7 +151,8 @@ export const App: React.FC = () => {
 
   // The music is the room's: gentle in the lobby, and each mode has its own.
   useEffect(() => {
-    brawlAudio.music(isInGame ? gameMode : 'lobby');
+    // Free-for-all modes get the tense theme, the two-sided ones the brighter.
+    brawlAudio.music(!isInGame ? 'lobby' : MODES[gameMode].grouping === 'sides' ? 'gem_grab' : 'showdown');
     if (!isInGame) brawlAudio.clearListener();
   }, [isInGame, gameMode]);
 

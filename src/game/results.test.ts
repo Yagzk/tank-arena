@@ -44,6 +44,13 @@ function snapshot(
     eliminationOrder: [],
     introCountdown: 0,
     mapName: '',
+    teamScores: [],
+    scoreLimit: null,
+    timeLeft: null,
+    round: 1,
+    roundWins: [],
+    roundsToWin: null,
+    zone: null,
     ...over,
   };
 }

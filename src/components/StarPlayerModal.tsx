@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { BrawlSnapshot, BRAWLERS } from '../types/brawl';
 import { RotateCcw, Home, Star } from 'lucide-react';
 import { computeResults } from '../game/results';
+import { MODES } from '../game/modes';
 import { CharacterPortrait } from './CharacterPortrait';
 import { brawlAudio } from '../audio/brawlAudio';
 
@@ -103,7 +104,7 @@ export const StarPlayerModal: React.FC<StarPlayerModalProps> = ({
             {result.title}
           </h2>
           <span className="text-[11px] px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-arcade font-bold">
-            {result.mode === 'showdown' ? 'HESAPLAŞMA' : 'ELMAS KAPMACA'}
+            {MODES[result.mode].name}
           </span>
         </div>
         <p className="relative text-xs text-slate-400 mb-3">
@@ -163,11 +164,12 @@ export const StarPlayerModal: React.FC<StarPlayerModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-3 font-arcade shrink-0">
+                  {/* What matters in this mode, and nothing that does not. */}
                   {result.mode === 'gem_grab' ? (
                     <span className="text-purple-400 font-bold">💎 {r.gems}</span>
-                  ) : (
+                  ) : MODES[result.mode].powerCubes ? (
                     <span className="text-emerald-400 font-bold">🟩 {r.powerCubes}</span>
-                  )}
+                  ) : null}
                   <span className="text-slate-300">⚔ {r.kills}</span>
                   <span className="text-slate-500">💀 {r.deaths}</span>
                 </div>

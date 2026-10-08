@@ -1,4 +1,5 @@
 import { AudioSettings } from './AudioSettings';
+import { ModePicker } from './ModePicker';
 import React, { useState } from 'react';
 import { CharacterPortrait } from './CharacterPortrait';
 import { BrawlerId, BRAWLER_IDS, BRAWLERS, PlayerInfo, BrawlGameMode } from '../types/brawl';
@@ -234,6 +235,15 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
 
             <div className="h-px w-full bg-slate-800" />
 
+            {/* The mode, chosen before the room exists. A solo game has no room to
+                choose it in, and used to be Showdown whatever you wanted. */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Oyun Modu
+              </label>
+              <ModePicker value={gameMode} onChange={setGameMode} />
+            </div>
+
             {/* Play Actions */}
             <div className="flex flex-col gap-3">
               {/* Which kind of room this will be. It decides who carries the
@@ -317,37 +327,7 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
                   Oyun Modu Seçimi
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setGameMode('showdown')}
-                    className={`p-3.5 rounded-2xl border-2 flex items-center gap-3 transition cursor-pointer ${
-                      gameMode === 'showdown'
-                        ? 'border-amber-500 bg-amber-500/20 text-amber-300'
-                        : 'border-slate-800 bg-slate-950 text-slate-400'
-                    }`}
-                  >
-                    <span className="text-2xl">💀</span>
-                    <div className="flex flex-col text-left">
-                      <span className="font-arcade text-xs font-bold">HESAPLAŞMA (SHOWDOWN)</span>
-                      <span className="text-[11px] opacity-75">Kutular, Zehirli Gaz, Son Kalan Kazanır</span>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => setGameMode('gem_grab')}
-                    className={`p-3.5 rounded-2xl border-2 flex items-center gap-3 transition cursor-pointer ${
-                      gameMode === 'gem_grab'
-                        ? 'border-purple-500 bg-purple-500/20 text-purple-300'
-                        : 'border-slate-800 bg-slate-950 text-slate-400'
-                    }`}
-                  >
-                    <span className="text-2xl">💎</span>
-                    <div className="flex flex-col text-left">
-                      <span className="font-arcade text-xs font-bold">ELMAS KAPMACA (GEM GRAB)</span>
-                      <span className="text-[11px] opacity-75">10 Elması Topla ve Geri Sayımı Başlat</span>
-                    </div>
-                  </button>
-                </div>
+                <ModePicker value={gameMode} onChange={setGameMode} />
               </div>
             )}
 

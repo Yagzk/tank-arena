@@ -17,6 +17,7 @@ import {
   type PlayerInfo,
 } from '../types/brawl';
 import type { BrawlSoundEvent } from '../game/brawlEngine';
+import { MODE_IDS } from '../game/modes';
 import type { NetSnapshot } from './codec';
 
 export const MAX_PLAYERS = 10;
@@ -47,7 +48,7 @@ export type ServerMessage =
   | { t: 'pong'; ts: number }
   | { t: 'error'; message: string };
 
-const MODES: ReadonlySet<string> = new Set<BrawlGameMode>(['showdown', 'gem_grab']);
+const MODES: ReadonlySet<string> = new Set<string>(MODE_IDS);
 const BRAWLERS: ReadonlySet<string> = new Set<string>(BRAWLER_IDS);
 
 /** Room codes: no characters that read as each other (0/O, 1/I). */

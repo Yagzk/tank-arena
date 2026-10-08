@@ -371,7 +371,22 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
  */
 export const BRAWLER_IDS = Object.keys(BRAWLERS) as BrawlerId[];
 
-export type BrawlGameMode = 'showdown' | 'gem_grab';
+export type BrawlGameMode =
+  | 'showdown'
+  | 'duo_showdown'
+  | 'gem_grab'
+  | 'wipeout'
+  | 'knockout'
+  | 'hot_zone';
+
+/** The ground a team fights over in Hot Zone. */
+export interface HotZone {
+  x: number;
+  y: number;
+  radius: number;
+  /** The team currently scoring from it, or null if empty or contested. */
+  controller: number | null;
+}
 
 export interface PlayerInfo {
   id: string;
@@ -788,6 +803,18 @@ export interface BrawlSnapshot {
   introCountdown: number;
   /** The map being played, shown during the countdown. */
   mapName: string;
+  /** Points per team, in modes decided by a score. Empty otherwise. */
+  teamScores: number[];
+  /** Score that wins outright, if the mode has one. */
+  scoreLimit: number | null;
+  /** Seconds left before the clock decides it, or null if there is no clock. */
+  timeLeft: number | null;
+  /** Knockout: which round this is, who has won how many, and how many win it. */
+  round: number;
+  roundWins: number[];
+  roundsToWin: number | null;
+  /** Hot Zone's zone, or null in every other mode. */
+  zone: HotZone | null;
 }
 
 export interface BrawlPlayerInput {

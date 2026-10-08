@@ -20,6 +20,7 @@ import {
   BRAWLERS,
   BrawlerId,
   BrawlGameMode,
+  HotZone,
 } from '../types/brawl';
 import { generateBrawlMap, MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import { circleRectCollision, circleIntersect, sweepCircleVsRect, sweepCircleVsCircle, createSweepHit } from '../core/collision';
@@ -29,6 +30,7 @@ import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
 import type { SoundType } from '../audio/cues';
+import { MODES, decideByScore, decideRound, teamFor, zoneController } from './modes';
 import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim/entity';
 import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { updateDeployables } from '../sim/systems/deployables';
@@ -67,6 +69,16 @@ export interface BrawlSoundEvent {
   to?: string;
 }
 
+/** Hot Zone: how big the zone is, and how fast holding it scores. */
+const ZONE_RADIUS = 150;
+const ZONE_POINTS_PER_SECOND = 1;
+
+/** How far apart the two members of a pair start, in world units. */
+const PARTNER_OFFSET = 52;
+
+/** Seconds a decided Knockout round plays on before the next begins. */
+const ROUND_CLOSE_DELAY = 1.8;
+
 /** Shortest time, in simulated seconds, between two reports of the same sound. */
 const SOUND_GAPS: Partial<Record<SoundType, number>> = {
   hit: 0.06,
@@ -94,31 +106,6 @@ const GADGET_COOLDOWN = 4.5;
 /** How far a placed Super reaches when the player gave only a direction. */
 const SUPER_DEFAULT_REACH = 360;
 
-/**
- * What death means, per mode.
- *
- * This table is the fix for the single worst bug in the project: `isAlive`
- * used to be a one-way door. Nothing anywhere set it back to true, so a Gem
- * Grab player who died was gone for the rest of the match and the mode could
- * not actually be played. Elimination is a *rule*, not a property of the
- * engine, and it belongs in one place that every future mode reads.
- */
-interface ModeRules {
-  /** Seconds before a downed brawler returns. Zero means death is final. */
-  respawnDelay: number;
-  /** Seconds of protection on return, so a base camper cannot farm the spawn. */
-  respawnImmunity: number;
-  /** Fraction of the Super bar carried through a death. */
-  superRetention: number;
-}
-
-const MODE_RULES: Record<BrawlGameMode, ModeRules> = {
-  showdown: { respawnDelay: 0, respawnImmunity: 0, superRetention: 0 },
-  // Three seconds is long enough to be a real cost and short enough that the
-  // objective does not go uncontested while you wait.
-  gem_grab: { respawnDelay: 3, respawnImmunity: 1.5, superRetention: 0.25 },
-};
-
 export class BrawlEngine {
   public phase: BrawlSnapshot['phase'] = 'waiting';
   public mode: BrawlGameMode = 'showdown';
@@ -142,6 +129,19 @@ export class BrawlEngine {
   public bushes: Bush[] = [];
   public walls: BrawlWall[] = [];
   public gemMine?: GemMine;
+  /** Points per team, in modes decided by a score. */
+  public teamScores: number[] = [];
+  /** Hot Zone's zone; null in every other mode. */
+  public zone: HotZone | null = null;
+  /** Knockout: the round being played, and the rounds each team has won. */
+  public round = 1;
+  public roundWins: number[] = [];
+  /** Seconds until a decided Knockout round is closed out, or null while it is live. */
+  private roundCloseTimer: number | null = null;
+  private roundResult: { winner: number | null } | null = null;
+  /** What this match was built from, so a new round can rebuild the same map. */
+  private matchSeed = 0;
+  private matchPlayers: PlayerInfo[] = [];
   public poisonGas: PoisonGas = { inset: 0, damageTimer: 0, isActive: false };
   public floatingNumbers: FloatingNumber[] = [];
   /** Recent kills, newest last. */
@@ -351,12 +351,15 @@ export class BrawlEngine {
     this.starPlayerId = null;
 
     this.botControllers = {};
-    const map = generateBrawlMap(mode, seed);
-    this.walls = map.walls;
-    this.bushes = map.bushes;
-    this.boxes = map.boxes;
-    this.gemMine = map.gemMine;
-    this.mapName = map.name;
+    this.matchSeed = seed;
+    this.matchPlayers = players;
+    this.round = 1;
+    this.roundWins = [];
+    this.roundCloseTimer = null;
+    this.roundResult = null;
+
+    const def = MODES[mode];
+    const map = this.loadMap(mode, seed);
     this.projectiles = [];
     this.deployables = [];
     this.thornFields = [];
@@ -368,24 +371,12 @@ export class BrawlEngine {
     this.killFeed = [];
     this.eliminationOrder = [];
 
-    this.poisonGas = {
-      inset: 0,
-      damageTimer: 0,
-      isActive: mode === 'showdown',
-    };
+    this.poisonGas = { inset: 0, damageTimer: 0, isActive: def.gas };
 
     // Initialize brawlers (up to 10 players)
     this.brawlers = players.map((p, idx) => {
-      const team = mode === 'gem_grab' ? idx % 2 : idx;
-      // Gem Grab spawn points are grouped by team (first half blue, second
-      // half red). Indexing them by raw player order dropped half the lobby
-      // into the enemy base on round start.
-      const half = Math.ceil(map.spawns.length / 2);
-      const spawnIndex =
-        mode === 'gem_grab'
-          ? Math.min(map.spawns.length - 1, (team === 0 ? 0 : half) + Math.floor(idx / 2))
-          : idx % map.spawns.length;
-      const spawn = map.spawns[spawnIndex];
+      const team = teamFor(mode, idx);
+      const spawn = this.spawnFor(map, mode, idx, team);
 
       if (p.isBot) {
         this.botControllers[p.id] = new BrawlBot();
@@ -406,6 +397,66 @@ export class BrawlEngine {
       entity.spawnY = spawn.y;
       return entity;
     });
+
+    const teams = new Set(this.brawlers.map(b => b.team)).size;
+    if (def.grouping !== 'solo') {
+      this.teamScores = new Array(Math.max(2, teams)).fill(0);
+      this.roundWins = new Array(Math.max(2, teams)).fill(0);
+    } else {
+      this.teamScores = [];
+    }
+  }
+
+  /** Builds the level for a mode and installs it. */
+  private loadMap(mode: BrawlGameMode, seed: number) {
+    const def = MODES[mode];
+    const map = generateBrawlMap(mode, seed);
+    this.walls = map.walls;
+    this.bushes = map.bushes;
+    // Power cubes belong to the modes that have them. Gem Grab has no use for
+    // a box that drops one, and used to be handing out health for smashing it.
+    this.boxes = def.powerCubes ? map.boxes : [];
+    this.gemMine = map.gemMine;
+    this.mapName = map.name;
+    this.wallGridDirty = true;
+
+    this.zone =
+      mode === 'hot_zone' && map.objective
+        ? { x: map.objective.x, y: map.objective.y, radius: ZONE_RADIUS, controller: null }
+        : null;
+    return map;
+  }
+
+  /**
+   * Where the idx-th player starts.
+   *
+   * Two-sided maps list each side's spawns together, so a player takes the next
+   * free one on their own side; indexing by raw roster order dropped half the
+   * lobby into the enemy base. In a pair, the partner stands beside the first.
+   */
+  private spawnFor(
+    map: ReturnType<typeof generateBrawlMap>,
+    mode: BrawlGameMode,
+    idx: number,
+    team: number
+  ): { x: number; y: number } {
+    const spawns = map.spawns;
+    const grouping = MODES[mode].grouping;
+
+    if (grouping === 'sides') {
+      const half = Math.ceil(spawns.length / 2);
+      return spawns[Math.min(spawns.length - 1, (team === 0 ? 0 : half) + Math.floor(idx / 2))];
+    }
+
+    if (grouping === 'pairs') {
+      const base = spawns[team % spawns.length];
+      const partner = idx % 2;
+      // Beside it, toward the middle of the map, where the ground is open.
+      const towardCentre = base.x < MAP_WIDTH / 2 ? 1 : -1;
+      return { x: base.x + partner * towardCentre * PARTNER_OFFSET, y: base.y };
+    }
+
+    return spawns[idx % spawns.length];
   }
 
   /**
@@ -474,6 +525,7 @@ export class BrawlEngine {
     this.updateFirePatches(dt);
     this.updateVisualEffects(dt);
     this.updateGemMine(dt);
+    this.updateZone(dt);
     this.updatePoisonGas(dt);
     this.updatePickups();
     this.updateFloatingNumbers(dt);
@@ -504,7 +556,7 @@ export class BrawlEngine {
         if (b.respawnTimer > 0) {
           b.respawnTimer -= dt;
           if (b.respawnTimer <= 0) {
-            const rules = MODE_RULES[this.mode];
+            const rules = MODES[this.mode];
             respawnBrawler(b, {
               immunity: rules.respawnImmunity,
               superRetention: rules.superRetention,
@@ -676,7 +728,9 @@ export class BrawlEngine {
           this.powerCubes,
           this.gems,
           dt,
-          this.navGrid
+          this.navGrid,
+          // Hot Zone gives bots a place to be.
+          this.zone ? { x: this.zone.x, y: this.zone.y } : undefined
         );
         this.playerInputs[b.id] = input;
       }
@@ -1377,6 +1431,7 @@ export class BrawlEngine {
       b.isJumping = false;
       b.deaths++;
       this.emitSound('death', b.x, b.y);
+      this.scoreKill(b, source);
       // The satisfaction of a kill is the killer's alone, and a bot does not
       // need telling.
       if (source && !source.isBot && source.id !== b.id) {
@@ -1386,7 +1441,7 @@ export class BrawlEngine {
       if (source) source.kills++;
       const killer = source;
 
-      const rules = MODE_RULES[this.mode];
+      const rules = MODES[this.mode];
       b.respawnTimer = b.isClone ? 0 : rules.respawnDelay;
 
       if (!b.isClone) {
@@ -1419,8 +1474,8 @@ export class BrawlEngine {
         b.gemsCarried = 0;
       }
 
-      // Drop Power Cubes (Showdown)
-      if (this.mode === 'showdown') {
+      // Drop power cubes, where the mode has them
+      if (MODES[this.mode].powerCubes) {
         const cubesToDrop = Math.max(1, Math.floor(b.powerCubes / 2) + 1);
         for (let i = 0; i < cubesToDrop; i++) {
           const ang = this.rng.next() * Math.PI * 2;
@@ -1533,57 +1588,211 @@ export class BrawlEngine {
     }
   }
 
-  private checkGameModeRules(dt: number) {
-    if (this.mode === 'showdown') {
-      const aliveBrawlers = this.brawlers.filter(b => b.isAlive && !b.isClone);
-      if (aliveBrawlers.length <= 1) {
-        this.phase = 'match_end';
-        if (aliveBrawlers.length === 1) {
-          const winner = aliveBrawlers[0];
-          this.winnerPlayerId = winner.id;
-          this.starPlayerId = winner.id;
-        }
-        this.emitSound('star_player');
-      }
-    } else {
-      // Gem Grab Rules
-      const teamGems: Record<number, number> = { 0: 0, 1: 0 };
-      this.brawlers.forEach(b => {
-        if (!b.isClone) {
-          teamGems[b.team] = (teamGems[b.team] || 0) + b.gemsCarried;
-        }
-      });
+  /** A kill is a point to the side that made it, in the modes that count them. */
+  private scoreKill(victim: BrawlerEntity, killer: BrawlerEntity | undefined) {
+    if (this.mode !== 'wipeout' || victim.isClone) return;
+    if (!killer || killer.team === victim.team) return;
+    this.teamScores[killer.team] = (this.teamScores[killer.team] ?? 0) + 1;
+  }
 
-      const team0Gems = teamGems[0] || 0;
-      const team1Gems = teamGems[1] || 0;
+  /** Hot Zone: whoever holds the zone alone is scoring from it. */
+  private updateZone(dt: number) {
+    const zone = this.zone;
+    if (!zone || this.phase !== 'playing') return;
 
-      let winningTeam: number | null = null;
-      if (team0Gems >= 10 && team0Gems > team1Gems) winningTeam = 0;
-      else if (team1Gems >= 10 && team1Gems > team0Gems) winningTeam = 1;
-
-      if (winningTeam !== null) {
-        if (this.countdownTeam !== winningTeam) {
-          this.countdownTeam = winningTeam;
-          this.countdownTimer = 15.0; // 15s Countdown begins!
-          this.emitSound('alarm');
-        } else {
-          this.countdownTimer -= dt;
-          if (this.countdownTimer <= 0) {
-            this.phase = 'match_end';
-            this.winnerTeam = winningTeam;
-
-            // Pick Star Player
-            const winningBrawlers = this.brawlers.filter(b => b.team === winningTeam && !b.isClone);
-            winningBrawlers.sort((a, b) => (b.gemsCarried * 2 + b.kills) - (a.gemsCarried * 2 + a.kills));
-            this.starPlayerId = winningBrawlers[0]?.id || null;
-            this.emitSound('star_player');
-          }
-        }
-      } else {
-        this.countdownTeam = null;
-        this.countdownTimer = 15.0;
+    const inside = new Array(this.teamScores.length).fill(0);
+    for (const b of this.brawlers) {
+      if (!b.isAlive || b.isClone || b.isJumping) continue;
+      if (dist(b.x, b.y, zone.x, zone.y) <= zone.radius + BRAWLER_RADIUS * 0.5) {
+        inside[b.team] = (inside[b.team] ?? 0) + 1;
       }
     }
+
+    zone.controller = zoneController(inside);
+    if (zone.controller !== null) {
+      this.teamScores[zone.controller] += dt * ZONE_POINTS_PER_SECOND;
+    }
+  }
+
+  /** Ends the match, and picks who gets the credit for it. */
+  private finishMatch(winnerTeam: number | null, starPool: BrawlerEntity[]) {
+    this.phase = 'match_end';
+    this.winnerTeam = winnerTeam;
+
+    const pool = starPool.filter(b => !b.isClone);
+    pool.sort((a, b) => b.kills * 2 + b.gemsCarried - (a.kills * 2 + a.gemsCarried));
+    this.starPlayerId = pool[0]?.id ?? null;
+    this.emitSound('star_player');
+  }
+
+  private checkGameModeRules(dt: number) {
+    const def = MODES[this.mode];
+    const players = this.brawlers.filter(b => !b.isClone);
+
+    switch (this.mode) {
+      case 'showdown': {
+        const alive = players.filter(b => b.isAlive);
+        if (alive.length <= 1) {
+          this.phase = 'match_end';
+          if (alive.length === 1) {
+            this.winnerPlayerId = alive[0].id;
+            this.starPlayerId = alive[0].id;
+          }
+          this.emitSound('star_player');
+        }
+        return;
+      }
+
+      case 'duo_showdown': {
+        // The round ends when one team is left, however many of it are.
+        const alive = players.filter(b => b.isAlive);
+        const teams = new Set(alive.map(b => b.team));
+        if (teams.size <= 1) {
+          const winner = teams.size === 1 ? [...teams][0] : null;
+          const best = alive.slice().sort((a, b) => b.hp - a.hp)[0];
+          this.winnerPlayerId = best ? best.id : null;
+          this.finishMatch(winner, winner === null ? players : players.filter(b => b.team === winner));
+          if (this.winnerPlayerId) this.starPlayerId = this.winnerPlayerId;
+        }
+        return;
+      }
+
+      case 'gem_grab':
+        this.checkGemGrab(dt, players);
+        return;
+
+      case 'wipeout':
+      case 'hot_zone': {
+        const timeUp = def.timeLimit !== undefined && this.matchTimer >= def.timeLimit;
+        const standing = decideByScore(this.teamScores, def.scoreLimit, timeUp);
+        if (standing.winner !== null || standing.draw) {
+          this.finishMatch(
+            standing.winner,
+            standing.winner === null ? players : players.filter(b => b.team === standing.winner)
+          );
+        }
+        return;
+      }
+
+      case 'knockout':
+        this.checkKnockout(dt, players);
+        return;
+    }
+  }
+
+  private checkGemGrab(dt: number, players: BrawlerEntity[]) {
+    const teamGems: Record<number, number> = { 0: 0, 1: 0 };
+    for (const b of players) teamGems[b.team] = (teamGems[b.team] || 0) + b.gemsCarried;
+
+    const team0Gems = teamGems[0] || 0;
+    const team1Gems = teamGems[1] || 0;
+
+    let winningTeam: number | null = null;
+    if (team0Gems >= 10 && team0Gems > team1Gems) winningTeam = 0;
+    else if (team1Gems >= 10 && team1Gems > team0Gems) winningTeam = 1;
+
+    if (winningTeam === null) {
+      this.countdownTeam = null;
+      this.countdownTimer = 15.0;
+      return;
+    }
+
+    if (this.countdownTeam !== winningTeam) {
+      this.countdownTeam = winningTeam;
+      this.countdownTimer = 15.0; // 15s Countdown begins!
+      this.emitSound('alarm');
+      return;
+    }
+
+    this.countdownTimer -= dt;
+    if (this.countdownTimer <= 0) {
+      this.finishMatch(winningTeam, players.filter(b => b.team === winningTeam));
+    }
+  }
+
+  /**
+   * Knockout: rounds, with nobody coming back inside one.
+   *
+   * A decided round is not closed out the instant it is decided. The sim keeps
+   * running for a moment so the last kill is seen, and then the next round is
+   * set up from scratch — the map, the positions, everyone's health.
+   */
+  private checkKnockout(dt: number, players: BrawlerEntity[]) {
+    const def = MODES.knockout;
+
+    if (this.roundCloseTimer !== null) {
+      this.roundCloseTimer -= dt;
+      if (this.roundCloseTimer <= 0) this.closeRound(players);
+      return;
+    }
+
+    const teamCount = this.roundWins.length;
+    const alive = new Array(teamCount).fill(0);
+    const hp = new Array(teamCount).fill(0);
+    for (const b of players) {
+      if (!b.isAlive) continue;
+      alive[b.team]++;
+      hp[b.team] += b.hp;
+    }
+
+    const timeUp = def.timeLimit !== undefined && this.matchTimer >= def.timeLimit;
+    const standing = decideRound(alive, hp, timeUp);
+    if (standing.winner === null && !standing.draw) return;
+
+    this.roundResult = { winner: standing.winner };
+    this.roundCloseTimer = ROUND_CLOSE_DELAY;
+  }
+
+  private closeRound(players: BrawlerEntity[]) {
+    const def = MODES.knockout;
+    const winner = this.roundResult ? this.roundResult.winner : null;
+    this.roundCloseTimer = null;
+    this.roundResult = null;
+
+    if (winner !== null) this.roundWins[winner]++;
+
+    const needed = def.roundsToWin ?? 2;
+    const maxRounds = needed * 2 + 1;
+    const best = Math.max(...this.roundWins);
+    const leader = this.roundWins.indexOf(best);
+    const leaders = this.roundWins.filter(w => w === best).length;
+
+    if (winner !== null && this.roundWins[winner] >= needed) {
+      this.finishMatch(winner, players.filter(b => b.team === winner));
+      return;
+    }
+    // A match of nothing but drawn rounds cannot go on for ever.
+    if (this.round >= maxRounds) {
+      const won = leaders === 1 ? leader : null;
+      this.finishMatch(won, won === null ? players : players.filter(b => b.team === won));
+      return;
+    }
+
+    this.startNextRound();
+  }
+
+  private startNextRound() {
+    this.round += 1;
+
+    // A fresh level: nothing broken, nothing left in the air.
+    this.loadMap(this.mode, this.matchSeed);
+    this.projectiles = [];
+    this.deployables = [];
+    this.thornFields = [];
+    this.firePatches = [];
+    this.visualEffects = [];
+    this.floatingNumbers = [];
+    this.eliminationOrder = [];
+
+    // Decoys do not survive a round; everyone else is back on their feet.
+    this.brawlers = this.brawlers.filter(b => !b.isClone);
+    for (const b of this.brawlers) {
+      respawnBrawler(b, { immunity: 0, superRetention: 0.5 });
+    }
+
+    // The countdown again, which is also what freezes everybody in place.
+    this.phase = 'starting';
+    this.matchTimer = 0;
   }
 
   /**
@@ -1670,6 +1879,16 @@ export class BrawlEngine {
       introCountdown:
         this.phase === 'starting' ? Math.max(0, INTRO_DURATION - this.matchTimer) : 0,
       mapName: this.mapName,
+      teamScores: this.teamScores.map(v => Math.floor(v)),
+      scoreLimit: MODES[this.mode].scoreLimit ?? null,
+      timeLeft:
+        MODES[this.mode].timeLimit !== undefined && this.phase === 'playing'
+          ? Math.max(0, (MODES[this.mode].timeLimit as number) - this.matchTimer)
+          : null,
+      round: this.round,
+      roundWins: this.roundWins,
+      roundsToWin: MODES[this.mode].roundsToWin ?? null,
+      zone: this.zone,
     };
   }
 }

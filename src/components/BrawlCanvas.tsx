@@ -664,6 +664,9 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
           drawFirePatches(ctx, snap.firePatches);
         }
 
+        // 5b. DRAW THE ZONE (Hot Zone), on the ground, under everything that stands on it
+        if (snap.zone) drawZone(ctx, snap.zone, performance.now() / 1000);
+
         // 6. DRAW GEM MINE (Gem Grab)
         if (snap.gemMine) {
           drawGemMine(ctx, snap.gemMine);
@@ -760,7 +763,10 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       }
 
       if (snap && snap.introCountdown > 0) {
-        drawIntroCountdown(ctx, view, snap.introCountdown, snap.mapName);
+        // A new round says so; the first one is simply the map.
+        const subtitle =
+          snap.roundsToWin !== null ? 'TUR ' + snap.round + ' · ' + snap.mapName : snap.mapName;
+        drawIntroCountdown(ctx, view, snap.introCountdown, subtitle);
       } else if (myBrawler && !myBrawler.isAlive) {
         drawDeathOverlay(ctx, view, myBrawler.respawnTimer, spectateIdRef.current, snap);
       }
@@ -2095,6 +2101,46 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.stroke();
     }
 
+    ctx.restore();
+  };
+
+  /**
+   * Hot Zone's zone: neutral gold when nobody holds it, the holder's colour when
+   * somebody does, and a ring that pulses harder while it is being scored.
+   */
+  const drawZone = (
+    ctx: CanvasRenderingContext2D,
+    zone: { x: number; y: number; radius: number; controller: number | null },
+    seconds: number
+  ) => {
+    const held = zone.controller !== null;
+    const colour =
+      zone.controller === null ? '250, 204, 21' : zone.controller === 0 ? '59, 130, 246' : '244, 63, 94';
+    const pulse = 0.5 + 0.5 * Math.sin(seconds * (held ? 5 : 2.2));
+
+    ctx.save();
+    ctx.translate(zone.x, zone.y);
+
+    ctx.beginPath();
+    ctx.arc(0, 0, zone.radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(' + colour + ', ' + (0.1 + 0.08 * pulse) + ')';
+    ctx.fill();
+
+    // Dashes that turn slowly: reads as "something is happening here".
+    ctx.rotate(seconds * 0.25);
+    ctx.setLineDash([22, 16]);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(' + colour + ', ' + (0.55 + 0.35 * pulse) + ')';
+    ctx.beginPath();
+    ctx.arc(0, 0, zone.radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(' + colour + ', 0.35)';
+    ctx.beginPath();
+    ctx.arc(0, 0, zone.radius * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   };
 

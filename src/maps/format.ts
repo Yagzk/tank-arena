@@ -14,6 +14,7 @@
  * out of is a map nobody can play.
  */
 
+import { MODES } from '../game/modes';
 import type {
   BrawlGameMode,
   BrawlWall,
@@ -95,6 +96,8 @@ export interface MapData {
   bushes: Bush[];
   boxes: PowerCubeBox[];
   gemMine?: GemMine;
+  /** The map's objective point, if it has one — the mine, or the zone. */
+  objective?: { x: number; y: number };
   spawns: SpawnPoint[];
   /** The map this came from, for the HUD. */
   name: string;
@@ -233,8 +236,8 @@ export function validateMap(source: TileMapSource): string[] {
     }
   }
 
-  const teamModes = source.modes.filter(m => m !== 'showdown');
-  const ffaModes = source.modes.filter(m => m === 'showdown');
+  const teamModes = source.modes.filter(m => MODES[m].mapKind === 'sides');
+  const ffaModes = source.modes.filter(m => MODES[m].mapKind === 'arena');
 
   if (ffaModes.length > 0) {
     const ffa = spawns.filter(s => s.ch === TILES.SPAWN_FFA);
@@ -353,6 +356,7 @@ function runsOf(grid: string[], match: (ch: string) => boolean): Array<{
 /** Turns a validated map source into the geometry the engine runs on. */
 export function buildMap(source: TileMapSource, mode: BrawlGameMode): MapData {
   const grid = expandMap(source);
+  const arena = MODES[mode].mapKind === 'arena';
 
   const walls: BrawlWall[] = [];
   const bushes: Bush[] = [];
@@ -400,11 +404,11 @@ export function buildMap(source: TileMapSource, mode: BrawlGameMode): MapData {
         objectiveX += wx;
         objectiveY += wy;
         objectiveCount++;
-      } else if (ch === TILES.SPAWN_FFA && mode === 'showdown') {
+      } else if (ch === TILES.SPAWN_FFA && arena) {
         spawns.push({ x: wx, y: wy, team: spawns.length });
-      } else if (ch === TILES.SPAWN_A && mode !== 'showdown') {
+      } else if (ch === TILES.SPAWN_A && !arena) {
         spawns.push({ x: wx, y: wy, team: 0 });
-      } else if (ch === TILES.SPAWN_B && mode !== 'showdown') {
+      } else if (ch === TILES.SPAWN_B && !arena) {
         spawns.push({ x: wx, y: wy, team: 1 });
       }
     }
@@ -412,9 +416,16 @@ export function buildMap(source: TileMapSource, mode: BrawlGameMode): MapData {
 
   // Team spawns come out of the grid in reading order, which interleaves the
   // sides. The engine indexes the first half as team 0, so sort them back.
-  if (mode !== 'showdown') spawns.sort((a, b) => a.team - b.team);
+  if (!arena) spawns.sort((a, b) => a.team - b.team);
 
   const data: MapData = { walls, bushes, boxes, spawns, name: source.name };
+
+  // Wherever the map puts its objective, for the modes that have one. Averaged,
+  // so a pair of mirrored tiles either side of the axis resolves to the exact
+  // centre line rather than to two points.
+  if (objectiveCount > 0) {
+    data.objective = { x: objectiveX / objectiveCount, y: objectiveY / objectiveCount };
+  }
 
   if (mode === 'gem_grab' && objectiveCount > 0) {
     // Averaged, so a pair of mirrored tiles either side of the axis resolves

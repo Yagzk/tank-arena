@@ -25,7 +25,7 @@ const sertKaya: TileMapSource = {
   // over, and the objective behind two layers of cover.
   id: 'sert-kaya',
   name: 'SERT KAYA',
-  modes: ['gem_grab'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -66,7 +66,7 @@ const darGecit: TileMapSource = {
   // punishes anyone who has to walk around it.
   id: 'dar-gecit',
   name: 'DAR GEÇİT',
-  modes: ['gem_grab'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -107,7 +107,7 @@ const tasOcagi: TileMapSource = {
   // on, and a team that breaks the wrong cover opens its own lane.
   id: 'tas-ocagi',
   name: 'TAŞ OCAĞI',
-  modes: ['gem_grab'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -148,7 +148,7 @@ const bataklik: TileMapSource = {
   // so holding the middle actually means something.
   id: 'bataklik',
   name: 'BATAKLIK',
-  modes: ['gem_grab'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -189,7 +189,7 @@ const acikArazi: TileMapSource = {
   // something at the far end of a lane — but still enough bush to close.
   id: 'acik-arazi',
   name: 'AÇIK ARAZİ',
-  modes: ['gem_grab'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -232,7 +232,7 @@ const acikArazi: TileMapSource = {
 const hurdalik: TileMapSource = {
   id: 'hurdalik',
   name: 'HURDALIK',
-  modes: ['showdown'],
+  modes: ['showdown', 'duo_showdown'],
   symmetry: 'quadrant',
   rows: [
     '####################',
@@ -256,7 +256,7 @@ const hurdalik: TileMapSource = {
 const tasBahce: TileMapSource = {
   id: 'tas-bahce',
   name: 'TAŞ BAHÇE',
-  modes: ['showdown'],
+  modes: ['showdown', 'duo_showdown'],
   symmetry: 'quadrant',
   rows: [
     '####################',
@@ -280,7 +280,7 @@ const tasBahce: TileMapSource = {
 const bogaz: TileMapSource = {
   id: 'bogaz',
   name: 'BOĞAZ',
-  modes: ['showdown'],
+  modes: ['showdown', 'duo_showdown'],
   symmetry: 'quadrant',
   rows: [
     '####################',
@@ -304,7 +304,7 @@ const bogaz: TileMapSource = {
 const cokuntu: TileMapSource = {
   id: 'cokuntu',
   name: 'ÇÖKÜNTÜ',
-  modes: ['showdown'],
+  modes: ['showdown', 'duo_showdown'],
   symmetry: 'quadrant',
   rows: [
     '####################',
@@ -328,7 +328,7 @@ const cokuntu: TileMapSource = {
 const kuruGol: TileMapSource = {
   id: 'kuru-gol',
   name: 'KURU GÖL',
-  modes: ['showdown'],
+  modes: ['showdown', 'duo_showdown'],
   symmetry: 'quadrant',
   rows: [
     '####################',

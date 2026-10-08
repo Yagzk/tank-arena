@@ -319,12 +319,14 @@ Hepsinin önkoşulu: **canlanma sistemi** (Faz 1.1).
 - [x] Elmas Kapmaca (Gem Grab) — canlanma gelince gerçekten oynanabilir olacak
 - [ ] **Brawl Ball** — top fiziği (taşı/pas/şut/sek), kale, gol, devre
 - [ ] **Bounty** — yıldız biriktirme, seri, süre sonu skor
-- [ ] **Knockout** — canlanma yok, round bazlı sıfırlama, 2/3
+- [x] **Knockout** — canlanma yok, tur bazlı sıfırlama (harita yeniden kurulur), 2 tur kazanan. Süre dolunca sağlıklı taraf kazanır; çift ölüm berabere tur
 - [ ] **Heist** — canı olan kasa, savunma/saldırı
-- [ ] **Hot Zone** — bölge ele geçirme yüzdesi
-- [ ] **Duo Hesaplaşma** — takım hâlinde battle royale, yoldaşı diriltme
-- [ ] **Wipeout** — skorlu takım ölüm maçı
+- [x] **Hot Zone** — ortada tek bölge, tek takım içindeyse puan (saniyede 1), çekişmeli bölge kimseye puan vermez; 100 puan ya da süre
+- [x] **Duo Hesaplaşma** — ikili takımlar, ortak gaz, son takım kazanır, takım arkadaşına hasar yok
+- [x] **Wipeout** — her eleme takıma 1 puan, 15 puan ya da 2 dk; eşitlik berabere
 - [ ] **Duels** — 1v1, üç karakter sırayla
+
+Modlar tek tabloda tanımlı (`src/game/modes.ts`); yeni mod = tabloya bir satır + kural fonksiyonu.
 
 Her mod için: kurallar · kazanma koşulu · HUD · harita tipi · bot davranışı · test
 
