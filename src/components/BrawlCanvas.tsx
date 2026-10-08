@@ -47,6 +47,16 @@ function hash2(x: number, y: number): number {
   return n - Math.floor(n);
 }
 
+/** Fraction of maximum health a single blow must take to be felt in the whole frame. */
+const IMPACT_THRESHOLD = 0.1;
+/** How long the camera punch lasts, and how far in it goes at the hardest hit. */
+const PUNCH_SECONDS = 0.16;
+const PUNCH_ZOOM = 0.035;
+/** How long a hit pushes the body back. */
+const FLINCH_SECONDS = 0.13;
+/** How long a fallen body is shown going down. */
+const FALL_MS = 650;
+
 /** How long a body stays lit after taking a hit. */
 const HIT_FLASH_SECONDS = 0.11;
 
@@ -114,6 +124,14 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   const screenShakeRef = useRef<{ intensity: number; timer: number }>({ intensity: 0, timer: 0 });
   /** Kills the local player had last frame, to notice a new one. */
   const myKillsRef = useRef(0);
+  /** Health of every body last frame, to see how hard something just hit. */
+  const lastHpRef = useRef<Map<string, number>>(new Map());
+  /** When the last big impact happened, and how big, for the zoom punch. */
+  const punchRef = useRef<{ at: number; strength: number } | null>(null);
+  /** Bodies that have just fallen, drawn for a moment longer so death reads. */
+  const fallenRef = useRef<Array<{ at: number; b: BrawlerEntity }>>([]);
+  /** Who was alive last frame. */
+  const aliveRef = useRef<Set<string>>(new Set());
   /** The whole second the countdown last showed, for ticking once per second. */
   const lastCountdownRef = useRef(0);
   /** When the last kill you got happened, in ms, and what to say about it. */
@@ -528,6 +546,42 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       }
       const myBrawler = snap?.brawlers.find(b => b.id === myId);
 
+      // How hard did anything just hit, and who just went down? Seen from the
+      // outside, as health lost between frames, so it works the same for a host,
+      // a client and a spectator, and needs nothing added to the network.
+      if (snap) {
+        for (const b of snap.brawlers) {
+          const before = lastHpRef.current.get(b.id);
+          lastHpRef.current.set(b.id, b.hp);
+          if (before !== undefined && b.isAlive) {
+            const lost = (before - b.hp) / Math.max(1, b.maxHp);
+            if (lost >= IMPACT_THRESHOLD) {
+              const mine = b.id === myId;
+              const near = myBrawler ? Math.hypot(b.x - myBrawler.x, b.y - myBrawler.y) < 520 : false;
+              if (mine || near) {
+                const strength = Math.min(1, lost / 0.35) * (mine ? 1 : 0.55);
+                if (!punchRef.current || strength > punchRef.current.strength) {
+                  punchRef.current = { at: now, strength };
+                }
+                if (strength * 9 > screenShakeRef.current.intensity || screenShakeRef.current.timer <= 0) {
+                  screenShakeRef.current = { intensity: 3 + strength * 9, timer: 0.12 };
+                }
+              }
+            }
+          }
+
+          // A body that was standing last frame and is not now: keep a copy so
+          // it can be shown going down instead of vanishing.
+          if (aliveRef.current.has(b.id) && !b.isAlive && !b.isClone) {
+            const copy = { ...b };
+            fallenRef.current.push({ at: now, b: copy });
+          }
+          if (b.isAlive) aliveRef.current.add(b.id);
+          else aliveRef.current.delete(b.id);
+        }
+        fallenRef.current = fallenRef.current.filter(f => now - f.at < FALL_MS);
+      }
+
       // Sounds are placed relative to where the player is.
       if (myBrawler) brawlAudio.setListener(myBrawler.x, myBrawler.y);
 
@@ -622,7 +676,19 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.clearRect(0, 0, view.w, view.h);
       ctx.save();
       ctx.translate(view.w / 2, view.h / 2);
-      ctx.scale(view.zoom, view.zoom);
+      // A heavy hit pushes the camera in for an instant and lets it settle, so
+      // an impact is felt in the whole frame and not only in a number.
+      let punchScale = 1;
+      if (punchRef.current) {
+        const age = (now - punchRef.current.at) / 1000;
+        if (age < PUNCH_SECONDS) {
+          const t = age / PUNCH_SECONDS;
+          punchScale = 1 + PUNCH_ZOOM * punchRef.current.strength * (1 - t) * (1 - t);
+        } else {
+          punchRef.current = null;
+        }
+      }
+      ctx.scale(view.zoom * punchScale, view.zoom * punchScale);
       ctx.translate(-cam.x + shakeX, -cam.y + shakeY);
 
       // 2. DRAW GROUND & TILES
@@ -688,6 +754,12 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
           if (!inView(d.x - 48, d.y - 48, 96, 96)) return;
           drawDeployable(ctx, d, performance.now() * 0.001);
         });
+
+        // 9b. BODIES GOING DOWN
+        for (const f of fallenRef.current) {
+          if (!inView(f.b.x - 60, f.b.y - 60, 120, 120)) continue;
+          drawFalling(ctx, f.b, (now - f.at) / FALL_MS);
+        }
 
         // 10. DRAW BRAWLERS
         snap.brawlers.forEach(b => {
@@ -1468,6 +1540,13 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     const moveSpeed = Math.hypot(b.vx, b.vy);
     const isMoving = moveSpeed > 5;
 
+    // Knocked back a few pixels away from whatever hit it, and settling: the
+    // body reacts to a hit instead of only flashing.
+    const flinch = Math.max(0, 1 - b.timeSinceLastDamage / FLINCH_SECONDS);
+    if (flinch > 0 && Math.abs(b.lastDamageAngle) <= 10) {
+      ctx.translate(-Math.cos(b.lastDamageAngle) * flinch * 4.5, -Math.sin(b.lastDamageAngle) * flinch * 4.5);
+    }
+
     drawCharacter(ctx, CHARACTER_STYLES[b.brawlerId] ?? CHARACTER_STYLES.mira, {
       aimAngle: b.aimAngle,
       // Legs follow travel, torso follows aim: that difference is what makes
@@ -2101,6 +2180,33 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.stroke();
     }
 
+    ctx.restore();
+  };
+
+  /**
+   * A body that has just been knocked out: it jolts, spins, shrinks and fades,
+   * where it used to simply stop existing between one frame and the next.
+   */
+  const drawFalling = (ctx: CanvasRenderingContext2D, b: BrawlerEntity, t: number) => {
+    const ease = t * t;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    // Flung a little away from whatever finished it.
+    if (Math.abs(b.lastDamageAngle) <= 10) {
+      ctx.translate(-Math.cos(b.lastDamageAngle) * 26 * t, -Math.sin(b.lastDamageAngle) * 26 * t);
+    }
+    ctx.globalAlpha = Math.max(0, 1 - ease);
+    const scale = 1 - 0.45 * ease;
+    ctx.scale(scale, scale);
+    ctx.rotate(t * 2.4);
+    drawCharacter(ctx, CHARACTER_STYLES[b.brawlerId] ?? CHARACTER_STYLES.mira, {
+      aimAngle: b.aimAngle,
+      moveAngle: b.aimAngle,
+      speed01: 0,
+      time: performance.now() / 1000,
+      recoil01: 0,
+      scale: 54,
+    });
     ctx.restore();
   };
 
