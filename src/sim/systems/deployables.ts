@@ -91,6 +91,7 @@ export function updateDeployables(world: SimWorld, dt: number): void {
     d.lifetime -= dt;
     if (d.actTimer > 0) d.actTimer -= dt;
     if (d.decay) d.hp -= d.decay * dt;
+    if (d.rateTimer !== undefined && d.rateTimer > 0) d.rateTimer -= dt;
 
     if (d.lifetime <= 0 || d.hp <= 0 || d.spent) {
       // Destroyed and expired look different on purpose: one is something you
@@ -125,7 +126,7 @@ export function updateDeployables(world: SimWorld, dt: number): void {
 
         d.angle = Math.atan2(target.y - d.y, target.x - d.x);
         if (d.actTimer <= 0) {
-          d.actTimer = d.interval;
+          d.actTimer = d.interval / (d.rateTimer && d.rateTimer > 0 ? (d.rateBoost ?? 1) : 1);
           act(world, d, owner, d.angle, target.x, target.y);
         }
         break;

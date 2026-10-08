@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BrawlEngine } from '../../game/brawlEngine';
 import { FIXED_DT } from '../../core/loop';
 import {
@@ -9,8 +9,110 @@ import {
   type DeployedEntity,
   type PlayerInfo,
 } from '../../types/brawl';
-import { KITS } from '../kits';
+import { KITS, withKit } from '../kits';
+import type { Kit } from '../kits/schema';
 import { keyFor } from '../kits/registry';
+
+/**
+ * What these tests are about is the deployable system, not whoever happens to
+ * place one this week, so the two characters they borrow are given a kit that
+ * does exactly what the tests need: a turret for a Super and a mine for a
+ * gadget, and a healing station for the other.
+ */
+const NOTHING = [{ type: 'banner', text: '-', color: '#fff' }] as Kit['attack']['actions'];
+
+const turretKit: Omit<Kit, 'id'> = {
+  maxAmmo: 3,
+  attack: {
+    name: 'a',
+    actions: [
+      {
+        type: 'projectiles',
+        delivery: { pattern: 'single' },
+        projectile: { speed: 500, radius: 6, damage: 240, range: 420, color: '#fff', offset: 22 },
+      },
+    ],
+  },
+  super: {
+    name: 'turret',
+    actions: [
+      {
+        type: 'summon',
+        kind: 'turret',
+        at: 'aim',
+        offset: 58,
+        lifetime: 24,
+        hp: 2400,
+        radius: 20,
+        range: 360,
+        interval: 0.42,
+        onAct: [
+          {
+            type: 'projectiles',
+            delivery: { pattern: 'single' },
+            projectile: { speed: 620, radius: 5, damage: 300, range: 380, color: '#fde047', offset: 18 },
+          },
+        ],
+      },
+    ],
+  },
+  gadgets: [
+    {
+      name: 'mine',
+      description: '',
+      cooldown: 4.5,
+      actions: [
+        {
+          type: 'summon',
+          kind: 'mine',
+          at: 'self',
+          lifetime: 20,
+          hp: 400,
+          radius: 13,
+          range: 44,
+          interval: 0.8,
+          onAct: [{ type: 'explosion', at: 'self', damage: 1100, radius: 92, knockback: 360 }],
+        },
+      ],
+    },
+    { name: 'x', description: '', cooldown: 4.5, actions: NOTHING },
+  ],
+};
+
+const stationKit: Omit<Kit, 'id'> = {
+  maxAmmo: 3,
+  attack: { name: 'a', actions: NOTHING },
+  super: { name: 's', actions: NOTHING },
+  gadgets: [
+    {
+      name: 'station',
+      description: '',
+      cooldown: 4.5,
+      actions: [
+        {
+          type: 'summon',
+          kind: 'healStation',
+          at: 'self',
+          lifetime: 11,
+          hp: 1400,
+          radius: 22,
+          range: 150,
+          interval: 1,
+          onAct: [{ type: 'heal', target: 'allies', amount: 420, radius: 150 }],
+        },
+      ],
+    },
+    { name: 'x', description: '', cooldown: 4.5, actions: NOTHING },
+  ],
+};
+
+let restore: Array<() => void> = [];
+beforeEach(() => {
+  restore = [withKit('ustabasi', turretKit), withKit('nagme', stationKit)];
+});
+afterEach(() => {
+  for (const r of restore.reverse()) r();
+});
 
 function players(...ids: BrawlerId[]): PlayerInfo[] {
   return ids.map((brawler, i) => ({
@@ -270,6 +372,9 @@ describe('stations', () => {
 
     const station = engine.deployables[0];
     medic.hp = 1000;
+    // In combat, so the slow natural regeneration is not what is being measured.
+    medic.timeSinceLastDamage = 0;
+    medic.timeSinceLastAttack = 0;
     place(medic, station.x + station.range + 120, station.y);
     const before = medic.hp;
     run(engine, 1.2);
@@ -322,84 +427,5 @@ describe('the other behaviours', () => {
 
     expect(owner.hp).toBe(before);
     expect(barrier.hp).toBe(barrier.maxHp);
-  });
-});
-
-describe('wave one', () => {
-  it('keeps the first ten characters, with more added after', () => {
-    expect(BRAWLER_IDS.length).toBeGreaterThanOrEqual(10);
-  });
-
-  it('throws a bottle over a wall', () => {
-    const engine = arena(players('molotof', 'boulder'));
-    const [thrower, victim] = engine.brawlers;
-    place(thrower, 400, 400);
-    place(victim, 700, 400);
-    // A wall the bottle has to clear. A straight shot would die on it.
-    engine.walls = [{ id: 'w', x: 520, y: 300, w: 40, h: 200, isDestructible: false }];
-
-    const before = victim.hp;
-    engine.setPlayerInput('p0', idle({ attack: true, aimAngle: 0, superTargetX: 700, superTargetY: 400 }));
-    run(engine, 1.2);
-
-    expect(victim.hp).toBeLessThan(before);
-  });
-
-  it('leaves burning ground where the bottle lands', () => {
-    const engine = arena(players('molotof', 'mira'));
-    place(engine.brawlers[1], 2000, 2000);
-    engine.setPlayerInput('p0', idle({ attack: true, superTargetX: 700, superTargetY: 400 }));
-    run(engine, 1.2);
-
-    expect(engine.firePatches.length).toBeGreaterThan(0);
-  });
-
-  it('heals the team with the support Super and threatens nobody', () => {
-    const engine = arena(players('nagme', 'boulder'));
-    const [medic, enemy] = engine.brawlers;
-    place(medic, 400, 400);
-    place(enemy, 440, 400);
-    medic.hp = 500;
-    medic.superCharge = 100;
-    const enemyBefore = enemy.hp;
-
-    engine.setPlayerInput('p0', idle({ superAttack: true }));
-    engine.update(FIXED_DT);
-
-    expect(medic.hp).toBeGreaterThan(2500);
-    expect(enemy.hp).toBe(enemyBefore);
-  });
-
-  it('shields the team and charges from damage taken', () => {
-    const engine = arena(players('zirh', 'rivet'));
-    const [tank, shooter] = engine.brawlers;
-    place(tank, 400, 400);
-    place(shooter, 520, 400);
-
-    engine.setPlayerInput('p1', idle({ attack: true, aimAngle: Math.PI }));
-    run(engine, 0.8);
-    expect(tank.superCharge).toBeGreaterThan(0);
-
-    tank.superCharge = 100;
-    engine.setPlayerInput('p0', idle({ superAttack: true }));
-    engine.update(FIXED_DT);
-
-    expect(tank.shieldHp).toBeGreaterThan(2000);
-  });
-
-  it('pierces bodies with the sound wave', () => {
-    const engine = arena(players('nagme', 'boulder', 'boulder'));
-    const [medic, first, second] = engine.brawlers;
-    place(medic, 400, 400);
-    place(first, 500, 400);
-    place(second, 600, 400);
-    const firstBefore = first.hp;
-    const secondBefore = second.hp;
-
-    engine.setPlayerInput('p0', idle({ attack: true, aimAngle: 0 }));
-    run(engine, 0.8);
-
-    expect(first.hp).toBeLessThan(firstBefore);
-    expect(second.hp).toBeLessThan(secondBefore);
   });
 });

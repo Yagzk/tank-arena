@@ -41,6 +41,8 @@ export interface ExplosionParams {
   charge?: number;
   /** Pixels bodies are shoved away from the centre, without a stun. */
   push?: number;
+  /** Slows what it catches, and stuns what was already slowed. */
+  slowThenStun?: { amount: number; duration: number };
   /** Leaves a burning patch where it went off. */
   spawnFire?: boolean;
   /** Burn applied to every body caught in it. */

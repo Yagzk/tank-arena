@@ -1049,6 +1049,29 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.save();
       ctx.translate(fp.x, fp.y);
 
+      // A puddle that is not fire: a tinted pool with a rim and slow ripples.
+      if (fp.tint) {
+        const fade = Math.min(1, fp.duration * 2);
+        ctx.globalAlpha = 0.85 * fade;
+        ctx.fillStyle = fp.tint + '55';
+        ctx.beginPath();
+        ctx.arc(0, 0, fp.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = fp.tint;
+        ctx.stroke();
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 2; i++) {
+          const rr = ((time * 0.15 + i * 0.5) % 1) * fp.radius;
+          ctx.beginPath();
+          ctx.arc(0, 0, rr, 0, Math.PI * 2);
+          ctx.strokeStyle = fp.tint + '99';
+          ctx.stroke();
+        }
+        ctx.restore();
+        return;
+      }
+
       // Scorched ground center
       ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
       ctx.beginPath();

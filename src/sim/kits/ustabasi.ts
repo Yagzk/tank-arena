@@ -1,75 +1,62 @@
 import type { Kit } from './schema';
+import { speed, tiles } from './bs';
 
 /**
- * USTABAŞI — deployer.
+ * USTABAŞI — the engineer.
  *
- * A wide, cheap spread that is unremarkable on its own, and two machines that
- * hold ground without being stood on. The character is about where you choose
- * to put things, which is why the turret has to be destructible: a turret that
- * cannot be removed is not a position, it is a wall.
+ * An energy orb that jumps from one enemy to the next, and a turret to set
+ * down: sturdier than its owner, tireless, and aimed at whatever it can see.
+ * Both gadgets work on the turret, so they do nothing until there is one.
  */
+const orb = {
+  speed: speed(3050),
+  radius: 30,
+  range: tiles(9),
+  color: '#facc15',
+  offset: 24,
+  chain: { hits: 3, range: tiles(6.67), falloff: 0.75, reach: tiles(4.67), speed: speed(1522) },
+};
+
 export const ustabasiKit: Kit = {
   id: 'ustabasi',
   maxAmmo: 3,
 
-  // Balance dial: see docs/DENGE.md.
-  traits: { damageScale: 0.89 },
-
   attack: {
-    name: 'Hurda Yağmuru',
+    name: 'Şok Tüfeği',
     actions: [
-      { type: 'sound', cue: 'scatter_shot' },
-      {
-        type: 'projectiles',
-        delivery: { pattern: 'spread', count: 7, arc: 0.5 },
-        projectile: {
-          speed: 500,
-          radius: 5.5,
-          damage: { ofAttack: 1 },
-          range: 420,
-          color: '#facc15',
-          offset: 22,
-        },
-      },
+      { type: 'sound', cue: 'rapid_shot' },
+      { type: 'projectiles', delivery: { pattern: 'single' }, projectile: { ...orb, damage: 2120, charge: 16.695 } },
     ],
   },
 
-  bot: {
-    engageRange: 0.9,
-    // A turret wants to go down while there is still a fight to hold, not
-    // across the map from one.
-    superRange: { max: 1.1 },
-    gadget: { when: 'enemyWithin', range: 170 },
-  },
-
   super: {
-    name: 'Otomatik Taret',
+    name: 'Bekçi Taret',
     actions: [
       { type: 'sound', cue: 'gadget_activate' },
-      { type: 'banner', text: 'TARET KURULDU!', color: '#facc15' },
+      { type: 'banner', text: 'TARET KURULDU!', color: '#fde047' },
       {
         type: 'summon',
         kind: 'turret',
-        at: 'aim',
-        offset: 58,
-        lifetime: 24,
-        hp: 2400,
-        radius: 20,
-        // Slightly shorter reach than its owner's attack, so taking it down is
-        // a matter of approaching from the right angle rather than impossible.
-        range: 360,
-        interval: 0.42,
+        at: 'target',
+        maxReach: tiles(5),
+        lifetime: 120,
+        hp: 7200,
+        radius: 24,
+        range: tiles(9),
+        interval: 0.3,
+        unique: true,
         onAct: [
           {
             type: 'projectiles',
             delivery: { pattern: 'single' },
             projectile: {
-              speed: 620,
-              radius: 5,
-              damage: 300,
-              range: 380,
+              speed: speed(3478),
+              radius: 12,
+              damage: 600,
+              range: tiles(9),
               color: '#fde047',
-              offset: 18,
+              offset: 20,
+              charge: 6.25,
             },
           },
         ],
@@ -77,40 +64,53 @@ export const ustabasiKit: Kit = {
     ],
   },
 
-  gadget: {
-    name: 'Tuzak',
-    actions: [
-      { type: 'banner', text: 'TUZAK!', color: '#facc15' },
-      {
-        type: 'summon',
-        kind: 'mine',
-        at: 'self',
-        lifetime: 20,
-        hp: 400,
-        radius: 13,
-        range: 44,
-        // Doubles as the arming delay: it cannot go off the instant it lands.
-        interval: 0.8,
-        onAct: [
-          { type: 'sound', cue: 'super_blast' },
-          {
-            type: 'explosion',
-            at: 'self',
-            damage: 1100,
-            radius: 92,
-            knockback: 360,
-          },
-          {
-            type: 'vfx',
-            at: 'self',
-            effect: 'explosion',
-            radius: 92,
-            color: '#facc15',
-            duration: 0.35,
-            intensity: 0.8,
-          },
-        ],
+  gadgets: [
+    {
+      name: 'Kıvılcım',
+      description: 'Taret çevresine bir şok dalgası yayar; düşmanları yavaşlatır.',
+      cooldown: 15,
+      requires: { deployable: 'turret', within: tiles(12) },
+      actions: [
+        { type: 'status', target: 'enemies', radius: tiles(4.33), centerOn: 'turret', statuses: [{ kind: 'slow', duration: 3, magnitude: 0.47 }] },
+        { type: 'vfx', at: 'self', centerOn: 'turret', effect: 'shockwave', radius: tiles(4.33), color: '#fde047', duration: 0.6 },
+      ],
+    },
+    {
+      name: 'Geri Tepme Yayı',
+      description: 'Taretin atış hızı 5 saniye boyunca iki katına çıkar.',
+      cooldown: 16,
+      requires: { deployable: 'turret', within: tiles(12) },
+      actions: [{ type: 'buffDeployable', kind: 'turret', rate: 2, duration: 5 }],
+    },
+  ],
+
+  starPowers: [
+    {
+      name: 'Enerji Ver',
+      description: 'Atışıyla tareti vurursa onu 1060 can iyileştirir.',
+      apply: kit => {
+        for (const a of kit.attack.actions) if (a.type === 'projectiles') a.projectile.turretHeal = 1060;
       },
-    ],
+    },
+    {
+      name: 'Şoklu',
+      description: 'Taret düşmandan düşmana sıçrayan enerji topları atar.',
+      apply: kit => {
+        for (const a of kit.super.actions) {
+          if (a.type !== 'summon' || !a.onAct) continue;
+          for (const inner of a.onAct) {
+            if (inner.type === 'projectiles') {
+              inner.projectile.chain = { hits: 3, range: tiles(6.67), falloff: 0.75, reach: tiles(4.67), speed: speed(1522) };
+            }
+          }
+        }
+      },
+    },
+  ],
+
+  bot: {
+    engageRange: 0.95,
+    superRange: { max: 0.7 },
+    gadgets: [{ when: 'always' }, { when: 'always' }],
   },
 };

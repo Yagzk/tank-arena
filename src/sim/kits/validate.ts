@@ -128,8 +128,13 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
     case 'hazard':
       if (!(action.hazard.radius > 0)) p.at(path, 'a hazard needs a positive radius');
       if (!(action.hazard.duration > 0)) p.at(path, 'a hazard needs a positive duration');
-      if (!(action.hazard.damagePerSec > 0)) {
-        p.at(path, 'a hazard needs positive damage per second');
+      if (
+        !(action.hazard.damagePerSec > 0) &&
+        !action.hazard.slow &&
+        !action.hazard.healPerSec &&
+        !action.hazard.cleanse
+      ) {
+        p.at(path, 'a hazard needs damage, a slow, healing or a cleanse, or it does nothing');
       }
       break;
 
@@ -222,6 +227,16 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
       if (action.statuses) {
         action.statuses.forEach((s, i) => checkStatus(p, path + '.statuses[' + i + ']', s));
       }
+      break;
+
+    case 'rush':
+      if (!(action.distance > 0)) p.at(path, 'a rush needs a positive distance');
+      if (!(action.speed > 0)) p.at(path, 'a rush needs a positive speed');
+      if (action.onEnd) checkActions(p, path + '.onEnd', action.onEnd, depth + 1);
+      break;
+
+    case 'buffDeployable':
+      if (!(action.rate > 0) || !(action.duration > 0)) p.at(path, 'a buff needs a positive rate and duration');
       break;
 
     case 'empower':

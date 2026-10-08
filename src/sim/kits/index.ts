@@ -119,6 +119,15 @@ function compileActions(prefix: string, actions: AbilityAction[]): void {
         }
         break;
 
+      case 'rush':
+        if (action.onEnd) {
+          const key = path + '.rush';
+          assignKey(action, key);
+          registerActions(key, action.onEnd);
+          compileActions(key + '.r', action.onEnd);
+        }
+        break;
+
       case 'empower': {
         const key = path + '.emp';
         assignKey(action, key);

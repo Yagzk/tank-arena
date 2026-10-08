@@ -31,6 +31,8 @@ export function spawnHazard(
       lifesteal: spec.lifesteal,
       healPerSec: spec.healPerSec,
       tint: spec.tint,
+      cleanse: spec.cleanse,
+      noStack: spec.noStack,
     });
     return;
   }
@@ -48,5 +50,7 @@ export function spawnHazard(
     lifesteal: spec.lifesteal,
     healPerSec: spec.healPerSec,
     tint: spec.tint,
+    cleanse: spec.cleanse,
+    noStack: spec.noStack,
   });
 }

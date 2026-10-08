@@ -61,6 +61,7 @@ const SKIP: ReadonlySet<string> = new Set([
   'comboTimer',
   // A queued special attack is the simulation's business.
   'empowerKey',
+  'rush',
   'touchDamage',
   'decoyOwnerId',
   'decoyTouchTimer',

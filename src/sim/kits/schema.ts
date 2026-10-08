@@ -75,6 +75,10 @@ export interface StatusSpec {
 
 /** A damaging area left on the ground. */
 export interface HazardSpec {
+  /** Strips the other side's ill effects from whoever of its owner's side stands in it. */
+  cleanse?: boolean;
+  /** Overlapping ones do not add up. */
+  noStack?: boolean;
   /** Fraction of speed taken from enemies standing in it. */
   slow?: number;
   /** Fraction of the damage dealt that the owner gets back as health. */
@@ -132,6 +136,20 @@ export interface ProjectileSpec {
   charge?: number;
   /** Shoves a body it hits this many pixels, without stunning it. */
   pushback?: number;
+  /** After hitting, goes on to the nearest other enemy, so many more times. */
+  chain?: { hits: number; range: number; falloff: number; reach: number; speed: number };
+  /** Heals a team-mate it passes through. */
+  allyHeal?: number;
+  /** Does not touch enemies at all. */
+  onlyAllies?: boolean;
+  /** Range gained by each wall bounce, in pixels. */
+  bounceRange?: number;
+  /** Damage added, once, the first time it bounces. */
+  bounceBonus?: number;
+  /** Heals the owner's turret it meets instead of flying through. */
+  turretHeal?: number;
+  /** Radius gained per pixel flown: a wave that spreads as it goes. */
+  growth?: number;
   /** Statuses applied to a body it connects with. */
   applyStatus?: StatusSpec[];
   /** Runs at the point of contact, only when it hits a body. */
@@ -191,6 +209,8 @@ export type AbilityAction =
       knockback?: number;
       /** Pixels bodies are shoved away from the centre, without a stun. */
       push?: number;
+      /** Slows what it catches, and stuns what was already slowed. */
+      slowThenStun?: { amount: number; duration: number };
       spawnFire?: boolean;
       burn?: { duration: number; damagePerSec: number };
       /** Applied to every body the blast catches. */
@@ -200,12 +220,21 @@ export type AbilityAction =
       /** Percent of the Super added to the caster for each brawler the blast hits. */
       charge?: number;
     }
-  | { type: 'hazard'; at: Anchor; anchorOffset?: number; hazard: HazardSpec }
+  | {
+      type: 'hazard';
+      at: Anchor;
+      anchorOffset?: number;
+      hazard: HazardSpec;
+      /** Put one under the caster and under each team-mate within this many pixels. */
+      atAllies?: number;
+    }
   | {
       type: 'status';
       target: 'self' | 'allies' | 'enemies';
       /** Required for `allies` and `enemies`; omit to mean the whole team. */
       radius?: number;
+      /** Measured from the caster's nearest summon of this kind, not from the caster. */
+      centerOn?: DeployedKind;
       statuses: StatusSpec[];
     }
   | { type: 'heal'; target: 'self' | 'allies'; amount?: number; fraction?: number; radius?: number }
@@ -226,6 +255,36 @@ export type AbilityAction =
       color?: string;
     }
   | { type: 'ammo'; amount: number }
+  /**
+   * A run in a straight line: a charge through bodies, a roll that bounces, a
+   * dash that cuts. Unlike `dash`, which is a shove, it moves at a steady speed
+   * and strikes whatever it passes.
+   */
+  | {
+      type: 'rush';
+      distance: number;
+      speed: number;
+      /** Damage to each body struck, once. */
+      damage?: DamageSpec;
+      /** Pixels a body struck is shoved along the run. */
+      push?: number;
+      /** How close a body must be to be struck, in pixels. */
+      reach?: number;
+      breaksWalls?: boolean;
+      /** Walls it bounces off before it stops. */
+      bounces?: number;
+      /** Over walls and unhurtable, for something that is not a body for a moment. */
+      ghost?: boolean;
+      /** Super percent per body struck. */
+      charge?: number;
+      /** Fraction of damage cut while it lasts. */
+      guard?: number;
+      /** Extra distance when the attack was fully charged. */
+      bonusDistance?: number;
+      onEnd?: AbilityAction[];
+    }
+  /** Speeds up the caster's nearest summon of a kind for a while. */
+  | { type: 'buffDeployable'; kind: DeployedKind; rate: number; duration: number }
   /**
    * The next `uses` ordinary attacks are replaced by `attack` — a gadget that
    * loads a special shot rather than doing something on the spot. They still
@@ -289,6 +348,8 @@ export type AbilityAction =
       /** `decoy` is a dummy body; everything else acts on its own. */
       kind: DeployedKind | 'decoy';
       lifetime: number;
+      /** The farthest from the caster it can be placed. */
+      maxReach?: number;
       /** Health lost per second on its own, so something placed there fades. */
       decay?: number;
       /** Runs when it is destroyed or replaced. */
@@ -320,6 +381,8 @@ export type AbilityAction =
       type: 'vfx';
       at: Anchor;
       anchorOffset?: number;
+      /** Drawn at the caster's nearest summon of this kind. */
+      centerOn?: DeployedKind;
       effect: VisualEffect['type'];
       radius: number;
       color: string;
@@ -365,7 +428,9 @@ export interface PassiveSpec {
     /** Runs every tick while invisible. */
     | 'whileInvisible'
     /** Runs every tick while standing in a hazard this brawler created. */
-    | 'whileInOwnHazard';
+    | 'whileInOwnHazard'
+    /** Fires once each time this brawler defeats an enemy brawler. */
+    | 'onKill';
   /** Fraction of maximum health, for `lowHealth`. */
   threshold?: number;
   cooldown?: number;

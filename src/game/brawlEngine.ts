@@ -368,11 +368,13 @@ export class BrawlEngine {
     b: BrawlerEntity,
     input: BrawlPlayerInput,
     isSuper: boolean,
-    scale = 1
+    scale = 1,
+    charged = false
   ): AbilityContext {
     const reach = isSuper ? SUPER_DEFAULT_REACH : BRAWLERS[b.brawlerId].range;
     return makeContext(this.world, b, {
       scale,
+      charged,
       aimAngle: input.aimAngle,
       targetX: input.superTargetX ?? b.x + Math.cos(input.aimAngle) * reach,
       targetY: input.superTargetY ?? b.y + Math.sin(input.aimAngle) * reach,
@@ -764,6 +766,12 @@ export class BrawlEngine {
         }
       }
 
+      // A run in progress moves the body on its own; nothing else does.
+      if (b.rush) {
+        this.stepRush(b, dt);
+        if (b.rush) continue;
+      }
+
       // Knockback Physics & Momentum decay
       if (b.knockbackVx !== 0 || b.knockbackVy !== 0) {
         b.x += b.knockbackVx * dt;
@@ -983,6 +991,7 @@ export class BrawlEngine {
         // which hit of a combo this is.
         const charge = kit.traits?.charge;
         const scale = charge ? charge.minScale + (charge.maxScale - charge.minScale) * b.charge : 1;
+        const wasFull = b.charge >= 1;
         b.charge = 0;
         let spec = kit.attack;
         if (kit.combo) {
@@ -1005,7 +1014,7 @@ export class BrawlEngine {
             }
           }
         }
-        runActions(this.contextFor(b, input, false, scale), attackActions);
+        runActions(this.contextFor(b, input, false, scale, wasFull), attackActions);
       }
     }
   }
@@ -1042,6 +1051,11 @@ export class BrawlEngine {
         }
         if (params.knockback) applyKnockback(b, x, y, params.knockback, 0.35);
         if (params.push) applyKnockback(b, x, y, params.push * 7, 0);
+        if (params.slowThenStun) {
+          const s = params.slowThenStun;
+          if (b.slowTimer > 0) applyStatus(b, { kind: 'stun', duration: s.duration });
+          else applyStatus(b, { kind: 'slow', duration: s.duration, magnitude: s.amount });
+        }
       }
     }
 
@@ -1129,6 +1143,9 @@ export class BrawlEngine {
         p.hitIds = [];
       }
 
+      // A wave widens as it goes.
+      if (p.growth) p.radius = (p.baseRadius ?? p.radius) + p.growth * p.traveled;
+
       // A lobbed projectile is in the air: it passes over walls, boxes and
       // bodies alike and only matters where it comes down.
       const airborne = p.motion === 'lob';
@@ -1200,9 +1217,16 @@ export class BrawlEngine {
       for (const target of this.brawlers) {
         if (airborne) break;
         if (!target.isAlive || target.isJumping || target.id === p.ownerId) continue;
-        if (!this.isHostile(p.team, target)) continue;
+        if (target.team === p.team) {
+          // A team-mate matters only to a shot that heals, and only once.
+          if (p.allyHeal === undefined || target.isClone) continue;
+          if (p.hitIds && p.hitIds.indexOf(target.id) !== -1) continue;
+        } else {
+          if (!this.isHostile(p.team, target)) continue;
+          if (p.onlyAllies) continue;
+        }
         // Respawn protection should stop the shot, not eat it silently.
-        if (target.immunityTimer > 0) continue;
+        if (target.immunityTimer > 0 && target.team !== p.team) continue;
         // A piercing shot may only touch each body once.
         if (p.hitIds && p.hitIds.indexOf(target.id) !== -1) continue;
 
@@ -1230,8 +1254,11 @@ export class BrawlEngine {
         const d = this.deployables[i];
         // Your own turret does not eat your bullets, and a barrier only stops
         // the team it was not placed by.
+        const mine = d.ownerId === p.ownerId;
+        const healable = mine && p.turretHeal !== undefined && d.kind === 'turret';
+        const bounceable = mine && d.kind === 'vending' && p.motion === 'bounce' && (p.bouncesLeft ?? 0) > 0;
         // A built wall stops everybody's shots; the rest only deal with enemies.
-        if (d.behaviour !== 'solid' && !this.isHostileTeam(p.team, d.team)) continue;
+        if (d.behaviour !== 'solid' && !healable && !bounceable && !this.isHostileTeam(p.team, d.team)) continue;
         if (p.hitIds && p.hitIds.indexOf(d.id) !== -1) continue;
 
         sweepCircleVsCircle(p.x, p.y, p.radius, stepX, stepY, d.x, d.y, d.radius, this.sweep);
@@ -1272,6 +1299,11 @@ export class BrawlEngine {
         // mirror for a flat face and for a corner.
         if (p.motion === 'bounce' && (p.bouncesLeft ?? 0) > 0) {
           p.bouncesLeft = (p.bouncesLeft ?? 0) - 1;
+          if (p.bounceRange) p.maxRange += p.bounceRange;
+          if (p.bounceBonus) {
+            p.damage += p.bounceBonus;
+            p.bounceBonus = undefined;
+          }
           const nx = this.sweep.nx;
           const ny = this.sweep.ny;
           const vdotn = p.vx * nx + p.vy * ny;
@@ -1322,6 +1354,39 @@ export class BrawlEngine {
         continue;
       }
 
+      if (hitKind === 'deployable' && hitDeployable && hitDeployable.ownerId === p.ownerId && p.turretHeal !== undefined && hitDeployable.kind === 'turret') {
+        const d = hitDeployable;
+        d.hp = Math.min(d.maxHp, d.hp + p.turretHeal);
+        this.addFloatingNumber('+' + p.turretHeal, d.x, d.y - 18, '#4ade80');
+        // It still goes on to the next enemy, as it would have.
+        p.x += stepX * (1 - bestT);
+        p.y += stepY * (1 - bestT);
+        (p.hitIds ||= []).push(d.id);
+        continue;
+      }
+
+      if (hitKind === 'deployable' && hitDeployable && hitDeployable.kind === 'vending' && hitDeployable.ownerId === p.ownerId && p.motion === 'bounce' && (p.bouncesLeft ?? 0) > 0) {
+        // Its owner's shot glances off the machine like it would off a wall.
+        const d = hitDeployable;
+        const nx0 = hitX - d.x;
+        const ny0 = hitY - d.y;
+        const len = Math.hypot(nx0, ny0) || 1;
+        const nx = nx0 / len;
+        const ny = ny0 / len;
+        const vdotn = p.vx * nx + p.vy * ny;
+        p.vx -= 2 * vdotn * nx;
+        p.vy -= 2 * vdotn * ny;
+        p.bouncesLeft = (p.bouncesLeft ?? 0) - 1;
+        if (p.bounceRange) p.maxRange += p.bounceRange;
+        if (p.bounceBonus) {
+          p.damage += p.bounceBonus;
+          p.bounceBonus = undefined;
+        }
+        p.x += nx * 1;
+        p.y += ny * 1;
+        continue;
+      }
+
       if (hitKind === 'deployable' && hitDeployable) {
         const d = hitDeployable;
         // A barrier soaks the shot without taking damage — that is what makes
@@ -1337,6 +1402,22 @@ export class BrawlEngine {
           toRemove.add(p.id);
         } else {
           (p.hitIds ||= []).push(d.id);
+          p.x += stepX * (1 - bestT);
+          p.y += stepY * (1 - bestT);
+        }
+        continue;
+      }
+
+      if (hitKind === 'brawler' && hitTarget && hitTarget.team === p.team) {
+        // The shot found a friend: it heals them and, if it can, goes on.
+        const before = hitTarget.hp;
+        hitTarget.hp = Math.min(hitTarget.maxHp, hitTarget.hp + (p.allyHeal ?? 0));
+        if (hitTarget.hp > before) this.addFloatingNumber('+' + Math.round(hitTarget.hp - before), hitTarget.x, hitTarget.y - 26, '#4ade80');
+        const healer = this.brawlers.find(o => o.id === p.ownerId);
+        if (healer && p.charge !== undefined) chargeSuperFlat(healer, p.charge);
+        (p.hitIds ||= []).push(hitTarget.id);
+        if (!p.piercesBodies) toRemove.add(p.id);
+        else {
           p.x += stepX * (1 - bestT);
           p.y += stepY * (1 - bestT);
         }
@@ -1420,6 +1501,37 @@ export class BrawlEngine {
         }
 
         this.detonateProjectile(p, hitX, hitY, 'hit', hitTarget.id);
+
+        if ((p.chainLeft ?? 0) > 0) {
+          (p.hitIds ||= []).push(hitTarget.id);
+          let next: BrawlerEntity | null = null;
+          let nextDist = p.chainRange ?? 0;
+          for (const cand of this.brawlers) {
+            if (!cand.isAlive || cand.isJumping || cand.isClone || cand.id === p.ownerId) continue;
+            if (!this.isHostile(p.team, cand) || p.hitIds.indexOf(cand.id) !== -1) continue;
+            const dd = dist(hitTarget.x, hitTarget.y, cand.x, cand.y);
+            if (dd < nextDist) {
+              nextDist = dd;
+              next = cand;
+            }
+          }
+          if (next) {
+            // Off again toward the next one, weaker and slower.
+            const ang = Math.atan2(next.y - hitTarget.y, next.x - hitTarget.x);
+            const sp = p.chainSpeed ?? Math.hypot(p.vx, p.vy);
+            p.x = hitTarget.x;
+            p.y = hitTarget.y;
+            p.vx = Math.cos(ang) * sp;
+            p.vy = Math.sin(ang) * sp;
+            p.damage = Math.round(p.damage * (p.chainFalloff ?? 0.75));
+            p.maxRange = p.chainReach ?? p.maxRange;
+            p.traveled = 0;
+            p.chainLeft = (p.chainLeft ?? 1) - 1;
+            continue;
+          }
+          toRemove.add(p.id);
+          continue;
+        }
 
         if (!p.piercesBodies) {
           toRemove.add(p.id);
@@ -1589,9 +1701,24 @@ export class BrawlEngine {
   }
 
   private updateFirePatches(dt: number) {
+    // Who has already been hurt this tick by ground that does not add up.
+    const struck = new Set<string>();
     for (let i = this.firePatches.length - 1; i >= 0; i--) {
       const fp = this.firePatches[i];
       fp.duration -= dt;
+
+      // Ground that cleans: the other side's ill effects wash off its owner's side.
+      if (fp.cleanse) {
+        for (const ally of this.brawlers) {
+          if (!ally.isAlive || ally.team !== fp.team || dist(fp.x, fp.y, ally.x, ally.y) > fp.radius) continue;
+          ally.stunTimer = 0;
+          ally.slowTimer = 0;
+          ally.slowAmount = 0;
+          ally.burnTimer = 0;
+          ally.rootTimer = 0;
+          ally.silenceTimer = 0;
+        }
+      }
 
       // Damage enemies standing in fire
       for (const b of this.brawlers) {
@@ -1600,6 +1727,11 @@ export class BrawlEngine {
         if (!this.isHostile(fp.team, b)) continue;
 
         if (dist(fp.x, fp.y, b.x, b.y) <= fp.radius + 18) {
+          if (fp.noStack) {
+            const key = fp.ownerId + ':' + b.id;
+            if (struck.has(key)) continue;
+            struck.add(key);
+          }
           const dealt = Math.round(fp.damagePerSec * dt);
           this.damageBrawler(b, dealt, fp.ownerId, false);
           this.healOwner(fp.ownerId, dealt * (fp.lifesteal ?? 0));
@@ -1731,6 +1863,7 @@ export class BrawlEngine {
       }
 
       if (source) source.kills++;
+      if (source && !source.isClone && source.id !== b.id && !b.isClone) this.runKillPassives(source);
       const killer = source;
 
       const rules = MODES[this.mode];
@@ -1960,6 +2093,93 @@ export class BrawlEngine {
     return role === 'attack'
       ? { role, stand: front(enemy), target: { x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h / 2 } }
       : { role, stand: front(own), target: { x: own.x + own.w / 2, y: own.y + own.h / 2 } };
+  }
+
+  /**
+   * One tick of a rush: move at a steady speed, break or bounce off what is in
+   * the way, strike whatever the body passes, and run the ending when it is over.
+   */
+  private stepRush(b: BrawlerEntity, dt: number) {
+    const r = b.rush;
+    if (!r) return;
+
+    // A stun stops a run, unless the body is not really there.
+    if (b.stunTimer > 0 && !r.ghost) {
+      b.rush = undefined;
+      return;
+    }
+
+    const step = Math.min(r.speed * dt, r.remaining);
+    let nx = b.x + Math.cos(r.angle) * step;
+    let ny = b.y + Math.sin(r.angle) * step;
+
+    if (!r.ghost) {
+      for (let i = this.walls.length - 1; i >= 0; i--) {
+        const wall = this.walls[i];
+        const col = circleRectCollision({ x: nx, y: ny, radius: BRAWLER_RADIUS }, wall);
+        if (!col.collided) continue;
+        if (wall.isDestructible && r.breaks) {
+          this.walls.splice(i, 1);
+          this.wallGridDirty = true;
+          continue;
+        }
+        if (r.bounces > 0) {
+          // Mirror the heading off the face that was struck, and be bodies-fresh again.
+          const vdotn = Math.cos(r.angle) * col.nx + Math.sin(r.angle) * col.ny;
+          const rx = Math.cos(r.angle) - 2 * vdotn * col.nx;
+          const ry = Math.sin(r.angle) - 2 * vdotn * col.ny;
+          r.angle = Math.atan2(ry, rx);
+          r.bounces--;
+          r.hit = [];
+          nx = b.x + col.nx * col.depth;
+          ny = b.y + col.ny * col.depth;
+          break;
+        }
+        // Stopped: it is over, from wherever the body was.
+        r.remaining = 0;
+        nx = b.x;
+        ny = b.y;
+        break;
+      }
+    }
+
+    b.x = nx;
+    b.y = ny;
+    r.remaining -= step;
+
+    for (const other of this.brawlers) {
+      if (other.id === b.id || !other.isAlive || other.isJumping || other.isClone) continue;
+      if (!this.isHostile(b.team, other) || r.hit.indexOf(other.id) !== -1) continue;
+      if (dist(b.x, b.y, other.x, other.y) > r.reach) continue;
+      r.hit.push(other.id);
+      if (r.damage > 0) this.damageBrawler(other, r.damage, b.id);
+      if (r.push > 0) {
+        other.knockbackVx += Math.cos(r.angle) * r.push * 7;
+        other.knockbackVy += Math.sin(r.angle) * r.push * 7;
+      }
+      if (r.charge > 0) chargeSuperFlat(b, r.charge);
+      this.addEffect('hit_spark', other.x, other.y, 26, '#e2e8f0', 0.2, r.angle, 0.7);
+    }
+
+    if (r.remaining <= 0.5) {
+      const endKey = r.endKey;
+      b.rush = undefined;
+      b.vx = 0;
+      b.vy = 0;
+      if (endKey) {
+        const actions = getActions(endKey);
+        if (actions) runActions(makeContext(this.world, b, { aimAngle: r.angle }), actions);
+      }
+    }
+  }
+
+  /** What a character does each time it defeats somebody. */
+  private runKillPassives(killer: BrawlerEntity) {
+    const passives = getKit(killer.brawlerId, killer.starPower).passives;
+    if (!passives) return;
+    for (const passive of passives) {
+      if (passive.trigger === 'onKill') runActions(makeContext(this.world, killer), passive.actions);
+    }
   }
 
   /** Whether a gadget that needs one of the caster's own summons has one close enough. */

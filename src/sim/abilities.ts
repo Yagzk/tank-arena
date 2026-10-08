@@ -70,6 +70,8 @@ export interface AbilityContext {
   scale: number;
   /** A body any blast in this list must spare. See `ExplosionParams`. */
   excludeId?: string;
+  /** The attack that started this had a full charge behind it. */
+  charged?: boolean;
   /** The body a projectile's on-hit list is running for. */
   hitId?: string;
 }
@@ -96,6 +98,7 @@ export function makeContext(
     hereY: opts.hereY ?? caster.y,
     scale: opts.scale ?? 1,
     excludeId: opts.excludeId,
+    charged: opts.charged,
   };
 }
 
@@ -159,6 +162,21 @@ function resolveDelivery(delivery: Delivery, aimAngle: number): number {
       return n;
     }
   }
+}
+
+/** The caster's nearest summon of a kind, for abilities that act from it. */
+function nearestOwn(world: SimWorld, caster: BrawlerEntity, kind: string): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  let bestDist = Infinity;
+  for (const d of world.deployables) {
+    if (d.ownerId !== caster.id || d.kind !== kind) continue;
+    const dist = Math.hypot(d.x - caster.x, d.y - caster.y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = d;
+    }
+  }
+  return best;
 }
 
 function nearestHostile(
@@ -317,6 +335,7 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         radius: action.radius,
         knockback: action.knockback,
         push: action.push,
+        slowThenStun: action.slowThenStun,
         charge: action.charge,
         spawnFire: action.spawnFire,
         burn: action.burn,
@@ -363,17 +382,17 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
 
     case 'hazard': {
       const offset = action.anchorOffset ?? 0;
-      spawnHazard(
-        world,
-        {
-          ...action.hazard,
-          damagePerSec: action.hazard.damagePerSec * ctx.damageMultiplier,
-        },
-        anchorX(action.at, offset, ctx),
-        anchorY(action.at, offset, ctx),
-        caster.id,
-        caster.team
-      );
+      const spec = { ...action.hazard, damagePerSec: action.hazard.damagePerSec * ctx.damageMultiplier };
+      if (action.atAllies !== undefined) {
+        // One under each of the side who is close enough, and the caster's own.
+        for (const other of world.brawlers) {
+          if (other.team !== caster.team || other.isClone || !other.isAlive) continue;
+          if (other.id !== caster.id && Math.hypot(other.x - caster.x, other.y - caster.y) > action.atAllies) continue;
+          spawnHazard(world, spec, other.x, other.y, caster.id, caster.team);
+        }
+        break;
+      }
+      spawnHazard(world, spec, anchorX(action.at, offset, ctx), anchorY(action.at, offset, ctx), caster.id, caster.team);
       break;
     }
 
@@ -384,13 +403,21 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       }
       const radius = action.radius ?? Infinity;
       const r2 = radius * radius;
+      let cx = ctx.originX;
+      let cy = ctx.originY;
+      if (action.centerOn) {
+        const own = nearestOwn(world, caster, action.centerOn);
+        if (!own) break;
+        cx = own.x;
+        cy = own.y;
+      }
       for (const other of world.brawlers) {
         if (other.isClone || !other.isAlive) continue;
         const friendly = other.team === caster.team;
         if (action.target === 'allies' && !friendly) continue;
         if (action.target === 'enemies' && !world.isHostile(caster.team, other)) continue;
-        const dx = other.x - ctx.originX;
-        const dy = other.y - ctx.originY;
+        const dx = other.x - cx;
+        const dy = other.y - cy;
         if (dx * dx + dy * dy > r2) continue;
         applyStatuses(other, action.statuses);
       }
@@ -432,6 +459,40 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
     case 'superCharge':
       chargeSuperFlat(caster, action.percent);
       break;
+
+    case 'rush': {
+      const bonus = ctx.charged && action.bonusDistance ? action.bonusDistance : 0;
+      caster.rush = {
+        angle: ctx.aimAngle,
+        speed: action.speed,
+        remaining: action.distance + bonus,
+        damage: action.damage !== undefined ? resolveDamage(action.damage, ctx) : 0,
+        push: action.push ?? 0,
+        reach: action.reach ?? 46,
+        breaks: action.breaksWalls === true,
+        bounces: action.bounces ?? 0,
+        ghost: action.ghost === true,
+        hit: [],
+        endKey: action.onEnd ? keyFor(action) : undefined,
+        charge: action.charge ?? 0,
+        guard: action.guard ?? 0,
+      };
+      // Whatever was shoving the body is replaced by the run.
+      caster.knockbackVx = 0;
+      caster.knockbackVy = 0;
+      if (action.ghost) applyStatus(caster, { kind: 'immunity', duration: (action.distance + bonus) / action.speed + 0.1 });
+      if (action.guard) applyStatus(caster, { kind: 'guard', duration: (action.distance + bonus) / action.speed + 0.05, magnitude: action.guard });
+      break;
+    }
+
+    case 'buffDeployable': {
+      for (const d of world.deployables) {
+        if (d.ownerId !== caster.id || d.kind !== action.kind) continue;
+        d.rateBoost = action.rate;
+        d.rateTimer = action.duration;
+      }
+      break;
+    }
 
     case 'empower': {
       caster.empowerKey = keyFor(action);
@@ -568,8 +629,18 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       if (action.unique) removeOwnDeployables(world, caster, action.kind);
       const offset = action.offset ?? 56;
       const at = action.at ?? 'aim';
-      const baseX = anchorX(at, offset, ctx);
-      const baseY = anchorY(at, offset, ctx);
+      let baseX = anchorX(at, offset, ctx);
+      let baseY = anchorY(at, offset, ctx);
+      if (action.maxReach !== undefined) {
+        // Thrown only so far.
+        const dx = baseX - caster.x;
+        const dy = baseY - caster.y;
+        const d = Math.hypot(dx, dy);
+        if (d > action.maxReach) {
+          baseX = caster.x + (dx / d) * action.maxReach;
+          baseY = caster.y + (dy / d) * action.maxReach;
+        }
+      }
       const count = action.row ? action.row.count : 1;
       const spacing = action.row ? action.row.spacing : 0;
       // Across the aim direction, centred on the anchor.
@@ -599,10 +670,18 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
 
     case 'vfx': {
       const offset = action.anchorOffset ?? 0;
+      let vx = anchorX(action.at, offset, ctx);
+      let vy = anchorY(action.at, offset, ctx);
+      if (action.centerOn) {
+        const own = nearestOwn(world, caster, action.centerOn);
+        if (!own) break;
+        vx = own.x;
+        vy = own.y;
+      }
       world.vfx(
         action.effect,
-        anchorX(action.at, offset, ctx),
-        anchorY(action.at, offset, ctx),
+        vx,
+        vy,
         action.radius,
         action.color,
         action.duration,

@@ -1,85 +1,172 @@
 import type { Kit } from './schema';
+import { deg, speed, tiles } from './bs';
 
 /**
- * KARAMBOL — bounce shooter.
+ * KARAMBOL — the one that uses the walls.
  *
- * The first character whose attack is *about* the walls. A straight shot dies on
- * the first one it meets; this one turns, so a corner stops being safe and a
- * long diagonal across the room becomes a lane. The skill is the geometry, not
- * the aim.
+ * Bullets that bounce, each bounce carrying them farther, so a target behind
+ * cover is a target at an angle. The Super is a longer, piercing burst of the
+ * same, and a vending machine of its own makes a wall that can be bounced off.
  */
+const bullet = (damage: number, range: number, charge: number, spd: number) => ({
+  speed: spd,
+  radius: 20,
+  damage,
+  range,
+  color: '#fbbf24',
+  offset: 22,
+  motion: 'bounce' as const,
+  bounces: 8,
+  bounceRange: tiles(1.67),
+  charge,
+});
+
 export const karambolKit: Kit = {
   id: 'karambol',
   maxAmmo: 3,
 
-  // Balance dial: see docs/DENGE.md.
-  traits: { damageScale: 1.21 },
-
   attack: {
-    name: 'Isteka Vuruşu',
+    name: 'Seken Kurşunlar',
     actions: [
-      { type: 'sound', cue: 'rapid_shot' },
-      {
-        type: 'projectiles',
-        delivery: { pattern: 'single' },
-        projectile: {
-          speed: 600,
-          radius: 7,
-          damage: { ofAttack: 1 },
-          range: 520,
-          color: '#bef264',
-          offset: 24,
-          motion: 'bounce',
-          bounces: 2,
-        },
-      },
-    ],
-  },
-
-  super: {
-    name: 'Sekme Seli',
-    actions: [
-      { type: 'sound', cue: 'super_blast' },
-      { type: 'banner', text: 'SEKME SELİ!', color: '#bef264' },
       {
         type: 'burst',
-        count: 8,
-        interval: 0.07,
-        // Thrown across a wide arc, so the room fills rather than one line.
+        count: 5,
+        interval: 0.15,
         aim: 'random',
-        amplitude: 1.1,
+        amplitude: deg(6.75),
         actions: [
+          { type: 'sound', cue: 'rapid_shot' },
           {
             type: 'projectiles',
             delivery: { pattern: 'single' },
-            projectile: {
-              speed: 640,
-              radius: 8,
-              damage: 420,
-              range: 640,
-              color: '#d9f99d',
-              offset: 24,
-              motion: 'bounce',
-              bounces: 3,
-            },
+            projectile: bullet(600, tiles(9.67), 6.375, speed(3478)),
           },
         ],
       },
     ],
   },
 
-  gadget: {
-    name: 'Hızlı Top',
+  super: {
+    name: 'Hileli Atış',
     actions: [
-      { type: 'banner', text: 'HIZLI TOP!', color: '#bef264' },
-      { type: 'ammo', amount: 1 },
-      { type: 'status', target: 'self', statuses: [{ kind: 'speed', duration: 2.2, magnitude: 1.35 }] },
+      { type: 'banner', text: 'HİLELİ ATIŞ!', color: '#fde68a' },
+      {
+        type: 'burst',
+        count: 12,
+        interval: 0.104,
+        aim: 'random',
+        amplitude: deg(9),
+        channel: true,
+        actions: [
+          { type: 'sound', cue: 'rapid_shot' },
+          {
+            type: 'projectiles',
+            delivery: { pattern: 'single' },
+            projectile: { ...bullet(720, tiles(13.33), 9.45, speed(4891)), piercesBodies: true },
+          },
+        ],
+      },
     ],
   },
 
+  gadgets: [
+    {
+      name: 'Çoklu Top Makinesi',
+      description: 'Sağlam bir otomat kurar. Kurşunlar ondan sekebilir; patlayınca etrafa kurşun yağdırır.',
+      cooldown: 22,
+      actions: [
+        {
+          type: 'summon',
+          kind: 'vending',
+          at: 'aim',
+          offset: 90,
+          lifetime: 120,
+          hp: 4000,
+          radius: 32,
+          unique: true,
+          onDestroy: [
+            {
+              type: 'projectiles',
+              delivery: { pattern: 'radial', count: 16, fixed: true },
+              projectile: {
+                speed: speed(4891),
+                radius: 20,
+                damage: 800,
+                range: tiles(11.67),
+                color: '#fcd34d',
+                offset: 30,
+                piercesBodies: true,
+              },
+            },
+            { type: 'vfx', at: 'self', effect: 'explosion', radius: 80, color: '#fbbf24', duration: 0.4 },
+          ],
+        },
+      ],
+    },
+    {
+      name: 'Çoklu Top',
+      description: 'Duvara ya da düşmana çarpınca üçe bölünen büyük bir kurşun atar.',
+      cooldown: 17,
+      actions: [
+        { type: 'sound', cue: 'heavy_punch' },
+        {
+          type: 'projectiles',
+          delivery: { pattern: 'single' },
+          projectile: {
+            speed: speed(3478),
+            radius: 30,
+            damage: 1800,
+            range: tiles(9.67),
+            color: '#f97316',
+            offset: 24,
+            onEnd: [
+              {
+                type: 'projectiles',
+                delivery: { pattern: 'spread', count: 3, arc: deg(40) },
+                projectile: {
+                  speed: speed(3478),
+                  radius: 14,
+                  damage: 900,
+                  range: tiles(5),
+                  color: '#fdba74',
+                  offset: 10,
+                  piercesBodies: true,
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  ],
+
+  starPowers: [
+    {
+      name: 'Süper Sekme',
+      description: 'İlk sekmeden sonra kurşunlar +240 hasar verir.',
+      apply: kit => {
+        const bonus = (actions: typeof kit.attack.actions) => {
+          for (const a of actions) {
+            if (a.type === 'burst') bonus(a.actions);
+            if (a.type === 'projectiles') a.projectile.bounceBonus = 240;
+          }
+        };
+        bonus(kit.attack.actions);
+        bonus(kit.super.actions);
+      },
+    },
+    {
+      name: 'Robot Çekilişi',
+      description: 'Canı %40 altına düşünce %35 daha hızlı koşar.',
+      apply: kit => {
+        kit.traits = { ...(kit.traits ?? {}), conditional: [{ when: 'healthBelow', below: 0.4, speed: 1.35 }] };
+      },
+    },
+  ],
+
   bot: {
-    engageRange: 0.9,
+    engageRange: 0.95,
     superRange: { max: 1.1 },
-    gadget: { when: 'outOfAmmo', range: 480 },
+    gadgets: [{ when: 'enemyWithin', range: 320 }, { when: 'enemyBetween', min: 150, max: 560 }],
   },
 };

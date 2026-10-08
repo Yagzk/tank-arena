@@ -63,6 +63,22 @@ export function spawnProjectile(world: SimWorld, p: SpawnProjectileParams): Braw
   if (spec.knockback) proj.knockbackForce = spec.knockback;
   if (spec.charge !== undefined) proj.charge = spec.charge;
   if (spec.pushback) proj.pushback = spec.pushback;
+  if (spec.chain) {
+    proj.chainLeft = spec.chain.hits - 1;
+    proj.chainRange = spec.chain.range;
+    proj.chainFalloff = spec.chain.falloff;
+    proj.chainReach = spec.chain.reach;
+    proj.chainSpeed = spec.chain.speed;
+  }
+  if (spec.allyHeal !== undefined) proj.allyHeal = spec.allyHeal;
+  if (spec.onlyAllies) proj.onlyAllies = true;
+  if (spec.bounceRange) proj.bounceRange = spec.bounceRange;
+  if (spec.bounceBonus) proj.bounceBonus = spec.bounceBonus;
+  if (spec.turretHeal) proj.turretHeal = spec.turretHeal;
+  if (spec.growth) {
+    proj.growth = spec.growth;
+    proj.baseRadius = spec.radius;
+  }
   if (spec.falloff) {
     proj.falloff = {
       near: spec.falloff.near,
