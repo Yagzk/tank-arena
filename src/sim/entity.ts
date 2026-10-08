@@ -84,6 +84,7 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     isBot: opts.isBot,
     kills: 0,
     deaths: 0,
+    bounty: 1,
     pendingBurst: null,
     gadgetCharges: 3,
     gadgetCooldown: 0,

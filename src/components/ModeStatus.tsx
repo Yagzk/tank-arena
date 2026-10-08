@@ -143,6 +143,7 @@ export const ModeStatus: React.FC<ModeStatusProps> = ({ snapshot, myPlayerId }) 
     }
 
     case 'wipeout':
+    case 'bounty':
     case 'hot_zone': {
       const holder = snapshot.zone ? snapshot.zone.controller : null;
       return (
@@ -152,6 +153,14 @@ export const ModeStatus: React.FC<ModeStatusProps> = ({ snapshot, myPlayerId }) 
             {timer}
             <SideBox side={1} icon={def.icon} value={scores[1] ?? 0} mine={myTeam === 1} glow={holder === 1} />
           </div>
+          {snapshot.mode === 'bounty' && (() => {
+            const richest = players.filter(b => b.isAlive).sort((x, y) => y.bounty - x.bounty)[0];
+            return richest && richest.bounty > 1 ? (
+              <span className="font-arcade text-[10px] font-bold text-amber-300">
+                EN DEĞERLİ: {richest.name} ★{richest.bounty}
+              </span>
+            ) : null;
+          })()}
           {snapshot.scoreLimit !== null && (
             <span className="font-arcade text-[10px] font-bold text-slate-400">
               İLK {snapshot.scoreLimit} PUAN KAZANIR

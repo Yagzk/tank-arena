@@ -21,6 +21,7 @@ export const MODE_IDS: readonly BrawlGameMode[] = [
   'wipeout',
   'knockout',
   'hot_zone',
+  'bounty',
 ];
 
 /** Which family of maps a mode is played on. */
@@ -143,6 +144,20 @@ export const MODES: Record<BrawlGameMode, ModeDefinition> = {
     // A round that drags on is decided by health, so it cannot be camped out.
     timeLimit: 90,
   },
+  bounty: {
+    id: 'bounty',
+    name: 'ÖDÜL AVI',
+    tagline: 'Kafası değerli olanı indir, yıldızları topla',
+    icon: '⭐',
+    grouping: 'sides',
+    mapKind: 'sides',
+    respawnDelay: 3,
+    respawnImmunity: 1.5,
+    superRetention: 0.25,
+    gas: false,
+    powerCubes: false,
+    timeLimit: 120,
+  },
   hot_zone: {
     id: 'hot_zone',
     name: 'SICAK BÖLGE',
@@ -159,6 +174,21 @@ export const MODES: Record<BrawlGameMode, ModeDefinition> = {
     scoreLimit: 100,
   },
 };
+
+/** The most stars one brawler's head can be worth in Bounty. */
+export const MAX_BOUNTY = 7;
+
+/**
+ * What a kill is worth in Bounty, and what the two sides' bounties become.
+ *
+ * The one downed pays out what they were worth and goes back to the base
+ * price; the one who downed them becomes worth a star more, up to a ceiling.
+ * That is the whole catch-up and snowball rule in one place: a streak makes
+ * you a target, and the target's death makes up for a lot.
+ */
+export function bountyPayout(victimBounty: number, killerBounty: number): { stars: number; killer: number; victim: number } {
+  return { stars: victimBounty, killer: Math.min(MAX_BOUNTY, killerBounty + 1), victim: 1 };
+}
 
 export function isTeamMode(mode: BrawlGameMode): boolean {
   return MODES[mode].grouping !== 'solo';

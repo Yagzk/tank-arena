@@ -25,7 +25,7 @@ const sertKaya: TileMapSource = {
   // over, and the objective behind two layers of cover.
   id: 'sert-kaya',
   name: 'SERT KAYA',
-  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone', 'bounty'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -66,7 +66,7 @@ const darGecit: TileMapSource = {
   // punishes anyone who has to walk around it.
   id: 'dar-gecit',
   name: 'DAR GEÇİT',
-  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone', 'bounty'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -107,7 +107,7 @@ const tasOcagi: TileMapSource = {
   // on, and a team that breaks the wrong cover opens its own lane.
   id: 'tas-ocagi',
   name: 'TAŞ OCAĞI',
-  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone', 'bounty'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -148,7 +148,7 @@ const bataklik: TileMapSource = {
   // so holding the middle actually means something.
   id: 'bataklik',
   name: 'BATAKLIK',
-  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone', 'bounty'],
   symmetry: 'mirror',
   rows: [
     '####################',
@@ -189,7 +189,7 @@ const acikArazi: TileMapSource = {
   // something at the far end of a lane — but still enough bush to close.
   id: 'acik-arazi',
   name: 'AÇIK ARAZİ',
-  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone'],
+  modes: ['gem_grab', 'wipeout', 'knockout', 'hot_zone', 'bounty'],
   symmetry: 'mirror',
   rows: [
     '####################',

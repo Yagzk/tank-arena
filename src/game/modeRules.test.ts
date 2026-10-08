@@ -478,3 +478,46 @@ describe('what the modes share', () => {
     }
   });
 });
+
+describe('bounty', () => {
+  it('scores the victim bounty for the killer side, and grows the killer head', () => {
+    const engine = start('bounty', 4);
+    const [a, , b] = [engine.brawlers[0], engine.brawlers[1], engine.brawlers[2]];
+    const enemy = engine.brawlers.find(x => x.team !== a.team)!;
+    kill(engine, enemy, a);
+    expect(engine.teamScores[a.team]).toBe(1);
+    expect(a.bounty).toBe(2);
+    expect(enemy.bounty).toBe(1);
+    void b;
+
+    // Downing the one with the price on their head pays it.
+    const target = engine.brawlers.find(x => x.team !== a.team && x.isAlive)!;
+    target.bounty = 5;
+    kill(engine, target, a);
+    expect(engine.teamScores[a.team]).toBe(6);
+    expect(a.bounty).toBe(3);
+  });
+
+  it('gives nothing for a kill on your own side or the environment', () => {
+    const engine = start('bounty', 4);
+    const mate = engine.brawlers.filter(x => x.team === engine.brawlers[0].team);
+    kill(engine, mate[1], mate[0]);
+    expect(engine.teamScores).toEqual([0, 0]);
+  });
+
+  it('is decided by stars when time runs out, and a tie is a draw', () => {
+    const engine = start('bounty', 4);
+    engine.teamScores = [3, 5];
+    engine.matchTimer = MODES.bounty.timeLimit! + 0.1;
+    run(engine, 0.05);
+    expect(engine.phase).toBe('match_end');
+    expect(engine.winnerTeam).toBe(1);
+
+    const tied = start('bounty', 4);
+    tied.teamScores = [4, 4];
+    tied.matchTimer = MODES.bounty.timeLimit! + 0.1;
+    run(tied, 0.05);
+    expect(tied.phase).toBe('match_end');
+    expect(tied.winnerTeam).toBeNull();
+  });
+});

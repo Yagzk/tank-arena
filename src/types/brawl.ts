@@ -506,7 +506,8 @@ export type BrawlGameMode =
   | 'brawl_ball'
   | 'wipeout'
   | 'knockout'
-  | 'hot_zone';
+  | 'hot_zone'
+  | 'bounty';
 
 /**
  * The ball in Brawl Ball.
@@ -601,6 +602,8 @@ export interface BrawlerEntity {
   kills: number;
   /** Times this brawler has been taken out. Matters in modes with respawn. */
   deaths: number;
+  /** Bounty: the stars the one who downs this brawler collects. Grows with every kill, resets on death. */
+  bounty: number;
   /**
    * Shots still owed by an attack that fires over time — a six-round burst, a
    * flurry of punches, an artillery barrage. One queue replaces what used to

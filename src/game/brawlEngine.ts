@@ -32,7 +32,7 @@ import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
 import type { SoundType } from '../audio/cues';
-import { MODES, decideByScore, decideRound, teamFor, zoneController } from './modes';
+import { MODES, bountyPayout, decideByScore, decideRound, teamFor, zoneController } from './modes';
 import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim/entity';
 import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { updateDeployables } from '../sim/systems/deployables';
@@ -1639,7 +1639,20 @@ export class BrawlEngine {
 
   /** A kill is a point to the side that made it, in the modes that count them. */
   private scoreKill(victim: BrawlerEntity, killer: BrawlerEntity | undefined) {
-    if (this.mode !== 'wipeout' || victim.isClone) return;
+    if (victim.isClone) return;
+    if (this.mode === 'bounty') {
+      if (!killer || killer.team === victim.team) {
+        victim.bounty = 1;
+        return;
+      }
+      const pay = bountyPayout(victim.bounty, killer.bounty);
+      this.teamScores[killer.team] = (this.teamScores[killer.team] ?? 0) + pay.stars;
+      killer.bounty = pay.killer;
+      victim.bounty = pay.victim;
+      this.addFloatingNumber('+' + pay.stars + ' ★', victim.x, victim.y - 34, '#facc15');
+      return;
+    }
+    if (this.mode !== 'wipeout') return;
     if (!killer || killer.team === victim.team) return;
     this.teamScores[killer.team] = (this.teamScores[killer.team] ?? 0) + 1;
   }
@@ -1929,6 +1942,7 @@ export class BrawlEngine {
         return;
 
       case 'wipeout':
+      case 'bounty':
       case 'hot_zone': {
         const timeUp = def.timeLimit !== undefined && this.playClock() >= def.timeLimit;
         const standing = decideByScore(this.teamScores, def.scoreLimit, timeUp);

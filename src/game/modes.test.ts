@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MODES,
   MODE_IDS,
+  MAX_BOUNTY,
+  bountyPayout,
   decideByScore,
   decideRound,
   isTeamMode,
@@ -139,5 +141,22 @@ describe('a zone', () => {
     // That is the point of it: standing in it is not enough, you have to hold it.
     expect(zoneController([1, 1])).toBeNull();
     expect(zoneController([3, 1])).toBeNull();
+  });
+});
+
+describe('bounty payouts', () => {
+  it('pays out what the victim was worth and resets them', () => {
+    expect(bountyPayout(4, 1)).toEqual({ stars: 4, killer: 2, victim: 1 });
+  });
+
+  it('makes a streak worth more, up to a ceiling', () => {
+    let killer = 1;
+    const worth: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      killer = bountyPayout(1, killer).killer;
+      worth.push(killer);
+    }
+    expect(Math.max(...worth)).toBe(MAX_BOUNTY);
+    expect(worth[0]).toBe(2);
   });
 });

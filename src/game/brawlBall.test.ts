@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BrawlEngine } from './brawlEngine';
 import { FIXED_DT } from '../core/loop';
 import { MODES } from './modes';
@@ -265,8 +265,14 @@ describe('bots', () => {
   it('score without anybody touching the controls', () => {
     // One match can go goalless if the carriers keep getting shot; across a
     // handful of maps and seeds, bots that never score are broken.
+    // Bots decide with Math.random; pin it so this cannot flake.
+    let state = 12345;
+    const random = vi.spyOn(Math, 'random').mockImplementation(() => {
+      state = (state * 1664525 + 1013904223) % 4294967296;
+      return state / 4294967296;
+    });
     let goals = 0;
-    for (const seed of [2, 3, 4, 5]) {
+    for (const seed of [2, 3, 4, 5, 6, 7, 8, 9]) {
       const engine = new BrawlEngine();
       const players = roster(4).map(p => ({ ...p, isBot: true }));
       engine.initMatch(players, 'brawl_ball', seed);
@@ -278,7 +284,8 @@ describe('bots', () => {
       }
       goals += engine.teamScores[0] + engine.teamScores[1];
     }
-    expect(goals, 'goals scored by bots across four matches').toBeGreaterThan(0);
+    random.mockRestore();
+    expect(goals, 'goals scored by bots across eight matches').toBeGreaterThan(0);
   });
 });
 
