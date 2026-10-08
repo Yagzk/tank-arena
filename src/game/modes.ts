@@ -17,6 +17,7 @@ export const MODE_IDS: readonly BrawlGameMode[] = [
   'showdown',
   'duo_showdown',
   'gem_grab',
+  'brawl_ball',
   'wipeout',
   'knockout',
   'hot_zone',
@@ -51,6 +52,8 @@ export interface ModeDefinition {
   scoreLimit?: number;
   /** Rounds to win, for a mode played in rounds. */
   roundsToWin?: number;
+  /** The mode has a ball and two goals, and needs a map that provides them. */
+  usesBall?: boolean;
 }
 
 export const MODES: Record<BrawlGameMode, ModeDefinition> = {
@@ -92,6 +95,22 @@ export const MODES: Record<BrawlGameMode, ModeDefinition> = {
     superRetention: 0.25,
     gas: false,
     powerCubes: false,
+  },
+  brawl_ball: {
+    id: 'brawl_ball',
+    name: 'BRAWL BALL',
+    tagline: 'Topu karşı kaleye sok, ilk iki gol kazanır',
+    icon: '⚽',
+    grouping: 'sides',
+    mapKind: 'sides',
+    respawnDelay: 3,
+    respawnImmunity: 1.5,
+    superRetention: 0.25,
+    gas: false,
+    powerCubes: false,
+    timeLimit: 120,
+    scoreLimit: 2,
+    usesBall: true,
   },
   wipeout: {
     id: 'wipeout',

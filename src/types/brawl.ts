@@ -503,9 +503,35 @@ export type BrawlGameMode =
   | 'showdown'
   | 'duo_showdown'
   | 'gem_grab'
+  | 'brawl_ball'
   | 'wipeout'
   | 'knockout'
   | 'hot_zone';
+
+/**
+ * The ball in Brawl Ball.
+ *
+ * Carried, it sits at its holder's feet and goes where they go; free, it rolls,
+ * slows and bounces off walls. `carrier` is who holds it, or null.
+ */
+export interface BallState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  carrier: string | null;
+}
+
+/** A goal mouth: the team that defends it, and the ground that counts as in. */
+export interface GoalArea {
+  /** The team this goal belongs to — the one that concedes if the ball enters. */
+  team: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** The ground a team fights over in Hot Zone. */
 export interface HotZone {
@@ -948,6 +974,11 @@ export interface BrawlSnapshot {
   roundsToWin: number | null;
   /** Hot Zone's zone, or null in every other mode. */
   zone: HotZone | null;
+  /** Brawl Ball's ball and goals; null and empty in every other mode. */
+  ball: BallState | null;
+  goals: GoalArea[];
+  /** The team whose goal is being celebrated right now, or null. */
+  goalTeam: number | null;
 }
 
 export interface BrawlPlayerInput {

@@ -249,6 +249,27 @@ export const RECIPES: Record<SoundType, Recipe> = {
       { kind: 'tone', wave: 'triangle', from: 1047, to: 1047, duration: 0.5, gain: 0.3, delay: 0.42 },
     ],
   },
+  goal: {
+    priority: 3,
+    cooldownMs: 1500,
+    spatial: false,
+    layers: [
+      { kind: 'tone', wave: 'square', from: 392, to: 392, duration: 0.14, gain: 0.2 },
+      { kind: 'tone', wave: 'square', from: 523, to: 523, duration: 0.14, gain: 0.2, delay: 0.14 },
+      { kind: 'tone', wave: 'square', from: 659, to: 659, duration: 0.14, gain: 0.2, delay: 0.28 },
+      { kind: 'tone', wave: 'triangle', from: 784, to: 784, duration: 0.7, gain: 0.3, delay: 0.42 },
+      { kind: 'noise', duration: 0.9, gain: 0.14, filter: 'bandpass', from: 1800, to: 900, delay: 0.1 },
+    ],
+  },
+  kick: {
+    priority: 2,
+    cooldownMs: 120,
+    spatial: true,
+    layers: [
+      { kind: 'tone', wave: 'sine', from: 220, to: 70, duration: 0.14, gain: 0.4 },
+      { kind: 'noise', duration: 0.06, gain: 0.2, filter: 'lowpass', from: 2000, to: 400 },
+    ],
+  },
   alarm: {
     priority: 3,
     cooldownMs: 800,

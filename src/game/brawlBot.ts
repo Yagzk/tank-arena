@@ -6,6 +6,8 @@ import {
   GemDrop,
   PowerCubeDrop,
   PowerCubeBox,
+  BallState,
+  GoalArea,
   BRAWLERS,
 } from '../types/brawl';
 import { dist } from '../core/math';
@@ -21,6 +23,15 @@ const ENGAGE_DISTANCE = 260;
 
 /** Health fraction below which a bot disengages. */
 const RETREAT_HEALTH = 0.42;
+
+/** A kick rolls about this far, so a bot shoots from inside it. */
+const KICK_RANGE = 470;
+
+/** The ball and the goals, for a bot playing Brawl Ball. */
+export interface BallGame {
+  ball: BallState;
+  goals: GoalArea[];
+}
 
 export class BrawlBot {
   private changeMoveTimer: number = 0;
@@ -51,11 +62,18 @@ export class BrawlBot {
     gems: GemDrop[],
     dt: number,
     nav: NavGrid,
-    objective?: { x: number; y: number }
+    objective?: { x: number; y: number },
+    ballGame?: BallGame
   ): BrawlPlayerInput {
     this.changeMoveTimer -= dt;
     this.attackCooldown -= dt;
     this.repathTimer -= dt;
+
+    if (ballGame) {
+      const play = this.planBall(bot, allBrawlers, ballGame, walls, nav);
+      if (play.input) return play.input;
+      objective = play.objective;
+    }
 
     // Find nearest living enemy
     const enemies = allBrawlers.filter(b => b.id !== bot.id && b.isAlive && (b.team !== bot.team || bot.team === -1));
@@ -274,6 +292,79 @@ export class BrawlBot {
       superTargetX: targetX,
       superTargetY: targetY,
     };
+  }
+
+  /**
+   * What to do about the ball.
+   *
+   * With it, run it at the other goal and kick when there is a clear line.
+   * Without it, the nearest of the side chases it, a team-mate who has it gets
+   * company ahead of them, and whoever is left covers their own end. An enemy
+   * carrier returns no objective, which leaves the bot to hunt them down.
+   */
+  private planBall(
+    bot: BrawlerEntity,
+    all: BrawlerEntity[],
+    game: BallGame,
+    walls: BrawlWall[],
+    nav: NavGrid
+  ): { input?: BrawlPlayerInput; objective?: { x: number; y: number } } {
+    const { ball, goals } = game;
+    const target = goals.find(g => g.team !== bot.team);
+    const home = goals.find(g => g.team === bot.team);
+    if (!target || !home) return {};
+    const goalX = target.x + target.w / 2;
+    const goalY = target.y + target.h / 2;
+
+    if (ball.carrier === bot.id) {
+      const sees = hasLineOfSight(bot.x, bot.y, goalX, goalY, walls);
+      const toGoal = Math.atan2(goalY - bot.y, goalX - bot.x);
+      this.currentMoveX = Math.cos(toGoal);
+      this.currentMoveY = Math.sin(toGoal);
+      if (!sees) this.followRoute(bot, nav, goalX, goalY);
+
+      let kick = false;
+      if (sees && dist(bot.x, bot.y, goalX, goalY) <= KICK_RANGE && this.attackCooldown <= 0) {
+        kick = true;
+        this.attackCooldown = 0.4;
+      }
+      return {
+        input: {
+          moveX: this.currentMoveX,
+          moveY: this.currentMoveY,
+          aimAngle: toGoal,
+          attack: kick,
+          superAttack: false,
+          gadget: false,
+        },
+      };
+    }
+
+    const carrier = ball.carrier ? all.find(b => b.id === ball.carrier) : undefined;
+    if (carrier && carrier.team !== bot.team) return {};
+
+    if (carrier) {
+      // Stay a little ahead of the one with the ball.
+      const ahead = Math.atan2(goalY - carrier.y, goalX - carrier.x);
+      return { objective: { x: carrier.x + Math.cos(ahead) * 110, y: carrier.y + Math.sin(ahead) * 110 } };
+    }
+
+    // Loose ball: the closest of the side goes for it.
+    let nearest = bot;
+    let nearestD = dist(bot.x, bot.y, ball.x, ball.y);
+    for (const b of all) {
+      if (b.team !== bot.team || !b.isAlive || b.isClone) continue;
+      const d = dist(b.x, b.y, ball.x, ball.y);
+      if (d < nearestD - 1) {
+        nearest = b;
+        nearestD = d;
+      }
+    }
+    if (nearest.id === bot.id) return { objective: { x: ball.x, y: ball.y } };
+
+    const hx = home.x + home.w / 2;
+    const hy = home.y + home.h / 2;
+    return { objective: { x: ball.x + (hx - ball.x) * 0.45, y: ball.y + (hy - ball.y) * 0.45 } };
   }
 
   /**

@@ -21,6 +21,8 @@ import {
   BrawlerId,
   BrawlGameMode,
   HotZone,
+  BallState,
+  GoalArea,
 } from '../types/brawl';
 import { generateBrawlMap, MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import { circleRectCollision, circleIntersect, sweepCircleVsRect, sweepCircleVsCircle, createSweepHit } from '../core/collision';
@@ -72,6 +74,21 @@ export interface BrawlSoundEvent {
 /** Hot Zone: how big the zone is, and how fast holding it scores. */
 const ZONE_RADIUS = 150;
 const ZONE_POINTS_PER_SECOND = 1;
+
+/** Brawl Ball: the ball, how it rolls, and how hard it is kicked. */
+const BALL_RADIUS = 14;
+const BALL_FRICTION = 1.4;
+const BALL_BOUNCE = 0.6;
+const BALL_KICK_SPEED = 900;
+const BALL_MAX_SPEED = 1000;
+/** Seconds the one who just kicked or dropped the ball cannot pick it up again. */
+const BALL_RETAKE_DELAY = 0.45;
+/** A hit harder than this knocks the ball loose from its carrier. */
+const BALL_DROP_KNOCKBACK = 250;
+/** Seconds the goal is celebrated before everyone is put back. */
+const GOAL_CELEBRATION = 2.2;
+/** How long a tied game may go on past time, in sudden death, before it is called a draw. */
+const OVERTIME_LIMIT = 60;
 
 /** How far apart the two members of a pair start, in world units. */
 const PARTNER_OFFSET = 52;
@@ -133,6 +150,19 @@ export class BrawlEngine {
   public teamScores: number[] = [];
   /** Hot Zone's zone; null in every other mode. */
   public zone: HotZone | null = null;
+  /** Brawl Ball's ball and goals; null and empty in every other mode. */
+  public ball: BallState | null = null;
+  public goals: GoalArea[] = [];
+  private ballSpawn: { x: number; y: number } | null = null;
+  /** Seconds left of the goal celebration, or null while play is live. */
+  private goalTimer: number | null = null;
+  /** The team that just scored, while it is being celebrated. */
+  private goalTeam: number | null = null;
+  /** Seconds of play already used before the last restart. */
+  private playedBefore = 0;
+  private lastToucher: string | null = null;
+  private ballRetake: Record<string, number> = {};
+  private goalsBy: Record<string, number> = {};
   /** Knockout: the round being played, and the rounds each team has won. */
   public round = 1;
   public roundWins: number[] = [];
@@ -357,6 +387,12 @@ export class BrawlEngine {
     this.roundWins = [];
     this.roundCloseTimer = null;
     this.roundResult = null;
+    this.playedBefore = 0;
+    this.goalTimer = null;
+    this.goalTeam = null;
+    this.lastToucher = null;
+    this.ballRetake = {};
+    this.goalsBy = {};
 
     const def = MODES[mode];
     const map = this.loadMap(mode, seed);
@@ -424,6 +460,12 @@ export class BrawlEngine {
       mode === 'hot_zone' && map.objective
         ? { x: map.objective.x, y: map.objective.y, radius: ZONE_RADIUS, controller: null }
         : null;
+
+    this.goals = def.usesBall ? map.goals : [];
+    this.ballSpawn = def.usesBall && map.ballSpawn ? map.ballSpawn : null;
+    this.ball = this.ballSpawn
+      ? { x: this.ballSpawn.x, y: this.ballSpawn.y, vx: 0, vy: 0, radius: BALL_RADIUS, carrier: null }
+      : null;
     return map;
   }
 
@@ -526,6 +568,7 @@ export class BrawlEngine {
     this.updateVisualEffects(dt);
     this.updateGemMine(dt);
     this.updateZone(dt);
+    this.updateBall(dt);
     this.updatePoisonGas(dt);
     this.updatePickups();
     this.updateFloatingNumbers(dt);
@@ -730,7 +773,8 @@ export class BrawlEngine {
           dt,
           this.navGrid,
           // Hot Zone gives bots a place to be.
-          this.zone ? { x: this.zone.x, y: this.zone.y } : undefined
+          this.zone ? { x: this.zone.x, y: this.zone.y } : undefined,
+          this.ball ? { ball: this.ball, goals: this.goals } : undefined
         );
         this.playerInputs[b.id] = input;
       }
@@ -834,6 +878,9 @@ export class BrawlEngine {
         b.timeSinceLastAttack = 0;
         if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking breaks stealth
         executeAbility(this.contextFor(b, input, true), kit.super);
+      } else if (input.attack && this.ball && this.ball.carrier === b.id) {
+        // Whoever has the ball does not shoot with it; the attack is a kick.
+        this.kickBall(b, input.aimAngle);
       } else if (input.attack && b.ammo >= 1 && b.attackCooldown <= 0 && !b.pendingBurst) {
         b.ammo -= 1;
         // A fixed post-attack delay, separate from ammo, stops a full clip
@@ -1616,13 +1663,226 @@ export class BrawlEngine {
     }
   }
 
+  /** Seconds of the match played so far, across any restarts. */
+  private playClock(): number {
+    return this.playedBefore + this.matchTimer;
+  }
+
+  /** Brawl Ball: how the ball moves, who has it, and what happens when it goes in. */
+  private updateBall(dt: number) {
+    const ball = this.ball;
+    if (!ball || this.phase !== 'playing') return;
+
+    // A goal is celebrated with the ball sitting still, then everyone is
+    // put back where they started.
+    if (this.goalTimer !== null) {
+      this.goalTimer -= dt;
+      if (this.goalTimer <= 0) this.afterGoal();
+      return;
+    }
+
+    for (const id in this.ballRetake) {
+      this.ballRetake[id] -= dt;
+      if (this.ballRetake[id] <= 0) delete this.ballRetake[id];
+    }
+
+    if (ball.carrier) {
+      const c = this.brawlers.find(b => b.id === ball.carrier);
+      const knocked = c ? Math.hypot(c.knockbackVx, c.knockbackVy) > BALL_DROP_KNOCKBACK : false;
+      if (!c || !c.isAlive || c.stunTimer > 0 || c.isJumping || knocked) {
+        this.dropBall(c);
+      } else {
+        // At the feet, a little ahead of where they are looking.
+        const reach = BRAWLER_RADIUS + ball.radius * 0.4;
+        let bx = c.x + Math.cos(c.aimAngle) * reach;
+        let by = c.y + Math.sin(c.aimAngle) * reach;
+        for (const wall of this.walls) {
+          if (circleRectCollision({ x: bx, y: by, radius: ball.radius }, wall).collided) {
+            bx = c.x;
+            by = c.y;
+            break;
+          }
+        }
+        ball.x = bx;
+        ball.y = by;
+        ball.vx = 0;
+        ball.vy = 0;
+      }
+    }
+
+    if (!ball.carrier) {
+      this.rollBall(ball, dt);
+      this.tryPickUpBall(ball);
+    }
+
+    this.checkGoal(ball);
+  }
+
+  private rollBall(ball: BallState, dt: number) {
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+
+    for (const wall of this.walls) {
+      const col = circleRectCollision({ x: ball.x, y: ball.y, radius: ball.radius }, wall);
+      if (!col.collided) continue;
+      ball.x += col.nx * col.depth;
+      ball.y += col.ny * col.depth;
+      // Only the part of the speed that was driving into the wall is reflected.
+      const into = ball.vx * col.nx + ball.vy * col.ny;
+      if (into < 0) {
+        ball.vx -= (1 + BALL_BOUNCE) * into * col.nx;
+        ball.vy -= (1 + BALL_BOUNCE) * into * col.ny;
+      }
+    }
+
+    const decay = Math.exp(-BALL_FRICTION * dt);
+    ball.vx *= decay;
+    ball.vy *= decay;
+    const speed = Math.hypot(ball.vx, ball.vy);
+    if (speed < 8) {
+      ball.vx = 0;
+      ball.vy = 0;
+    } else if (speed > BALL_MAX_SPEED) {
+      ball.vx *= BALL_MAX_SPEED / speed;
+      ball.vy *= BALL_MAX_SPEED / speed;
+    }
+  }
+
+  private tryPickUpBall(ball: BallState) {
+    let best: BrawlerEntity | null = null;
+    let bestDist = Infinity;
+    const reach = BRAWLER_RADIUS + ball.radius + 6;
+    for (const b of this.brawlers) {
+      if (!b.isAlive || b.isClone || b.isJumping || b.stunTimer > 0) continue;
+      if (this.ballRetake[b.id] !== undefined) continue;
+      const d = dist(b.x, b.y, ball.x, ball.y);
+      if (d <= reach && d < bestDist) {
+        best = b;
+        bestDist = d;
+      }
+    }
+    if (!best) return;
+    ball.carrier = best.id;
+    ball.vx = 0;
+    ball.vy = 0;
+    this.lastToucher = best.id;
+  }
+
+  /** The ball comes loose where its carrier was, and they cannot snatch it straight back. */
+  private dropBall(carrier: BrawlerEntity | undefined) {
+    const ball = this.ball;
+    if (!ball) return;
+    ball.carrier = null;
+    if (carrier) {
+      ball.x = carrier.x;
+      ball.y = carrier.y;
+      this.ballRetake[carrier.id] = BALL_RETAKE_DELAY * 1.5;
+    }
+    ball.vx = 0;
+    ball.vy = 0;
+  }
+
+  private kickBall(kicker: BrawlerEntity, angle: number) {
+    const ball = this.ball;
+    if (!ball || ball.carrier !== kicker.id) return;
+    ball.carrier = null;
+    ball.x = kicker.x + Math.cos(angle) * (BRAWLER_RADIUS + ball.radius + 2);
+    ball.y = kicker.y + Math.sin(angle) * (BRAWLER_RADIUS + ball.radius + 2);
+    ball.vx = Math.cos(angle) * BALL_KICK_SPEED;
+    ball.vy = Math.sin(angle) * BALL_KICK_SPEED;
+    this.ballRetake[kicker.id] = BALL_RETAKE_DELAY;
+    this.lastToucher = kicker.id;
+    kicker.attackCooldown = 0.3;
+    kicker.timeSinceLastAttack = 0;
+    if (kicker.invisibilityTimer > 0) kicker.invisibilityTimer = 0;
+    this.emitSound('kick', ball.x, ball.y);
+    this.addEffect('muzzle_flash', ball.x, ball.y, 20, '#fde047', 0.12, angle, 0.5);
+  }
+
+  private checkGoal(ball: BallState) {
+    for (const g of this.goals) {
+      if (ball.x < g.x || ball.x > g.x + g.w || ball.y < g.y || ball.y > g.y + g.h) continue;
+      // The ball in a team's own goal is a point for the other side.
+      const scorer = g.team === 0 ? 1 : 0;
+      this.teamScores[scorer] = (this.teamScores[scorer] ?? 0) + 1;
+      this.goalTeam = scorer;
+      this.goalTimer = GOAL_CELEBRATION;
+      ball.carrier = null;
+      ball.vx = 0;
+      ball.vy = 0;
+
+      const toucher = this.brawlers.find(b => b.id === this.lastToucher);
+      if (toucher && toucher.team === scorer) {
+        this.goalsBy[toucher.id] = (this.goalsBy[toucher.id] ?? 0) + 1;
+      }
+      this.emitSound('goal');
+      this.addEffect('shockwave', ball.x, ball.y, 110, scorer === 0 ? '#38bdf8' : '#f87171', 0.6);
+      this.addFloatingNumber('GOL!', ball.x, ball.y - 30, '#fde047');
+      return;
+    }
+  }
+
+  /** The celebration is over: the match ends, or everyone goes back to their end. */
+  private afterGoal() {
+    const def = MODES[this.mode];
+    const players = this.brawlers.filter(b => !b.isClone);
+    const overtime = this.playClock() >= (def.timeLimit ?? Infinity);
+    // In sudden death the next goal settles it, whatever the score limit.
+    const standing = decideByScore(this.teamScores, overtime ? undefined : def.scoreLimit, overtime);
+    this.goalTimer = null;
+    this.goalTeam = null;
+
+    if (standing.winner !== null) {
+      this.finishMatch(standing.winner, players.filter(b => b.team === standing.winner));
+      return;
+    }
+
+    this.playedBefore += this.matchTimer;
+    this.matchTimer = 0;
+    this.projectiles = [];
+    this.deployables = [];
+    this.thornFields = [];
+    this.firePatches = [];
+    this.floatingNumbers = [];
+    this.brawlers = this.brawlers.filter(b => !b.isClone);
+    for (const b of this.brawlers) {
+      respawnBrawler(b, { immunity: 0, superRetention: 0.5 });
+    }
+    if (this.ball && this.ballSpawn) {
+      this.ball.x = this.ballSpawn.x;
+      this.ball.y = this.ballSpawn.y;
+      this.ball.vx = 0;
+      this.ball.vy = 0;
+      this.ball.carrier = null;
+    }
+    this.lastToucher = null;
+    this.ballRetake = {};
+    this.phase = 'starting';
+  }
+
+  /** Brawl Ball: time running out decides it, unless it is level — then it is sudden death. */
+  private checkBallTime(players: BrawlerEntity[]) {
+    const def = MODES[this.mode];
+    if (this.goalTimer !== null) return;
+    const clock = this.playClock();
+    if (clock < (def.timeLimit ?? Infinity)) return;
+
+    const standing = decideByScore(this.teamScores, undefined, true);
+    if (standing.winner !== null) {
+      this.finishMatch(standing.winner, players.filter(b => b.team === standing.winner));
+    } else if (clock >= (def.timeLimit ?? 0) + OVERTIME_LIMIT) {
+      this.finishMatch(null, players);
+    }
+  }
+
   /** Ends the match, and picks who gets the credit for it. */
   private finishMatch(winnerTeam: number | null, starPool: BrawlerEntity[]) {
     this.phase = 'match_end';
     this.winnerTeam = winnerTeam;
 
     const pool = starPool.filter(b => !b.isClone);
-    pool.sort((a, b) => b.kills * 2 + b.gemsCarried - (a.kills * 2 + a.gemsCarried));
+    const credit = (b: BrawlerEntity) => b.kills * 2 + b.gemsCarried + (this.goalsBy[b.id] ?? 0) * 4;
+    pool.sort((a, b) => credit(b) - credit(a));
     this.starPlayerId = pool[0]?.id ?? null;
     this.emitSound('star_player');
   }
@@ -1663,9 +1923,13 @@ export class BrawlEngine {
         this.checkGemGrab(dt, players);
         return;
 
+      case 'brawl_ball':
+        this.checkBallTime(players);
+        return;
+
       case 'wipeout':
       case 'hot_zone': {
-        const timeUp = def.timeLimit !== undefined && this.matchTimer >= def.timeLimit;
+        const timeUp = def.timeLimit !== undefined && this.playClock() >= def.timeLimit;
         const standing = decideByScore(this.teamScores, def.scoreLimit, timeUp);
         if (standing.winner !== null || standing.draw) {
           this.finishMatch(
@@ -1884,13 +2148,17 @@ export class BrawlEngine {
       teamScores: this.teamScores.map(v => Math.floor(v)),
       scoreLimit: MODES[this.mode].scoreLimit ?? null,
       timeLeft:
-        MODES[this.mode].timeLimit !== undefined && this.phase === 'playing'
-          ? Math.max(0, (MODES[this.mode].timeLimit as number) - this.matchTimer)
+        MODES[this.mode].timeLimit !== undefined &&
+        (this.phase === 'playing' || (this.phase === 'starting' && MODES[this.mode].usesBall))
+          ? Math.max(0, (MODES[this.mode].timeLimit as number) - this.playClock())
           : null,
       round: this.round,
       roundWins: this.roundWins,
       roundsToWin: MODES[this.mode].roundsToWin ?? null,
       zone: this.zone,
+      ball: this.ball,
+      goals: this.goals,
+      goalTeam: this.goalTimer !== null ? this.goalTeam : null,
     };
   }
 }

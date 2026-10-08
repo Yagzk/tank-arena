@@ -51,6 +51,9 @@ function snapshot(
     roundWins: [],
     roundsToWin: null,
     zone: null,
+    ball: null,
+    goals: [],
+    goalTeam: null,
     ...over,
   };
 }

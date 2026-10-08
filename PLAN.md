@@ -325,7 +325,7 @@ Hepsinin önkoşulu: **canlanma sistemi** (Faz 1.1).
 
 - [x] Hesaplaşma (Showdown)
 - [x] Elmas Kapmaca (Gem Grab) — canlanma gelince gerçekten oynanabilir olacak
-- [ ] **Brawl Ball** — top fiziği (taşı/pas/şut/sek), kale, gol, devre
+- [x] **Brawl Ball** — top fiziği (taşı/vur/sek), kale, gol, 2 gol limiti, 120 sn + uzatma (altın gol), 3 harita, bot mantığı, `goal`/`kick` sesleri
 - [ ] **Bounty** — yıldız biriktirme, seri, süre sonu skor
 - [x] **Knockout** — canlanma yok, tur bazlı sıfırlama (harita yeniden kurulur), 2 tur kazanan. Süre dolunca sağlıklı taraf kazanır; çift ölüm berabere tur
 - [ ] **Heist** — canı olan kasa, savunma/saldırı

@@ -118,6 +118,30 @@ export const ModeStatus: React.FC<ModeStatusProps> = ({ snapshot, myPlayerId }) 
       );
     }
 
+    case 'brawl_ball': {
+      const carrier = snapshot.ball?.carrier
+        ? players.find(b => b.id === snapshot.ball?.carrier)
+        : undefined;
+      return (
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex items-center gap-3">
+            <SideBox side={0} icon={def.icon} value={scores[0] ?? 0} mine={myTeam === 0} glow={snapshot.goalTeam === 0} />
+            {snapshot.timeLeft !== null && snapshot.timeLeft <= 0 ? (
+              <div className="px-3 py-1.5 rounded-xl bg-amber-950/90 border border-amber-500 font-arcade text-sm font-black text-amber-300 animate-pulse">
+                UZATMA
+              </div>
+            ) : (
+              timer
+            )}
+            <SideBox side={1} icon={def.icon} value={scores[1] ?? 0} mine={myTeam === 1} glow={snapshot.goalTeam === 1} />
+          </div>
+          <span className="font-arcade text-[10px] font-bold text-slate-400">
+            {carrier ? carrier.name + ' TOPU TAŞIYOR' : 'İLK ' + (snapshot.scoreLimit ?? 2) + ' GOL KAZANIR'}
+          </span>
+        </div>
+      );
+    }
+
     case 'wipeout':
     case 'hot_zone': {
       const holder = snapshot.zone ? snapshot.zone.controller : null;

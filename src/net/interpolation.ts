@@ -136,5 +136,15 @@ function blendSnapshots(from: BrawlSnapshot, to: BrawlSnapshot, t: number): Braw
     };
   });
 
-  return { ...to, brawlers, projectiles };
+  // A kick moves the ball faster than anything else on the field, and a
+  // restart puts it back in the middle: blend the first, never the second.
+  let ball = to.ball;
+  if (to.ball && from.ball) {
+    const jump = Math.hypot(to.ball.x - from.ball.x, to.ball.y - from.ball.y);
+    if (jump < 400) {
+      ball = { ...to.ball, x: lerp(from.ball.x, to.ball.x, t), y: lerp(from.ball.y, to.ball.y, t) };
+    }
+  }
+
+  return { ...to, brawlers, projectiles, ball };
 }

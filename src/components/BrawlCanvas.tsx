@@ -7,6 +7,7 @@ import {
   BrawlerId,
   DeployedEntity,
 } from '../types/brawl';
+import { isTeamMode } from '../game/modes';
 import { MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import {
   drawCharacter,
@@ -409,7 +410,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
           let bestDist = cfg.range * 1.35;
           for (const other of snap?.brawlers ?? []) {
             if (other.id === myId || !other.isAlive || other.isClone) continue;
-            if (snap?.mode === 'gem_grab' && other.team === myBrawler.team) continue;
+            if (snap && isTeamMode(snap.mode) && other.team === myBrawler.team) continue;
             if (other.invisibilityTimer > 0) continue;
             if (other.isInBush && !other.isVisibleToEnemies) continue;
             const d = Math.hypot(other.x - myBrawler.x, other.y - myBrawler.y);
@@ -733,6 +734,9 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         // 5b. DRAW THE ZONE (Hot Zone), on the ground, under everything that stands on it
         if (snap.zone) drawZone(ctx, snap.zone, performance.now() / 1000);
 
+        // 5c. THE GOALS (Brawl Ball), on the ground like the zone
+        if (snap.goals && snap.goals.length > 0) drawGoals(ctx, snap.goals, snap.goalTeam, performance.now() / 1000);
+
         // 6. DRAW GEM MINE (Gem Grab)
         if (snap.gemMine) {
           drawGemMine(ctx, snap.gemMine);
@@ -766,6 +770,9 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
           if (!inView(b.x - 60, b.y - 60, 120, 120)) return;
           drawBrawler(ctx, b, b.id === myId, myBrawler);
         });
+
+        // 10b. THE BALL, over the bodies so it is never lost under a crowd
+        if (snap.ball) drawBall(ctx, snap.ball, performance.now() / 1000);
 
         // 11. DRAW PROJECTILES
         snap.projectiles.forEach(p => {
@@ -2251,6 +2258,133 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   };
 
   /**
+   * The two goals: a net behind a line, in the colour of the team that defends
+   * it. A goal that has just been scored in flares for as long as it is celebrated.
+   */
+  const drawGoals = (
+    ctx: CanvasRenderingContext2D,
+    goals: Array<{ team: number; x: number; y: number; w: number; h: number }>,
+    scoredBy: number | null,
+    seconds: number
+  ) => {
+    for (const g of goals) {
+      const colour = g.team === 0 ? '59, 130, 246' : '244, 63, 94';
+      const flare = scoredBy !== null && scoredBy !== g.team ? 0.5 + 0.5 * Math.sin(seconds * 14) : 0;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(g.x, g.y, g.w, g.h);
+      ctx.fillStyle = 'rgba(' + colour + ', ' + (0.16 + 0.3 * flare) + ')';
+      ctx.fill();
+      ctx.clip();
+
+      // The net.
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      for (let x = g.x - g.h; x < g.x + g.w + g.h; x += 14) {
+        ctx.beginPath();
+        ctx.moveTo(x, g.y);
+        ctx.lineTo(x + g.h, g.y + g.h);
+        ctx.moveTo(x + g.h, g.y);
+        ctx.lineTo(x, g.y + g.h);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // The goal line, on the side that faces the pitch.
+      const lineX = g.team === 0 ? g.x + g.w : g.x;
+      ctx.save();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = 'rgba(' + colour + ', 0.95)';
+      ctx.beginPath();
+      ctx.moveTo(lineX, g.y);
+      ctx.lineTo(lineX, g.y + g.h);
+      ctx.stroke();
+      ctx.fillStyle = '#f8fafc';
+      for (const py of [g.y, g.y + g.h]) {
+        ctx.beginPath();
+        ctx.arc(lineX, py, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#0f172a';
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  };
+
+  /** The ball: a shadow, a rolling pattern that turns with its speed, and a halo when carried. */
+  const drawBall = (
+    ctx: CanvasRenderingContext2D,
+    ball: { x: number; y: number; vx: number; vy: number; radius: number; carrier: string | null },
+    seconds: number
+  ) => {
+    const r = ball.radius;
+    const speed = Math.hypot(ball.vx, ball.vy);
+    // The pattern turns as it rolls, so a moving ball reads as moving even in one frame.
+    const spin = (ball.x + ball.y) / (r * 1.2);
+
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+
+    if (speed > 220) {
+      const a = Math.atan2(ball.vy, ball.vx);
+      ctx.rotate(a);
+      const g = ctx.createLinearGradient(-r * 3.4, 0, 0, 0);
+      g.addColorStop(0, 'rgba(253, 224, 71, 0)');
+      g.addColorStop(1, 'rgba(253, 224, 71, 0.5)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-r * 3.4, -r * 0.8, r * 3.4, r * 1.6);
+      ctx.rotate(-a);
+    }
+
+    ctx.beginPath();
+    ctx.ellipse(2, r * 0.9, r * 0.95, r * 0.4, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.38)';
+    ctx.fill();
+
+    if (ball.carrier) {
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 5 + Math.sin(seconds * 8) * 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.8)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
+    ctx.rotate(spin);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#0f172a';
+    ctx.stroke();
+
+    // Panels.
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      const px = Math.cos(a) * r * 0.42;
+      const py = Math.sin(a) * r * 0.42;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#475569';
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.42, Math.sin(a) * r * 0.42);
+      ctx.lineTo(Math.cos(a) * r * 0.98, Math.sin(a) * r * 0.98);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
+  /**
    * Arrows for enemies you cannot see, and a wedge for the side you were just
    * hit from.
    *
@@ -2288,6 +2422,35 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       off.push({ sx, sy, dist, color: BRAWLERS[b.brawlerId]?.color ?? '#ef4444' });
     }
     off.sort((a, b) => a.dist - b.dist);
+
+    // The ball is the one thing in Brawl Ball everybody needs to find.
+    if (snap.ball && snap.ball.carrier !== me.id) {
+      const bx = cx + (snap.ball.x - cam.x) * view.zoom;
+      const by = cy + (snap.ball.y - cam.y) * view.zoom;
+      if (bx < 0 || bx > view.w || by < 0 || by > view.h) {
+        const dx = bx - cx;
+        const dy = by - cy;
+        const k = Math.min(
+          (cx - inset) / Math.max(Math.abs(dx), 1e-6),
+          (cy - inset) / Math.max(Math.abs(dy), 1e-6)
+        );
+        ctx.save();
+        ctx.translate(cx + dx * k, cy + dy * k);
+        ctx.rotate(Math.atan2(dy, dx));
+        ctx.beginPath();
+        ctx.moveTo(15, 0);
+        ctx.lineTo(-9, -12);
+        ctx.lineTo(-3, 0);
+        ctx.lineTo(-9, 12);
+        ctx.closePath();
+        ctx.fillStyle = '#facc15';
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#15161f';
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
 
     for (const t of off.slice(0, 4)) {
       const dx = t.sx - cx;

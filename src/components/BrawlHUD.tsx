@@ -178,6 +178,31 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
             />
           )}
 
+          {/* Brawl Ball's goals */}
+          {(snapshot.goals ?? []).map(g => (
+            <span
+              key={g.team}
+              style={{
+                top: `${(g.y / MAP_HEIGHT) * 100}%`,
+                left: `${(g.x / MAP_WIDTH) * 100}%`,
+                width: `${(g.w / MAP_WIDTH) * 100}%`,
+                height: `${(g.h / MAP_HEIGHT) * 100}%`,
+              }}
+              className={`absolute ${g.team === 0 ? 'bg-blue-500/50' : 'bg-rose-500/50'}`}
+            />
+          ))}
+
+          {/* Brawl Ball's ball */}
+          {snapshot.ball && (
+            <span
+              style={{
+                top: `${(snapshot.ball.y / MAP_HEIGHT) * 100}%`,
+                left: `${(snapshot.ball.x / MAP_WIDTH) * 100}%`,
+              }}
+              className="absolute w-2.5 h-2.5 rounded-full -translate-x-1/2 -translate-y-1/2 bg-white ring-2 ring-amber-400 z-20"
+            />
+          )}
+
           {/* Brawler blips */}
           {snapshot.brawlers.map(b => {
             if (!b.isAlive) return null;

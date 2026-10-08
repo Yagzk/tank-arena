@@ -16,6 +16,7 @@
 
 import { MODES } from '../game/modes';
 import type {
+  GoalArea,
   BrawlGameMode,
   BrawlWall,
   Bush,
@@ -59,6 +60,12 @@ export const TILES = {
   SPAWN_B: '2',
   /** Free-for-all spawn. */
   SPAWN_FFA: 's',
+  /** Ground that is team A's goal. Mirrors into team B's. */
+  GOAL_A: 'a',
+  /** Ground that is team B's goal. */
+  GOAL_B: 'b',
+  /** Where the ball starts. */
+  BALL: '=',
 } as const;
 
 const BLOCKING: ReadonlySet<string> = new Set<string>([
@@ -98,6 +105,9 @@ export interface MapData {
   gemMine?: GemMine;
   /** The map's objective point, if it has one — the mine, or the zone. */
   objective?: { x: number; y: number };
+  /** Brawl Ball: where the ball starts, and the two goal mouths. */
+  ballSpawn?: { x: number; y: number };
+  goals: GoalArea[];
   spawns: SpawnPoint[];
   /** The map this came from, for the HUD. */
   name: string;
@@ -107,6 +117,8 @@ export interface MapData {
 function mirrorTile(ch: string): string {
   if (ch === TILES.SPAWN_A) return TILES.SPAWN_B;
   if (ch === TILES.SPAWN_B) return TILES.SPAWN_A;
+  if (ch === TILES.GOAL_A) return TILES.GOAL_B;
+  if (ch === TILES.GOAL_B) return TILES.GOAL_A;
   return ch;
 }
 
@@ -226,6 +238,9 @@ export function validateMap(source: TileMapSource): string[] {
   // Spawns.
   const spawns: Array<{ x: number; y: number; ch: string }> = [];
   let objectives = 0;
+  let balls = 0;
+  let goalsA = 0;
+  let goalsB = 0;
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
       const ch = grid[y][x];
@@ -233,6 +248,9 @@ export function validateMap(source: TileMapSource): string[] {
         spawns.push({ x, y, ch });
       }
       if (ch === TILES.OBJECTIVE) objectives++;
+      if (ch === TILES.BALL) balls++;
+      if (ch === TILES.GOAL_A) goalsA++;
+      if (ch === TILES.GOAL_B) goalsB++;
     }
   }
 
@@ -250,7 +268,18 @@ export function validateMap(source: TileMapSource): string[] {
     const b = spawns.filter(s => s.ch === TILES.SPAWN_B).length;
     if (a < 5 || b < 5) at('a team map needs five spawns a side, found ' + a + ' and ' + b);
     if (a !== b) at('the teams have different numbers of spawns: ' + a + ' and ' + b);
-    if (objectives === 0) at('a team map needs an objective tile');
+    // A ball map's centre is the ball, not an objective tile.
+    if (objectives === 0 && teamModes.some(m => !MODES[m].usesBall)) {
+      at('a team map needs an objective tile');
+    }
+  }
+
+  // A map that offers a ball game has to have the parts of one, and the same
+  // amount of goal for each side or one team's net is bigger than the other's.
+  if (source.modes.some(m => MODES[m].usesBall)) {
+    if (balls === 0) at('a ball map needs a ball tile');
+    if (goalsA === 0 || goalsB === 0) at('a ball map needs a goal for each team');
+    if (goalsA !== goalsB) at('the goals differ in size: ' + goalsA + ' and ' + goalsB);
   }
 
   // Cover density.
@@ -365,6 +394,10 @@ export function buildMap(source: TileMapSource, mode: BrawlGameMode): MapData {
   let objectiveX = 0;
   let objectiveY = 0;
   let objectiveCount = 0;
+  let ballX = 0;
+  let ballY = 0;
+  let ballCount = 0;
+  const goalBounds: Array<{ minX: number; minY: number; maxX: number; maxY: number } | null> = [null, null];
 
   runsOf(grid, ch => ch === TILES.WALL || ch === TILES.CRATE || ch === TILES.WATER).forEach(
     (run, i) => {
@@ -400,6 +433,23 @@ export function buildMap(source: TileMapSource, mode: BrawlGameMode): MapData {
           hp: 4500,
           maxHp: 4500,
         });
+      } else if (ch === TILES.BALL) {
+        ballX += wx;
+        ballY += wy;
+        ballCount++;
+      } else if (ch === TILES.GOAL_A || ch === TILES.GOAL_B) {
+        const team = ch === TILES.GOAL_A ? 0 : 1;
+        const b = goalBounds[team];
+        const left = x * TILE;
+        const top = y * TILE;
+        goalBounds[team] = b
+          ? {
+              minX: Math.min(b.minX, left),
+              minY: Math.min(b.minY, top),
+              maxX: Math.max(b.maxX, left + TILE),
+              maxY: Math.max(b.maxY, top + TILE),
+            }
+          : { minX: left, minY: top, maxX: left + TILE, maxY: top + TILE };
       } else if (ch === TILES.OBJECTIVE) {
         objectiveX += wx;
         objectiveY += wy;
@@ -418,7 +468,13 @@ export function buildMap(source: TileMapSource, mode: BrawlGameMode): MapData {
   // sides. The engine indexes the first half as team 0, so sort them back.
   if (!arena) spawns.sort((a, b) => a.team - b.team);
 
-  const data: MapData = { walls, bushes, boxes, spawns, name: source.name };
+  const goals: GoalArea[] = [];
+  goalBounds.forEach((b, team) => {
+    if (b) goals.push({ team, x: b.minX, y: b.minY, w: b.maxX - b.minX, h: b.maxY - b.minY });
+  });
+
+  const data: MapData = { walls, bushes, boxes, spawns, name: source.name, goals };
+  if (ballCount > 0) data.ballSpawn = { x: ballX / ballCount, y: ballY / ballCount };
 
   // Wherever the map puts its objective, for the modes that have one. Averaged,
   // so a pair of mirrored tiles either side of the axis resolves to the exact

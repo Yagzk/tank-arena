@@ -30,5 +30,7 @@ export type SoundType =
   | 'respawn'
   | 'star_player'
   | 'alarm'
+  | 'goal'
+  | 'kick'
   | 'countdown_tick'
   | 'countdown_go';
