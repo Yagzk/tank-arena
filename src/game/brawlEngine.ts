@@ -381,6 +381,23 @@ export class BrawlEngine {
     this.playerInputs[playerId] = input;
   }
 
+  /**
+   * Hands a player's brawler to a bot, for somebody who left mid-round.
+   *
+   * Before this, a player who disconnected left their body standing where it
+   * was for the rest of the match — an undefeatable target that never shot
+   * back, and one the round could not end around. A bot keeps the fight a
+   * fight, and keeps the roster the size everybody else was told it was.
+   */
+  public convertToBot(playerId: string): boolean {
+    const b = this.brawlers.find(x => x.id === playerId && !x.isClone);
+    if (!b || b.isBot) return false;
+    b.isBot = true;
+    this.botControllers[playerId] = new BrawlBot();
+    delete this.playerInputs[playerId];
+    return true;
+  }
+
   public update(dt: number) {
     if (this.phase === 'starting') {
       // Three seconds of countdown, so players can read the map and find
