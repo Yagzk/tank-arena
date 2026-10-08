@@ -142,6 +142,35 @@ export const ModeStatus: React.FC<ModeStatusProps> = ({ snapshot, myPlayerId }) 
       );
     }
 
+    case 'heist': {
+      const bar = (team: number) => {
+        const safe = snapshot.safes.find(s => s.team === team);
+        const frac = safe ? Math.max(0, safe.hp) / safe.maxHp : 0;
+        return (
+          <div
+            className={`w-32 sm:w-44 h-5 rounded-lg bg-slate-900/90 border overflow-hidden relative ${
+              myTeam === team ? 'border-white/70' : 'border-slate-700'
+            }`}
+          >
+            <div
+              style={{ width: frac * 100 + '%' }}
+              className={`h-full transition-all duration-200 ${team === 0 ? 'bg-blue-500' : 'bg-rose-500'}`}
+            />
+            <span className="absolute inset-0 flex items-center justify-center font-arcade text-[10px] font-black text-white">
+              🔐 {Math.round(frac * 100)}%
+            </span>
+          </div>
+        );
+      };
+      return (
+        <div className="flex items-center gap-3">
+          {bar(0)}
+          {timer}
+          {bar(1)}
+        </div>
+      );
+    }
+
     case 'wipeout':
     case 'bounty':
     case 'hot_zone': {

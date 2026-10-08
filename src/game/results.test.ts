@@ -54,6 +54,7 @@ function snapshot(
     ball: null,
     goals: [],
     goalTeam: null,
+    safes: [],
     ...over,
   };
 }

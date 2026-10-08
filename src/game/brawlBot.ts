@@ -27,6 +27,17 @@ const RETREAT_HEALTH = 0.42;
 /** A kick rolls about this far, so a bot shoots from inside it. */
 const KICK_RANGE = 470;
 
+/**
+ * Heist orders for one bot. An attacker walks to `stand` and shoots `target`,
+ * paying little attention to anyone who is not in its face; a defender holds
+ * `stand` in front of its own safe and fights what comes near it.
+ */
+export interface Strike {
+  role: 'attack' | 'defend';
+  stand: { x: number; y: number };
+  target: { x: number; y: number };
+}
+
 /** The ball and the goals, for a bot playing Brawl Ball. */
 export interface BallGame {
   ball: BallState;
@@ -63,11 +74,15 @@ export class BrawlBot {
     dt: number,
     nav: NavGrid,
     objective?: { x: number; y: number },
-    ballGame?: BallGame
+    ballGame?: BallGame,
+    strike?: Strike
   ): BrawlPlayerInput {
     this.changeMoveTimer -= dt;
     this.attackCooldown -= dt;
     this.repathTimer -= dt;
+
+    // Heist: go and stand in front of the enemy safe.
+    if (strike && !objective) objective = strike.stand;
 
     if (ballGame) {
       const play = this.planBall(bot, allBrawlers, ballGame, walls, nav);
@@ -131,7 +146,9 @@ export class BrawlBot {
      */
     const isWeak = bot.powerCubes < LOOT_TARGET_CUBES;
     const lootIsCloser = nearestBox !== null && minBoxDist < minEnemyDist * 0.85;
-    const enemyIsOnTopOfUs = minEnemyDist < ENGAGE_DISTANCE;
+    // An attacker slipping past to the safe only stops for what is in its face.
+    const enemyIsOnTopOfUs =
+      minEnemyDist < (strike && strike.role === 'attack' ? ENGAGE_DISTANCE * 0.45 : ENGAGE_DISTANCE);
 
     // Heading for an objective rather than a fight. Such a bot must not fire at
     // the empty ground it is walking toward.
@@ -276,7 +293,24 @@ export class BrawlBot {
       }
     }
 
-      const shouldGadget = this.wantsGadget;
+      // Heist: when the safe is in reach, shoot at it rather than at the ground
+    // the bot is walking to.
+    if (strike && strike.role === 'attack' && objectiveOnly) {
+      const d = dist(bot.x, bot.y, strike.target.x, strike.target.y);
+      const reach = BRAWLERS[bot.brawlerId].range * (getKit(bot.brawlerId).bot?.engageRange ?? 0.85);
+      if (
+        d <= reach &&
+        bot.ammo >= 1 &&
+        this.attackCooldown <= 0 &&
+        hasLineOfSight(bot.x, bot.y, strike.target.x, strike.target.y, walls)
+      ) {
+        aimAngle = Math.atan2(strike.target.y - bot.y, strike.target.x - bot.x);
+        shouldAttack = true;
+        this.attackCooldown = 0.45 + Math.random() * 0.35;
+      }
+    }
+
+    const shouldGadget = this.wantsGadget;
 
     // Pathfinding runs every tick rather than on the decision timer: a route
     // is only useful if the body keeps following it between decisions. When the

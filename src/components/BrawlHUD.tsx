@@ -192,6 +192,21 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
             />
           ))}
 
+          {/* Heist's safes */}
+          {(snapshot.safes ?? []).map(s => (
+            <span
+              key={s.id}
+              style={{
+                top: `${(s.y / MAP_HEIGHT) * 100}%`,
+                left: `${(s.x / MAP_WIDTH) * 100}%`,
+                width: `${(s.w / MAP_WIDTH) * 100}%`,
+                height: `${(s.h / MAP_HEIGHT) * 100}%`,
+                opacity: 0.35 + 0.65 * (s.hp / s.maxHp),
+              }}
+              className={`absolute ${s.team === 0 ? 'bg-blue-400' : 'bg-rose-400'}`}
+            />
+          ))}
+
           {/* Brawl Ball's ball */}
           {snapshot.ball && (
             <span

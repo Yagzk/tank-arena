@@ -22,6 +22,7 @@ export const MODE_IDS: readonly BrawlGameMode[] = [
   'knockout',
   'hot_zone',
   'bounty',
+  'heist',
 ];
 
 /** Which family of maps a mode is played on. */
@@ -55,6 +56,8 @@ export interface ModeDefinition {
   roundsToWin?: number;
   /** The mode has a ball and two goals, and needs a map that provides them. */
   usesBall?: boolean;
+  /** The mode has a safe to defend and one to break, in the map's goal tiles. */
+  usesSafes?: boolean;
 }
 
 export const MODES: Record<BrawlGameMode, ModeDefinition> = {
@@ -158,6 +161,21 @@ export const MODES: Record<BrawlGameMode, ModeDefinition> = {
     powerCubes: false,
     timeLimit: 120,
   },
+  heist: {
+    id: 'heist',
+    name: 'SOYGUN',
+    tagline: 'Rakibin kasasını kır, kendininkini koru',
+    icon: '🔐',
+    grouping: 'sides',
+    mapKind: 'sides',
+    respawnDelay: 3,
+    respawnImmunity: 1.5,
+    superRetention: 0.25,
+    gas: false,
+    powerCubes: false,
+    timeLimit: 120,
+    usesSafes: true,
+  },
   hot_zone: {
     id: 'hot_zone',
     name: 'SICAK BÖLGE',
@@ -244,6 +262,26 @@ export function decideByScore(
   const best = Math.max(...scores);
   const leaders = scores.filter(s => s === best).length;
   return leaders === 1 ? { winner: scores.indexOf(best), draw: false } : { winner: null, draw: true };
+}
+
+/** Health a safe starts with. */
+export const SAFE_HP = 24000;
+
+/**
+ * Decides a Heist from how much of each safe is left, as a fraction.
+ *
+ * A safe that is broken ends it at once, in favour of the other side. When
+ * time runs out, the side whose safe is in better shape wins; level is a draw.
+ */
+export function decideHeist(safeFraction: readonly number[], timeUp: boolean): Standing {
+  const broken = safeFraction.map((f, team) => (f <= 0 ? team : -1)).filter(t => t >= 0);
+  if (broken.length >= 2) return { winner: null, draw: true };
+  if (broken.length === 1) return { winner: safeFraction.findIndex((_, t) => t !== broken[0]), draw: false };
+  if (!timeUp) return { winner: null, draw: false };
+
+  const best = Math.max(...safeFraction);
+  const leaders = safeFraction.filter(f => f === best).length;
+  return leaders === 1 ? { winner: safeFraction.indexOf(best), draw: false } : { winner: null, draw: true };
 }
 
 /**

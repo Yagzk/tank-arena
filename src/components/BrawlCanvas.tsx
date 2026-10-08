@@ -742,6 +742,9 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
           drawGemMine(ctx, snap.gemMine);
         }
 
+        // 6b. THE SAFES (Heist)
+        if (snap.safes && snap.safes.length > 0) drawSafes(ctx, snap.safes, performance.now() / 1000);
+
         // 7. DRAW POWER CUBE BOXES
         drawBoxes(ctx, snap.boxes);
 
@@ -2310,6 +2313,81 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.stroke();
       }
       ctx.restore();
+    }
+  };
+
+  /** Heist's safes: a steel vault in the owner's colour, with what is left of it above. */
+  const drawSafes = (
+    ctx: CanvasRenderingContext2D,
+    safes: Array<{ team: number; x: number; y: number; w: number; h: number; hp: number; maxHp: number }>,
+    seconds: number
+  ) => {
+    for (const s of safes) {
+      if (!inView(s.x - 20, s.y - 50, s.w + 40, s.h + 70)) continue;
+      const colour = s.team === 0 ? '#3b82f6' : '#f43f5e';
+      const frac = Math.max(0, s.hp) / s.maxHp;
+      const cx = s.x + s.w / 2;
+      const cy = s.y + s.h / 2;
+      // A safe that is nearly gone shakes.
+      const shake = frac < 0.25 && frac > 0 ? Math.sin(seconds * 40) * 2 : 0;
+
+      ctx.save();
+      ctx.translate(shake, 0);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(s.x + 4, s.y + 8, s.w, s.h);
+
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(s.x, s.y, s.w, s.h * 0.5);
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = colour;
+      ctx.strokeRect(s.x + 3, s.y + 3, s.w - 6, s.h - 6);
+
+      // The dial, and its handle.
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.min(s.w, s.h) * 0.26, 0, Math.PI * 2);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#0f172a';
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(seconds * 0.6);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-3, -Math.min(s.w, s.h) * 0.22, 6, Math.min(s.w, s.h) * 0.22);
+      ctx.restore();
+
+      // Cracks as it breaks.
+      if (frac < 0.66) {
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.8)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(s.x + s.w * 0.15, s.y + s.h * 0.2);
+        ctx.lineTo(s.x + s.w * 0.4, s.y + s.h * 0.45);
+        ctx.lineTo(s.x + s.w * 0.3, s.y + s.h * 0.7);
+        if (frac < 0.33) {
+          ctx.moveTo(s.x + s.w * 0.85, s.y + s.h * 0.15);
+          ctx.lineTo(s.x + s.w * 0.6, s.y + s.h * 0.5);
+          ctx.lineTo(s.x + s.w * 0.75, s.y + s.h * 0.85);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Health bar, big enough to read across the map.
+      const barW = s.w + 30;
+      const barX = cx - barW / 2;
+      const barY = s.y - 26;
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+      ctx.fillRect(barX - 2, barY - 2, barW + 4, 16);
+      ctx.fillStyle = colour;
+      ctx.fillRect(barX, barY, barW * frac, 12);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 11px Orbitron, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(Math.round(frac * 100) + '%', cx, barY - 6);
     }
   };
 

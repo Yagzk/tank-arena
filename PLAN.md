@@ -328,7 +328,7 @@ Hepsinin önkoşulu: **canlanma sistemi** (Faz 1.1).
 - [x] **Brawl Ball** — top fiziği (taşı/vur/sek), kale, gol, 2 gol limiti, 120 sn + uzatma (altın gol), 3 harita, bot mantığı, `goal`/`kick` sesleri
 - [x] **Bounty (Ödül Avı)** — her baş değerli (1 → en çok 7 yıldız), öldürünce o kadar puan, seri başı büyütür, ölünce 1’e döner; 120 sn sonunda çok yıldız kazanır, eşitlik berabere
 - [x] **Knockout** — canlanma yok, tur bazlı sıfırlama (harita yeniden kurulur), 2 tur kazanan. Süre dolunca sağlıklı taraf kazanır; çift ölüm berabere tur
-- [ ] **Heist** — canı olan kasa, savunma/saldırı
+- [x] **Heist (Soygun)** — her tarafın kasası (24000 can), mermi/patlama/ateş kasaya hasar verir, kasa katıdır; kasa kırılırsa rakip kazanır, süre bitince kalan can yüzdesi; 3 harita, bot saldırgan/savunmacı rolleri
 - [x] **Hot Zone** — ortada tek bölge, tek takım içindeyse puan (saniyede 1), çekişmeli bölge kimseye puan vermez; 100 puan ya da süre
 - [x] **Duo Hesaplaşma** — ikili takımlar, ortak gaz, son takım kazanır, takım arkadaşına hasar yok
 - [x] **Wipeout** — her eleme takıma 1 puan, 15 puan ya da 2 dk; eşitlik berabere

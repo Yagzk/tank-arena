@@ -269,9 +269,15 @@ export function validateMap(source: TileMapSource): string[] {
     if (a < 5 || b < 5) at('a team map needs five spawns a side, found ' + a + ' and ' + b);
     if (a !== b) at('the teams have different numbers of spawns: ' + a + ' and ' + b);
     // A ball map's centre is the ball, not an objective tile.
-    if (objectives === 0 && teamModes.some(m => !MODES[m].usesBall)) {
+    if (objectives === 0 && teamModes.some(m => !MODES[m].usesBall && !MODES[m].usesSafes)) {
       at('a team map needs an objective tile');
     }
+  }
+
+  // A heist map has a safe for each side, and the same size of each.
+  if (source.modes.some(m => MODES[m].usesSafes)) {
+    if (goalsA === 0 || goalsB === 0) at('a heist map needs a safe for each team');
+    if (goalsA !== goalsB) at('the safes differ in size: ' + goalsA + ' and ' + goalsB);
   }
 
   // A map that offers a ball game has to have the parts of one, and the same

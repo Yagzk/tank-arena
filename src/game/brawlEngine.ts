@@ -23,6 +23,7 @@ import {
   HotZone,
   BallState,
   GoalArea,
+  Safe,
 } from '../types/brawl';
 import { generateBrawlMap, MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import { circleRectCollision, circleIntersect, sweepCircleVsRect, sweepCircleVsCircle, createSweepHit } from '../core/collision';
@@ -30,9 +31,9 @@ import { dist, clamp, moveTowards, smoothstep } from '../core/math';
 import { Rng } from '../core/rng';
 import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
-import { BrawlBot } from './brawlBot';
+import { BrawlBot, type Strike } from './brawlBot';
 import type { SoundType } from '../audio/cues';
-import { MODES, bountyPayout, decideByScore, decideRound, teamFor, zoneController } from './modes';
+import { MODES, SAFE_HP, bountyPayout, decideByScore, decideHeist, decideRound, teamFor, zoneController } from './modes';
 import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim/entity';
 import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { updateDeployables } from '../sim/systems/deployables';
@@ -153,6 +154,8 @@ export class BrawlEngine {
   /** Brawl Ball's ball and goals; null and empty in every other mode. */
   public ball: BallState | null = null;
   public goals: GoalArea[] = [];
+  /** Heist's safes; empty in every other mode. */
+  public safes: Safe[] = [];
   private ballSpawn: { x: number; y: number } | null = null;
   /** Seconds left of the goal celebration, or null while play is live. */
   private goalTimer: number | null = null;
@@ -463,6 +466,18 @@ export class BrawlEngine {
 
     this.goals = def.usesBall ? map.goals : [];
     this.ballSpawn = def.usesBall && map.ballSpawn ? map.ballSpawn : null;
+    this.safes = def.usesSafes
+      ? map.goals.map(g => ({
+          id: 'safe-' + g.team,
+          team: g.team,
+          x: g.x,
+          y: g.y,
+          w: g.w,
+          h: g.h,
+          hp: SAFE_HP,
+          maxHp: SAFE_HP,
+        }))
+      : [];
     this.ball = this.ballSpawn
       ? { x: this.ballSpawn.x, y: this.ballSpawn.y, vx: 0, vy: 0, radius: BALL_RADIUS, carrier: null }
       : null;
@@ -774,7 +789,8 @@ export class BrawlEngine {
           this.navGrid,
           // Hot Zone gives bots a place to be.
           this.zone ? { x: this.zone.x, y: this.zone.y } : undefined,
-          this.ball ? { ball: this.ball, goals: this.goals } : undefined
+          this.ball ? { ball: this.ball, goals: this.goals } : undefined,
+          this.strikeFor(b)
         );
         this.playerInputs[b.id] = input;
       }
@@ -936,6 +952,13 @@ export class BrawlEngine {
       }
     }
 
+    for (const safe of this.safes) {
+      if (safe.team === team || safe.hp <= 0) continue;
+      if (dist(x, y, safe.x + safe.w / 2, safe.y + safe.h / 2) <= radius + Math.max(safe.w, safe.h) / 2) {
+        this.damageSafe(safe, damage, ownerId);
+      }
+    }
+
     // Damage boxes
     for (let i = this.boxes.length - 1; i >= 0; i--) {
       const box = this.boxes[i];
@@ -1034,7 +1057,8 @@ export class BrawlEngine {
 
       // ---- find the earliest contact along the step --------------------
       let bestT = 1;
-      let hitKind: 'none' | 'wall' | 'box' | 'brawler' | 'deployable' = 'none';
+      let hitKind: 'none' | 'wall' | 'box' | 'safe' | 'brawler' | 'deployable' = 'none';
+      let hitSafeIndex = -1;
       let hitWallIndex = -1;
       let hitBoxIndex = -1;
       let hitTarget: BrawlerEntity | null = null;
@@ -1064,6 +1088,17 @@ export class BrawlEngine {
           bestT = this.sweep.t;
           hitKind = 'box';
           hitBoxIndex = i;
+          hitX = this.sweep.x;
+          hitY = this.sweep.y;
+        }
+      }
+
+      for (let i = 0; i < this.safes.length && !airborne; i++) {
+        sweepCircleVsRect(p.x, p.y, p.radius, stepX, stepY, this.safes[i], this.sweep);
+        if (this.sweep.hit && this.sweep.t < bestT) {
+          bestT = this.sweep.t;
+          hitKind = 'safe';
+          hitSafeIndex = i;
           hitX = this.sweep.x;
           hitY = this.sweep.y;
         }
@@ -1159,6 +1194,20 @@ export class BrawlEngine {
         toRemove.add(p.id);
         this.addEffect('hit_spark', hitX, hitY, 11, '#cbd5e1', 0.16, Math.atan2(p.vy, p.vx), 0.3);
         this.detonateProjectile(p, hitX, hitY, 'end');
+        continue;
+      }
+
+      if (hitKind === 'safe') {
+        const safe = this.safes[hitSafeIndex];
+        // Your own safe stops your shots without taking them.
+        if (safe && safe.team !== p.team) this.damageSafe(safe, p.damage, p.ownerId);
+        this.detonateProjectile(p, hitX, hitY, 'end');
+        if (!p.piercesBodies) {
+          toRemove.add(p.id);
+        } else {
+          p.x += stepX * (1 - bestT);
+          p.y += stepY * (1 - bestT);
+        }
         continue;
       }
 
@@ -1315,6 +1364,7 @@ export class BrawlEngine {
       if (wall) pushOutOfRect(b, radius, wall, horizontal);
     }
     for (const box of this.boxes) pushOutOfRect(b, radius, box, horizontal);
+    for (const safe of this.safes) pushOutOfRect(b, radius, safe, horizontal);
   }
 
   /**
@@ -1326,7 +1376,7 @@ export class BrawlEngine {
     if (this.walls.length === this.navWallCount && this.boxes.length === this.navBoxCount) {
       return;
     }
-    this.navGrid.rebuild([this.walls, this.boxes], BRAWLER_RADIUS);
+    this.navGrid.rebuild([this.walls, this.boxes, this.safes], BRAWLER_RADIUS);
     this.navWallCount = this.walls.length;
     this.navBoxCount = this.boxes.length;
   }
@@ -1378,6 +1428,13 @@ export class BrawlEngine {
 
         if (dist(fp.x, fp.y, b.x, b.y) <= fp.radius + 18) {
           this.damageBrawler(b, Math.round(fp.damagePerSec * dt), fp.ownerId, false);
+        }
+      }
+
+      for (const safe of this.safes) {
+        if (safe.team === fp.team || safe.hp <= 0) continue;
+        if (dist(fp.x, fp.y, safe.x + safe.w / 2, safe.y + safe.h / 2) <= fp.radius + Math.max(safe.w, safe.h) / 2) {
+          this.damageSafe(safe, Math.round(fp.damagePerSec * dt), fp.ownerId, false);
         }
       }
 
@@ -1676,6 +1733,43 @@ export class BrawlEngine {
     }
   }
 
+  /** Heist: damage to a safe, and a little Super for whoever did it. */
+  private damageSafe(safe: Safe, amount: number, ownerId: string, showNumber = true) {
+    if (this.phase !== 'playing' || amount <= 0) return;
+    safe.hp = Math.max(0, safe.hp - amount);
+    if (showNumber) this.addFloatingNumber('-' + Math.round(amount), safe.x + safe.w / 2, safe.y, '#fde047');
+    const attacker = this.brawlers.find(b => b.id === ownerId);
+    if (attacker) chargeSuperForDamage(attacker, amount * 0.5);
+    if (safe.hp <= 0) {
+      this.emitSound('explosion', safe.x + safe.w / 2, safe.y + safe.h / 2);
+      this.addEffect('explosion', safe.x + safe.w / 2, safe.y + safe.h / 2, 150, '#fde047', 0.6);
+    }
+  }
+
+  /**
+   * Where a bot should be heading to break the enemy safe, and the safe itself
+   * to shoot at. The standing point is on open ground in front of it, because
+   * the safe is solid and cannot be walked to.
+   */
+  private strikeFor(b: BrawlerEntity): Strike | undefined {
+    if (this.safes.length === 0) return undefined;
+    const enemy = this.safes.find(s => s.team !== b.team && s.hp > 0);
+    const own = this.safes.find(s => s.team === b.team && s.hp > 0);
+    if (!enemy || !own) return undefined;
+
+    // Every other member of a side goes on the attack; the rest stay home.
+    const mates = this.brawlers.filter(m => m.team === b.team && !m.isClone);
+    const role = mates.indexOf(b) % 2 === 0 ? 'attack' : 'defend';
+    const front = (safe: Safe) => {
+      const cx = safe.x + safe.w / 2;
+      const towardMiddle = cx < MAP_WIDTH / 2 ? 1 : -1;
+      return { x: cx + towardMiddle * (safe.w / 2 + 150), y: safe.y + safe.h / 2 };
+    };
+    return role === 'attack'
+      ? { role, stand: front(enemy), target: { x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h / 2 } }
+      : { role, stand: front(own), target: { x: own.x + own.w / 2, y: own.y + own.h / 2 } };
+  }
+
   /** Seconds of the match played so far, across any restarts. */
   private playClock(): number {
     // The countdown before a restart is not play: the clock waits for it.
@@ -1941,6 +2035,22 @@ export class BrawlEngine {
         this.checkBallTime(players);
         return;
 
+      case 'heist': {
+        const timeUp = def.timeLimit !== undefined && this.matchTimer >= def.timeLimit;
+        const fractions = [0, 1].map(team => {
+          const safe = this.safes.find(s => s.team === team);
+          return safe ? Math.max(0, safe.hp) / safe.maxHp : 1;
+        });
+        const standing = decideHeist(fractions, timeUp);
+        if (standing.winner !== null || standing.draw) {
+          this.finishMatch(
+            standing.winner,
+            standing.winner === null ? players : players.filter(b => b.team === standing.winner)
+          );
+        }
+        return;
+      }
+
       case 'wipeout':
       case 'bounty':
       case 'hot_zone': {
@@ -2174,6 +2284,7 @@ export class BrawlEngine {
       ball: this.ball,
       goals: this.goals,
       goalTeam: this.goalTimer !== null ? this.goalTeam : null,
+      safes: this.safes,
     };
   }
 }

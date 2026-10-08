@@ -507,7 +507,8 @@ export type BrawlGameMode =
   | 'wipeout'
   | 'knockout'
   | 'hot_zone'
-  | 'bounty';
+  | 'bounty'
+  | 'heist';
 
 /**
  * The ball in Brawl Ball.
@@ -522,6 +523,18 @@ export interface BallState {
   vy: number;
   radius: number;
   carrier: string | null;
+}
+
+/** Heist: a team's safe. Break the other one before yours is broken. */
+export interface Safe {
+  id: string;
+  team: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  hp: number;
+  maxHp: number;
 }
 
 /** A goal mouth: the team that defends it, and the ground that counts as in. */
@@ -982,6 +995,8 @@ export interface BrawlSnapshot {
   goals: GoalArea[];
   /** The team whose goal is being celebrated right now, or null. */
   goalTeam: number | null;
+  /** Heist's safes; empty in every other mode. */
+  safes: Safe[];
 }
 
 export interface BrawlPlayerInput {
