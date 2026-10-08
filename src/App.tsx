@@ -9,6 +9,8 @@ import {
 } from './types/brawl';
 import { BrawlEngine, BrawlSoundEvent } from './game/brawlEngine';
 import { PeerManager } from './network/peerManager';
+import { SnapshotDecoder, SnapshotEncoder } from './network/codec';
+import { SnapshotInterpolator } from './net/interpolation';
 import { brawlAudio } from './audio/brawlAudio';
 import { BrawlLobby } from './components/BrawlLobby';
 import { BrawlCanvas } from './components/BrawlCanvas';
@@ -28,8 +30,18 @@ import { profiler } from './core/profiler';
  */
 const HUD_REFRESH_INTERVAL = 1 / 12;
 
-/** Seconds between authoritative state broadcasts to connected peers. */
-const NET_SNAPSHOT_INTERVAL = 1 / 30;
+/**
+ * Seconds between state broadcasts, by how many clients there are to feed.
+ *
+ * Upload is shared out: every client is sent every packet, so the host's
+ * bandwidth is the packet rate times the packet size times the number of
+ * peers. Up to four clients the full rate is affordable; beyond that it drops
+ * to twenty a second, which the client's 110 ms interpolation buffer still
+ * spans with two packets, so motion stays smooth.
+ */
+function netSnapshotInterval(peerCount: number): number {
+  return peerCount <= 4 ? 1 / 30 : 1 / 20;
+}
 
 export const App: React.FC = () => {
   // Player state
@@ -73,6 +85,19 @@ export const App: React.FC = () => {
   const gameLoopRef = useRef<GameLoop | null>(null);
   /** Lets the canvas pull live state without a React render. */
   const snapshotSourceRef = useRef<(() => BrawlSnapshot | null) | undefined>(undefined);
+
+  /** Host: remembers what clients already have, so geometry is not resent. */
+  const encoderRef = useRef(new SnapshotEncoder());
+  /** Client: rebuilds full snapshots from the stream. */
+  const decoderRef = useRef(new SnapshotDecoder());
+  /** Client: every packet is fed here the moment it arrives. */
+  const interpolatorRef = useRef(new SnapshotInterpolator());
+  /** Whether a match is on screen, readable from callbacks that outlive a render. */
+  const inGameRef = useRef(false);
+  /** Counts rounds in a room, so a rematch is not the same match again. */
+  const matchCountRef = useRef(0);
+  const lastClientHudRef = useRef(0);
+  const lastClientPhaseRef = useRef<string>('');
 
   // Save player name
   useEffect(() => {
@@ -193,10 +218,29 @@ export const App: React.FC = () => {
       },
       onGameStart: mode => {
         setGameMode(mode);
+        beginClientMatch();
         setIsInGame(true);
       },
-      onStateReceived: snap => {
-        setSnapshot(snap);
+      onReturnToLobby: () => {
+        stopMatchKeepRoom();
+      },
+      onStateReceived: net => {
+        // Late packets from a round that has already ended are noise.
+        if (!inGameRef.current) return;
+
+        const snap = decoderRef.current.decode(net);
+        // Every packet goes straight to the interpolator, so motion is smooth
+        // at the rate packets arrive. React only needs the HUD's rate: it used
+        // to re-render the whole tree on every packet.
+        interpolatorRef.current.push(snap, performance.now());
+
+        const now = performance.now();
+        const phaseChanged = snap.phase !== lastClientPhaseRef.current;
+        if (phaseChanged || now - lastClientHudRef.current >= HUD_REFRESH_INTERVAL * 1000) {
+          lastClientPhaseRef.current = snap.phase;
+          lastClientHudRef.current = now;
+          setSnapshot(snap);
+        }
       },
       onSoundReceived: event => {
         handleSoundEvent(event);
@@ -288,9 +332,13 @@ export const App: React.FC = () => {
     };
 
     // Seeding from the room code makes a match reproducible: the same lobby and
-    // the same inputs now produce the same match on every machine.
-    const seed = seedFromString(roomCode || `${mode}-solo`);
+    // the same inputs now produce the same match on every machine. The round
+    // number is part of it, or every rematch in a room would be the same map.
+    matchCountRef.current += 1;
+    const seed = seedFromString(`${roomCode || `${mode}-solo`}#${matchCountRef.current}`);
+    encoderRef.current.reset();
     engine.initMatch(currentPlayers, mode, seed);
+    inGameRef.current = true;
     engineRef.current = engine;
     snapshotSourceRef.current = () => engine.getSnapshot();
     setIsInGame(true);
@@ -315,13 +363,16 @@ export const App: React.FC = () => {
           setSnapshot(engine.getSnapshot());
         }
 
-        if (!isSingleplayer && peerManagerRef.current) {
+        const pm = peerManagerRef.current;
+        if (!isSingleplayer && pm && pm.connections.size > 0) {
           netAccumulator += dt;
-          if (netAccumulator >= NET_SNAPSHOT_INTERVAL) {
+          if (netAccumulator >= netSnapshotInterval(pm.connections.size)) {
             netAccumulator = 0;
-            peerManagerRef.current.broadcast({
+            // Encoded once and handed to every peer: the work of building the
+            // packet does not grow with the size of the room.
+            pm.broadcastState({
               type: 'STATE',
-              snapshot: engine.getSnapshot(),
+              snapshot: encoderRef.current.encode(engine.getSnapshot(), performance.now()),
             });
           }
         }
@@ -377,12 +428,58 @@ export const App: React.FC = () => {
 
   // Restart match after game over
   const handleRestartMatch = () => {
-    if (isHost) {
-      startEngineMatch(players, gameMode);
-    }
+    if (!isHost) return;
+    // Clients that went back to the room while the host was still looking at
+    // the results are brought back in by the start signal, so a rematch does
+    // not leave anybody behind.
+    peerManagerRef.current?.broadcast({ type: 'START_MATCH', mode: gameMode });
+    startEngineMatch(players, gameMode);
   };
 
-  // Leave Game
+  /** A client entering a round: fresh geometry cache, fresh interpolation. */
+  const beginClientMatch = () => {
+    decoderRef.current.reset();
+    interpolatorRef.current.clear();
+    lastClientPhaseRef.current = '';
+    lastClientHudRef.current = 0;
+    inGameRef.current = true;
+    // Feeds the canvas straight from the interpolator, so it draws the
+    // newest packet the moment it arrives rather than the next React render.
+    snapshotSourceRef.current = () => interpolatorRef.current.sample(performance.now());
+  };
+
+  /**
+   * Ends the round and returns to the room, leaving the room itself alone.
+   *
+   * The old "back to lobby" was `handleLeaveGame`, which destroys the peer: the
+   * host fell to the create-a-room page holding a stale code, and everybody
+   * else was dropped with a connection error. That is what "the lobby breaks
+   * after a match" was.
+   */
+  const stopMatchKeepRoom = () => {
+    gameLoopRef.current?.stop();
+    gameLoopRef.current = null;
+    engineRef.current = null;
+    snapshotSourceRef.current = undefined;
+    inGameRef.current = false;
+    interpolatorRef.current.clear();
+    setIsInGame(false);
+    setSnapshot(null);
+  };
+
+  // Back to the room after a match. The host takes everybody with it; a
+  // client goes back on its own and is brought in again by the next start.
+  const handleReturnToLobby = () => {
+    const pm = peerManagerRef.current;
+    if (!pm || isSingleplayer) {
+      handleLeaveGame();
+      return;
+    }
+    if (isHost) pm.returnToLobby();
+    stopMatchKeepRoom();
+  };
+
+  // Leave Game: the room goes too.
   const handleLeaveGame = () => {
     gameLoopRef.current?.stop();
     gameLoopRef.current = null;
@@ -390,9 +487,20 @@ export const App: React.FC = () => {
     peerManagerRef.current?.destroy();
     peerManagerRef.current = null;
     engineRef.current = null;
+    inGameRef.current = false;
+    matchCountRef.current = 0;
+    encoderRef.current.reset();
+    decoderRef.current.reset();
+    interpolatorRef.current.clear();
     setIsInGame(false);
     setIsInRoom(false);
     setSnapshot(null);
+    // The room is gone, so its roster must go with it, or a dead player list
+    // is left on screen. A host's code goes too — it names a room that no
+    // longer exists — but a client keeps what it typed, to try again.
+    setPlayers([]);
+    if (isHost) setRoomCode('');
+    setIsHost(false);
   };
 
   const handleToggleMute = () => {
@@ -449,7 +557,7 @@ export const App: React.FC = () => {
               myPlayerId={myPlayerId}
               isHost={isHost}
               onRestartMatch={handleRestartMatch}
-              onReturnToLobby={handleLeaveGame}
+              onReturnToLobby={handleReturnToLobby}
             />
           )}
         </div>

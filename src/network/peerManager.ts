@@ -1,6 +1,7 @@
 import { Peer, DataConnection } from 'peerjs';
-import { PlayerInfo, BrawlPlayerInput, BrawlSnapshot, BrawlerId, BrawlGameMode } from '../types/brawl';
+import { PlayerInfo, BrawlPlayerInput, BrawlerId, BrawlGameMode } from '../types/brawl';
 import { BrawlSoundEvent } from '../game/brawlEngine';
+import type { NetSnapshot } from './codec';
 
 export type NetworkMessage =
   | { type: 'JOIN'; name: string; brawler: BrawlerId }
@@ -8,19 +9,31 @@ export type NetworkMessage =
   | { type: 'PICK_BRAWLER'; brawler: BrawlerId }
   | { type: 'ROOM_UPDATE'; players: PlayerInfo[]; mode: BrawlGameMode }
   | { type: 'START_MATCH'; mode: BrawlGameMode }
+  /** The host ending the round and bringing everybody back to the room. */
+  | { type: 'RETURN_TO_LOBBY' }
   | { type: 'INPUT'; input: BrawlPlayerInput }
-  | { type: 'STATE'; snapshot: BrawlSnapshot }
+  | { type: 'STATE'; snapshot: NetSnapshot }
   | { type: 'SOUND'; event: BrawlSoundEvent };
 
 export interface PeerManagerCallbacks {
   onConnected?: (roomCode: string) => void;
   onPlayersChanged?: (players: PlayerInfo[]) => void;
   onGameStart?: (mode: BrawlGameMode) => void;
-  onStateReceived?: (snapshot: BrawlSnapshot) => void;
+  onStateReceived?: (snapshot: NetSnapshot) => void;
+  onReturnToLobby?: () => void;
   onInputReceived?: (playerId: string, input: BrawlPlayerInput) => void;
   onSoundReceived?: (event: BrawlSoundEvent) => void;
   onError?: (err: string) => void;
 }
+
+/**
+ * Bytes waiting in a client's send buffer beyond which state is withheld.
+ *
+ * A packet is a few kilobytes, so this is a handful of them: about a sixth of
+ * a second at the send rate. Small enough that being skipped costs one frame
+ * of detail, large enough that ordinary jitter does not trigger it.
+ */
+const MAX_BUFFERED_BYTES = 24 * 1024;
 
 export class PeerManager {
   private peer: Peer | null = null;
@@ -194,6 +207,9 @@ export class PeerManager {
       case 'START_MATCH':
         this.callbacks.onGameStart?.(msg.mode);
         break;
+      case 'RETURN_TO_LOBBY':
+        this.callbacks.onReturnToLobby?.();
+        break;
       case 'STATE':
         this.callbacks.onStateReceived?.(msg.snapshot);
         break;
@@ -211,6 +227,42 @@ export class PeerManager {
       }
     });
   }
+
+  /**
+   * Sends match state to every client, without letting a slow one fall behind.
+   *
+   * The data channel is reliable and ordered, so when a client's connection
+   * cannot keep up, packets do not drop — they queue, and every one of them is
+   * delivered, late. The queue only ever grows while the link is slower than
+   * the send rate, so the delay grows with it: that is the ping that creeps up
+   * a few seconds into a match and never comes back down.
+   *
+   * State is the one kind of message where that is wrong. A snapshot is
+   * obsolete the moment the next one exists, so a client whose buffer is
+   * backed up is skipped and sent the next one, which keeps its delay bounded
+   * by the buffer limit rather than by how long the match has been running.
+   * Everything else — room changes, the start signal, sounds — still queues,
+   * because losing it is not harmless.
+   */
+  public broadcastState(msg: NetworkMessage) {
+    if (!this.isHost) return;
+    this.connections.forEach(conn => {
+      if (!conn.open) return;
+      const buffered = conn.dataChannel?.bufferedAmount ?? 0;
+      // PeerJS keeps its own queue ahead of the browser's once that fills.
+      const queued = (conn as unknown as { bufferSize?: number }).bufferSize ?? 0;
+      if (buffered > MAX_BUFFERED_BYTES || queued > 0) {
+        this.statesSkipped++;
+        return;
+      }
+      conn.send(msg);
+      this.statesSent++;
+    });
+  }
+
+  /** Counters for the diagnostics overlay: how much state is being shed. */
+  public statesSent = 0;
+  public statesSkipped = 0;
 
   public sendToHost(msg: NetworkMessage) {
     if (this.hostConn && this.hostConn.open) {
@@ -294,6 +346,18 @@ export class PeerManager {
       players: this.players,
       mode: this.mode,
     });
+  }
+
+  /**
+   * Ends the round and brings everybody back to the room, which stays open.
+   *
+   * Going back to the lobby used to leave the room — destroying the peer — so
+   * the host's own screen fell to the "create a room" page with a stale code
+   * and every other player was disconnected with an error. The room is the
+   * thing people are waiting in; a round ending is not a reason to close it.
+   */
+  public returnToLobby() {
+    this.broadcast({ type: 'RETURN_TO_LOBBY' });
   }
 
   public setMode(mode: BrawlGameMode) {

@@ -19,7 +19,7 @@ interface CharacterPortraitProps {
  * means the roster can never disagree with what you actually play, there is no
  * portrait asset to keep in sync, and it stays sharp on any display.
  */
-export const CharacterPortrait: React.FC<CharacterPortraitProps> = ({
+export const CharacterPortrait: React.FC<CharacterPortraitProps> = React.memo(({
   brawlerId,
   size,
   animated = false,
@@ -82,4 +82,5 @@ export const CharacterPortrait: React.FC<CharacterPortraitProps> = ({
       aria-hidden="true"
     />
   );
-};
+});
+CharacterPortrait.displayName = 'CharacterPortrait';
