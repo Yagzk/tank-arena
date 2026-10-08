@@ -326,8 +326,8 @@ describe('the other behaviours', () => {
 });
 
 describe('wave one', () => {
-  it('takes the roster to ten', () => {
-    expect(BRAWLER_IDS).toHaveLength(10);
+  it('keeps the first ten characters, with more added after', () => {
+    expect(BRAWLER_IDS.length).toBeGreaterThanOrEqual(10);
   });
 
   it('throws a bottle over a wall', () => {

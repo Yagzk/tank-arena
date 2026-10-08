@@ -96,6 +96,9 @@ export class BrawlBot {
 
     // Aim calculation
     let canSeeTarget = false;
+    // Whether the straight line to the target is open for *walking*. Cover that
+    // a lobbed shot can clear still stops a body, so this ignores `ignoresCover`.
+    let pathClear = false;
     let aimAngle = bot.angle;
     let shouldAttack = false;
     let shouldSuper = false;
@@ -188,6 +191,7 @@ export class BrawlBot {
       // being able to see what they are shooting at — unless the attack arcs
       // over walls, in which case cover is where it wants to be.
       const lineOfSight = hasLineOfSight(bot.x, bot.y, targetX, targetY, walls);
+      pathClear = lineOfSight;
       canSeeTarget = lineOfSight || profile?.ignoresCover === true;
 
       if (!objectiveOnly && targetDist <= maxRange && canSeeTarget && bot.ammo >= 1 && this.attackCooldown <= 0) {
@@ -278,7 +282,7 @@ export class BrawlBot {
     // is only useful if the body keeps following it between decisions. When the
     // objective is in plain sight the straight line is both shorter and
     // smoother, so the flow field is only consulted around obstacles.
-    if (hasTarget && !canSeeTarget) {
+    if (hasTarget && !pathClear) {
       this.followRoute(bot, nav, targetX, targetY);
     }
 

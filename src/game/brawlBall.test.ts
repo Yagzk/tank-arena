@@ -263,17 +263,50 @@ describe('the clock', () => {
 
 describe('bots', () => {
   it('score without anybody touching the controls', () => {
+    // One match can go goalless if the carriers keep getting shot; across a
+    // handful of maps and seeds, bots that never score are broken.
+    let goals = 0;
+    for (const seed of [2, 3, 4, 5]) {
+      const engine = new BrawlEngine();
+      const players = roster(4).map(p => ({ ...p, isBot: true }));
+      engine.initMatch(players, 'brawl_ball', seed);
+      engine.phase = 'playing';
+      engine.matchTimer = 0;
+      for (let i = 0; i < 60 * 130 && (engine.phase as string) !== 'match_end'; i++) {
+        engine.update(FIXED_DT);
+        if ((engine.phase as string) === 'starting') engine.matchTimer = 3; // skip countdowns
+      }
+      goals += engine.teamScores[0] + engine.teamScores[1];
+    }
+    expect(goals, 'goals scored by bots across four matches').toBeGreaterThan(0);
+  });
+});
+
+describe('getting out of the base', () => {
+  // A bot that cannot find its way off the spawn is worse than no bot. This
+  // caught a crate wall across a goal mouth, and cover-ignoring characters
+  // walking straight into it instead of around.
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9])('every bot leaves its spawn, on seed %i', seed => {
     const engine = new BrawlEngine();
-    const players = roster(4).map(p => ({ ...p, isBot: true }));
-    engine.initMatch(players, 'brawl_ball', 11);
+    const players = roster(8).map(p => ({ ...p, isBot: true }));
+    const kits = ['molotof', 'fuse', 'boulder', 'mira', 'wisp', 'rivet', 'thorn', 'zirh'] as const;
+    players.forEach((p, i) => (p.brawler = kits[i]));
+    engine.initMatch(players, 'brawl_ball', seed);
     engine.phase = 'playing';
     engine.matchTimer = 0;
-    let scored = false;
-    for (let i = 0; i < 60 * 150 && (engine.phase as string) !== 'match_end'; i++) {
+
+    const furthest = new Map<string, number>();
+    for (let i = 0; i < 60 * 12; i++) {
       engine.update(FIXED_DT);
-      if ((engine.phase as string) === 'starting' && engine.matchTimer < 0.05) engine.matchTimer = 3; // skip countdowns
-      if (engine.teamScores[0] + engine.teamScores[1] > 0) scored = true;
+      if ((engine.phase as string) === 'starting') engine.matchTimer = 3;
+      for (const b of engine.brawlers) {
+        if (b.isClone) continue;
+        const d = Math.hypot(b.x - b.spawnX, b.y - b.spawnY);
+        furthest.set(b.id, Math.max(furthest.get(b.id) ?? 0, d));
+      }
     }
-    expect(scored, 'two minutes of bots should put at least one in').toBe(true);
+    for (const [id, d] of furthest) {
+      expect(d, id + ' on ' + engine.mapName).toBeGreaterThan(300);
+    }
   });
 });

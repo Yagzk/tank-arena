@@ -1665,7 +1665,8 @@ export class BrawlEngine {
 
   /** Seconds of the match played so far, across any restarts. */
   private playClock(): number {
-    return this.playedBefore + this.matchTimer;
+    // The countdown before a restart is not play: the clock waits for it.
+    return this.playedBefore + (this.phase === 'playing' ? this.matchTimer : 0);
   }
 
   /** Brawl Ball: how the ball moves, who has it, and what happens when it goes in. */

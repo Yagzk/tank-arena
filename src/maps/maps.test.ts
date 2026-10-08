@@ -80,8 +80,14 @@ describe('symmetry', () => {
         for (let x = 0; x < GRID_W / 2; x++) {
           const left = grid[y][x];
           const right = grid[y][GRID_W - 1 - x];
-          const expected =
-            left === TILES.SPAWN_A ? TILES.SPAWN_B : left === TILES.SPAWN_B ? TILES.SPAWN_A : left;
+          // The two sides' spawns and goals swap owners across the middle.
+          const swap: Record<string, string> = {
+            [TILES.SPAWN_A]: TILES.SPAWN_B,
+            [TILES.SPAWN_B]: TILES.SPAWN_A,
+            [TILES.GOAL_A]: TILES.GOAL_B,
+            [TILES.GOAL_B]: TILES.GOAL_A,
+          };
+          const expected = swap[left] ?? left;
           expect(right, map.id + ' at ' + x + ',' + y).toBe(expected);
         }
       }
