@@ -22,6 +22,7 @@ import { getInputMode, onInputModeChange } from '../input/inputMode';
 import { profiler } from '../core/profiler';
 import { clamp } from '../core/math';
 import { hasArmedPassive } from '../sim/kitInfo';
+import { brawlAudio } from '../audio/brawlAudio';
 
 /**
  * How much of the world the camera should cover, in world units.
@@ -113,6 +114,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   const screenShakeRef = useRef<{ intensity: number; timer: number }>({ intensity: 0, timer: 0 });
   /** Kills the local player had last frame, to notice a new one. */
   const myKillsRef = useRef(0);
+  /** The whole second the countdown last showed, for ticking once per second. */
+  const lastCountdownRef = useRef(0);
   /** When the last kill you got happened, in ms, and what to say about it. */
   const killFlashRef = useRef<{ at: number; text: string } | null>(null);
 
@@ -524,6 +527,27 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         }
       }
       const myBrawler = snap?.brawlers.find(b => b.id === myId);
+
+      // Sounds are placed relative to where the player is.
+      if (myBrawler) brawlAudio.setListener(myBrawler.x, myBrawler.y);
+
+      // The countdown is heard as well as seen: a tick a second, a word at the
+      // start, and a go.
+      if (snap) {
+        const whole = snap.introCountdown > 0 ? Math.ceil(snap.introCountdown) : 0;
+        if (whole !== lastCountdownRef.current) {
+          if (whole > 0) {
+            if (lastCountdownRef.current === 0) {
+              brawlAudio.speak(snap.mode === 'showdown' ? 'Hesaplaşma!' : 'Elmas kapmaca!');
+            }
+            brawlAudio.play({ type: 'countdown_tick' });
+          } else {
+            brawlAudio.play({ type: 'countdown_go' });
+            brawlAudio.speak('Başla!');
+          }
+          lastCountdownRef.current = whole;
+        }
+      }
 
       // Smooth Camera tracking
       // Pick a camera subject: you while you are alive, otherwise someone who

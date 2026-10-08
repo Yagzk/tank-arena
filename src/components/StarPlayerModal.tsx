@@ -4,6 +4,7 @@ import { BrawlSnapshot, BRAWLERS } from '../types/brawl';
 import { RotateCcw, Home, Star } from 'lucide-react';
 import { computeResults } from '../game/results';
 import { CharacterPortrait } from './CharacterPortrait';
+import { brawlAudio } from '../audio/brawlAudio';
 
 interface StarPlayerModalProps {
   snapshot: BrawlSnapshot;
@@ -56,6 +57,12 @@ export const StarPlayerModal: React.FC<StarPlayerModalProps> = ({
     frame();
     return () => cancelAnimationFrame(raf);
   }, [result.isWin]);
+
+  // Said once, as the headline appears.
+  useEffect(() => {
+    brawlAudio.speak(result.isWin ? 'Zafer!' : result.title === 'BERABERE' ? 'Berabere' : 'Maç bitti');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const headline = result.isWin ? '#facc15' : result.title === 'BERABERE' ? '#94a3b8' : '#f87171';
 

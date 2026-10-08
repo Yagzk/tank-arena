@@ -1,394 +1,293 @@
+/**
+ * The game's audio: effects, music and an announcer, behind one object.
+ *
+ * What a sound is lives in `sounds.ts`, what the music plays in `music.ts`;
+ * this file only owns the audio context and turns those into signal. The old
+ * version was fourteen functions that each built their own oscillator chain —
+ * no pooling, no distance, no stereo, no music, no volume controls.
+ */
+
+import {
+  RECIPES,
+  VoiceGate,
+  recipeDuration,
+  spatialize,
+  type Layer,
+  type SoundType,
+} from './sounds';
+import { MusicPlayer, type ThemeName } from './music';
+
+export interface AudioSettings {
+  master: number;
+  sfx: number;
+  music: number;
+  voice: number;
+  muted: boolean;
+}
+
+export const DEFAULT_SETTINGS: AudioSettings = {
+  master: 0.9,
+  sfx: 1,
+  music: 0.45,
+  voice: 0.9,
+  muted: false,
+};
+
+const STORAGE_KEY = 'brwl_audio';
+
+/** A sound as the simulation reports it: what, and where it happened. */
+export interface SoundCue {
+  type: string;
+  x?: number;
+  y?: number;
+}
+
+function clamp01(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback;
+}
+
+/** Reads saved settings, tolerating anything — corrupt, missing, blocked. */
+export function loadSettings(): AudioSettings {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<AudioSettings>;
+    return {
+      master: clamp01(parsed.master, DEFAULT_SETTINGS.master),
+      sfx: clamp01(parsed.sfx, DEFAULT_SETTINGS.sfx),
+      music: clamp01(parsed.music, DEFAULT_SETTINGS.music),
+      voice: clamp01(parsed.voice, DEFAULT_SETTINGS.voice),
+      muted: parsed.muted === true,
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
 class BrawlAudio {
   private ctx: AudioContext | null = null;
-  public isMuted: boolean = false;
+  private masterGain: GainNode | null = null;
+  private sfxBus: GainNode | null = null;
+  private musicBus: GainNode | null = null;
+  private noise: AudioBuffer | null = null;
+  private musicPlayer: MusicPlayer | null = null;
 
-  private initCtx() {
-    if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (AudioCtx) {
-        this.ctx = new AudioCtx();
-      }
-    }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+  private readonly gate = new VoiceGate();
+  private listener: { x: number; y: number } | null = null;
+  private settings: AudioSettings = loadSettings();
+  /** A theme asked for before the first gesture allowed any sound at all. */
+  private wantedMusic: ThemeName | null = null;
+
+  public get isMuted(): boolean {
+    return this.settings.muted;
+  }
+
+  public getSettings(): AudioSettings {
+    return { ...this.settings };
+  }
+
+  /**
+   * Browsers refuse to make sound until the player has done something. Called
+   * from the first click or key press; anything asked for before that is kept
+   * and plays now.
+   */
+  public unlock(): void {
+    this.ensureContext();
+    if (this.ctx?.state === 'suspended') void this.ctx.resume();
+    if (this.wantedMusic) this.music(this.wantedMusic);
+  }
+
+  private ensureContext(): AudioContext | null {
+    if (this.ctx) return this.ctx;
+    if (typeof window === 'undefined') return null;
+
+    const Ctor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return null;
+
+    const ctx = new Ctor();
+    this.ctx = ctx;
+
+    // A limiter on the end, because a chaotic moment is dozens of sounds at once
+    // and summing them will otherwise clip into harsh distortion.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -14;
+    limiter.knee.value = 12;
+    limiter.ratio.value = 8;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.2;
+    limiter.connect(ctx.destination);
+
+    this.masterGain = ctx.createGain();
+    this.masterGain.connect(limiter);
+    this.sfxBus = ctx.createGain();
+    this.sfxBus.connect(this.masterGain);
+    this.musicBus = ctx.createGain();
+    this.musicBus.connect(this.masterGain);
+
+    // One second of noise, shared by every sound that needs some.
+    const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    this.noise = buffer;
+
+    this.musicPlayer = new MusicPlayer(ctx, this.musicBus);
+    this.applyVolumes();
+    return ctx;
+  }
+
+  private applyVolumes(): void {
+    if (!this.masterGain || !this.sfxBus || !this.musicBus) return;
+    const s = this.settings;
+    this.masterGain.gain.value = s.muted ? 0 : s.master;
+    this.sfxBus.gain.value = s.sfx;
+    this.musicBus.gain.value = s.music;
+  }
+
+  private save(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
+    } catch {
+      // Private mode or blocked storage: the settings simply do not persist.
     }
   }
 
   public toggleMute(): boolean {
-    this.isMuted = !this.isMuted;
-    return this.isMuted;
+    this.settings.muted = !this.settings.muted;
+    this.applyVolumes();
+    if (this.settings.muted && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    this.save();
+    return this.settings.muted;
   }
 
-  // Shelly Shotgun Blast (Heavy buckshot crack with bass kick)
-  public playScatterShot() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(240, now);
-    osc.frequency.exponentialRampToValueAtTime(32, now + 0.14);
-
-    gain.gain.setValueAtTime(0.4, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.14);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.15);
-
-    this.playNoise(0.12, 0.45, 1400);
+  public setVolume(channel: 'master' | 'sfx' | 'music' | 'voice', value: number): void {
+    this.settings[channel] = clamp01(value, this.settings[channel]);
+    this.applyVolumes();
+    this.save();
   }
 
-  // Super Blast (Devastating wall-shattering boom & cannon blast)
-  public playSuperBlast() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(160, now);
-    osc.frequency.exponentialRampToValueAtTime(24, now + 0.5);
-
-    gain.gain.setValueAtTime(0.7, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.52);
-
-    this.playNoise(0.4, 0.65, 800);
+  /** Where the player is, so sounds can be placed relative to them. */
+  public setListener(x: number, y: number): void {
+    if (!this.listener) this.listener = { x, y };
+    else {
+      this.listener.x = x;
+      this.listener.y = y;
+    }
   }
 
-  // Colt Rapid Laser Fire (High-tech pew)
-  public playRapidShot() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(950, now);
-    osc.frequency.exponentialRampToValueAtTime(240, now + 0.055);
-
-    gain.gain.setValueAtTime(0.22, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.055);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.06);
+  /** Forgets the listener, between rounds, so a menu sound is not placed in a map. */
+  public clearListener(): void {
+    this.listener = null;
   }
 
-  // El Primo Heavy Punch (Satisfying boxing whoosh + thud)
-  public playHeavyPunch() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(240, now);
-    osc.frequency.exponentialRampToValueAtTime(45, now + 0.09);
-
-    gain.gain.setValueAtTime(0.4, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.1);
-
-    this.playNoise(0.06, 0.3, 500);
+  public music(name: ThemeName | null): void {
+    this.wantedMusic = name;
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    if (name === null) this.musicPlayer?.stop();
+    else this.musicPlayer?.play(name);
   }
 
-  // El Primo Airborne Leap Whoosh
-  public playHeavyLeap() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
+  /**
+   * Plays a sound from the simulation. Unknown cues are ignored on purpose: a
+   * newer server may send a cue this build has no recipe for, and that should be
+   * silence rather than an error.
+   */
+  public play(cue: SoundCue): void {
+    if (this.settings.muted) return;
+    const recipe = RECIPES[cue.type as SoundType];
+    if (!recipe) return;
 
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const ctx = this.ensureContext();
+    if (!ctx || !this.sfxBus || ctx.state !== 'running') return;
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(620, now + 0.35);
+    const nowMs = performance.now();
+    if (!this.gate.allow(cue.type, nowMs, recipe.priority, recipe.cooldownMs)) return;
+    this.gate.begin(cue.type, nowMs, recipeDuration(recipe) * 1000);
 
-    gain.gain.setValueAtTime(0.35, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+    let gain = 1;
+    let pan = 0;
+    if (recipe.spatial && cue.x !== undefined && cue.y !== undefined && this.listener) {
+      const s = spatialize(cue.x, cue.y, this.listener.x, this.listener.y);
+      gain = s.gain;
+      pan = s.pan;
+    }
+    // Close to inaudible is not worth a voice.
+    if (gain < 0.03) return;
 
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.38);
-  }
-
-  // Brock Rocket Launch Sizzle
-  public playRocketLaunch() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(380, now);
-    osc.frequency.exponentialRampToValueAtTime(80, now + 0.22);
-
-    gain.gain.setValueAtTime(0.35, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.24);
-
-    this.playNoise(0.2, 0.35, 900);
-  }
-
-  // Leon Swift Shuriken Whoosh
-  public playBladeThrow() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1250, now);
-    osc.frequency.exponentialRampToValueAtTime(320, now + 0.05);
-
-    gain.gain.setValueAtTime(0.22, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.06);
-  }
-
-  // Super Ready Fanfare (Nova Arena 4-Note Iconic Chime)
-  public playSuperReady() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const notes = [587.33, 739.99, 880.0, 1174.66]; // D5, F#5, A5, D6
-    const now = this.ctx.currentTime;
-
-    notes.forEach((freq, i) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const t = now + i * 0.06;
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.28, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.18);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.2);
-    });
-  }
-
-  // Gadget Activation Beep
-  public playGadget() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(550, now);
-    osc.frequency.exponentialRampToValueAtTime(1100, now + 0.12);
-
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.14);
-  }
-
-  // Band-Aid Holy Heal Chime
-  public playBandAid() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const notes = [659.25, 880.0, 1318.51];
-    const now = this.ctx.currentTime;
-    notes.forEach((freq, idx) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const t = now + idx * 0.08;
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.28, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.26);
-    });
-  }
-
-  // Colt Rapid Reload Metallic Clicks
-  public playReload() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    [0, 0.06].forEach((delay) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(1200, now + delay);
-      osc.frequency.exponentialRampToValueAtTime(600, now + delay + 0.03);
-      gain.gain.setValueAtTime(0.2, now + delay);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.03);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now + delay);
-      osc.stop(now + delay + 0.035);
-    });
-  }
-
-  // Gem Pick up chime
-  public playGemPickup() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, now);
-    osc.frequency.exponentialRampToValueAtTime(1760, now + 0.12);
-
-    gain.gain.setValueAtTime(0.26, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.14);
-  }
-
-  // Power Cube Pick up
-  public playPowerCubePickup() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const now = this.ctx.currentTime;
-    const notes = [440, 660];
-    notes.forEach((freq, i) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const t = now + i * 0.05;
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.24, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.11);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.13);
-    });
-  }
-
-  // Victory Star Player Fanfare
-  public playStarPlayer() {
-    if (this.isMuted) return;
-    this.initCtx();
-    if (!this.ctx) return;
-
-    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.51];
-    const now = this.ctx.currentTime;
-
-    notes.forEach((freq, idx) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const t = now + idx * 0.1;
-      const dur = idx === 4 ? 0.7 : 0.2;
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.3, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + dur);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(t);
-      osc.stop(t + dur + 0.05);
-    });
-  }
-
-  private playNoise(duration: number, volume: number, filterFreq: number) {
-    if (!this.ctx) return;
-    const bufferSize = this.ctx.sampleRate * duration;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
+    const out = ctx.createGain();
+    out.gain.value = gain;
+    if (typeof ctx.createStereoPanner === 'function') {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = pan;
+      out.connect(panner);
+      panner.connect(this.sfxBus);
+    } else {
+      out.connect(this.sfxBus);
     }
 
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
+    const start = ctx.currentTime;
+    for (const layer of recipe.layers) this.layer(ctx, layer, start, out);
+  }
 
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(filterFreq, this.ctx.currentTime);
+  private layer(ctx: AudioContext, layer: Layer, start: number, out: AudioNode): void {
+    const at = start + (layer.delay ?? 0);
+    const end = at + layer.duration;
 
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(volume, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+    const envelope = ctx.createGain();
+    envelope.gain.setValueAtTime(0.0001, at);
+    // A few milliseconds of attack: starting at full level clicks.
+    envelope.gain.exponentialRampToValueAtTime(layer.gain, at + 0.004);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, end);
+    envelope.connect(out);
 
-    noise.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.ctx.destination);
-    noise.start();
+    if (layer.kind === 'tone') {
+      const osc = ctx.createOscillator();
+      osc.type = layer.wave;
+      osc.frequency.setValueAtTime(layer.from, at);
+      if (layer.to !== layer.from) osc.frequency.exponentialRampToValueAtTime(layer.to, end);
+      osc.connect(envelope);
+      osc.start(at);
+      osc.stop(end + 0.02);
+      return;
+    }
+
+    if (!this.noise) return;
+    const source = ctx.createBufferSource();
+    source.buffer = this.noise;
+    // Different bangs should not be the same slice of noise.
+    const offset = Math.random() * Math.max(0, this.noise.duration - layer.duration);
+    const filter = ctx.createBiquadFilter();
+    filter.type = layer.filter;
+    filter.frequency.setValueAtTime(layer.from, at);
+    if (layer.to !== undefined) filter.frequency.exponentialRampToValueAtTime(layer.to, end);
+    if (layer.q !== undefined) filter.Q.value = layer.q;
+    source.connect(filter);
+    filter.connect(envelope);
+    source.start(at, offset, layer.duration + 0.02);
+  }
+
+  /**
+   * The announcer. Uses the browser's own Turkish voice if there is one, and
+   * stays silent if there is not: a Turkish line read by an English voice is
+   * worse than no line.
+   */
+  public speak(text: string): void {
+    if (this.settings.muted || this.settings.voice <= 0) return;
+    if (typeof speechSynthesis === 'undefined' || typeof SpeechSynthesisUtterance === 'undefined') return;
+
+    const voice = speechSynthesis.getVoices().find(v => v.lang?.toLowerCase().startsWith('tr'));
+    if (!voice) return;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = voice;
+    utterance.lang = 'tr-TR';
+    utterance.rate = 1.12;
+    utterance.pitch = 0.8;
+    utterance.volume = this.settings.voice * this.settings.master;
+    // Whatever was being said is out of date the moment this is.
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
   }
 }
 

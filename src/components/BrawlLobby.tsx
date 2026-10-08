@@ -1,3 +1,4 @@
+import { AudioSettings } from './AudioSettings';
 import React, { useState } from 'react';
 import { CharacterPortrait } from './CharacterPortrait';
 import { BrawlerId, BRAWLER_IDS, BRAWLERS, PlayerInfo, BrawlGameMode } from '../types/brawl';
@@ -83,6 +84,7 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
 
       {/* Top action icons */}
       <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+        <AudioSettings />
         <button
           onClick={onToggleMute}
           className="p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition shadow-lg cursor-pointer"

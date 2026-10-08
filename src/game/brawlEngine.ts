@@ -28,6 +28,7 @@ import { Rng } from '../core/rng';
 import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
+import type { SoundType } from '../audio/cues';
 import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim/entity';
 import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { updateDeployables } from '../sim/systems/deployables';
@@ -55,23 +56,24 @@ import {
 import type { ExplosionParams, SimWorld } from '../sim/world';
 
 export interface BrawlSoundEvent {
-  type:
-    | 'scatter_shot'
-    | 'rapid_shot'
-    | 'heavy_punch'
-    | 'heavy_leap'
-    | 'rocket_launch'
-    | 'blade_throw'
-    | 'super_ready'
-    | 'super_blast'
-    | 'gem_pickup'
-    | 'cube_pickup'
-    | 'star_player'
-    | 'alarm'
-    | 'gadget_activate'
-    | 'band_aid'
-    | 'rapid_reload';
+  type: SoundType;
+  /** Where it happened, so a client can place it relative to the listener. */
+  x?: number;
+  y?: number;
+  /**
+   * The only player it is meant for. "Your Super is ready" is not news to
+   * everybody else, and a chime for a bot's Super is just noise.
+   */
+  to?: string;
 }
+
+/** Shortest time, in simulated seconds, between two reports of the same sound. */
+const SOUND_GAPS: Partial<Record<SoundType, number>> = {
+  hit: 0.06,
+  rapid_shot: 0.05,
+  explosion: 0.06,
+  rapid_reload: 0.1,
+};
 
 /** When the arena starts closing in Showdown. */
 const GAS_START_TIME = 55;
@@ -153,6 +155,32 @@ export class BrawlEngine {
   private botControllers: Record<string, BrawlBot> = {};
 
   public onSoundTriggered?: (event: BrawlSoundEvent) => void;
+
+  /** `simClock` when each kind of sound last went out. */
+  private soundSentAt: Record<string, number> = {};
+
+  /**
+   * Reports a sound, rationed.
+   *
+   * A hit lands every few ticks in a fight, and every report is a message to
+   * every client. Beyond a point they are inaudible as separate sounds anyway —
+   * the audio side refuses to restart one inside its cooldown — so the cut is
+   * made here, before they cost bandwidth.
+   */
+  private emitSound(type: SoundType, x?: number, y?: number, to?: string) {
+    if (!this.onSoundTriggered) return;
+    const key = to ? type + ':' + to : type;
+    const gap = SOUND_GAPS[type] ?? 0.03;
+    const last = this.soundSentAt[key];
+    if (last !== undefined && this.simClock - last < gap) return;
+    this.soundSentAt[key] = this.simClock;
+    this.onSoundTriggered({
+      type,
+      x: x === undefined ? undefined : Math.round(x),
+      y: y === undefined ? undefined : Math.round(y),
+      to,
+    });
+  }
 
   private nextEntityId: number = 1;
   /** Seconds of simulated time since the engine was made. */
@@ -259,7 +287,7 @@ export class BrawlEngine {
         this.damageBrawler(target, amount, sourceId, showNumber),
       explode: params => this.explode(params),
       isHostile: (team, other) => this.isHostile(team, other),
-      sound: type => this.onSoundTriggered?.({ type }),
+      sound: (type, x, y) => this.emitSound(type, x, y),
       vfx: (type, x, y, radius, color, duration, angle, intensity) =>
         this.addEffect(type, x, y, radius, color, duration, angle, intensity),
       banner: (text, x, y, color) => this.addFloatingNumber(text, x, y, color),
@@ -481,6 +509,7 @@ export class BrawlEngine {
               immunity: rules.respawnImmunity,
               superRetention: rules.superRetention,
             });
+            this.emitSound('respawn', b.x, b.y);
             this.addEffect('smoke_poof', b.x, b.y, 56, '#38bdf8', 0.45);
             this.addFloatingNumber('GERİ DÖNDÜ', b.x, b.y - 30, '#38bdf8');
           }
@@ -728,7 +757,8 @@ export class BrawlEngine {
       const wasSuperReady = this.prevSuperReadyState[b.id] || false;
       const isSuperReady = b.superCharge >= 100;
       if (isSuperReady && !wasSuperReady) {
-        this.onSoundTriggered?.({ type: 'super_ready' });
+        // Only for the person whose Super it is, and never for a bot's.
+        if (!b.isBot) this.emitSound('super_ready', b.x, b.y, b.id);
       }
       this.prevSuperReadyState[b.id] = isSuperReady;
 
@@ -739,7 +769,7 @@ export class BrawlEngine {
       if (input.gadget && b.gadgetCharges > 0 && b.gadgetCooldown <= 0) {
         b.gadgetCharges--;
         b.gadgetCooldown = GADGET_COOLDOWN;
-        this.onSoundTriggered?.({ type: 'gadget_activate' });
+        this.emitSound('gadget_activate', b.x, b.y);
         executeAbility(this.contextFor(b, input, false), kit.gadget);
       }
 
@@ -783,6 +813,7 @@ export class BrawlEngine {
    */
   private explode(params: ExplosionParams) {
     const { x, y, ownerId, team, damage, radius } = params;
+    this.emitSound('explosion', x, y);
 
     for (const b of this.brawlers) {
       if (!b.isAlive || b.isJumping) continue;
@@ -1319,6 +1350,7 @@ export class BrawlEngine {
 
     b.hp -= through;
     b.timeSinceLastDamage = 0;
+    this.emitSound('hit', b.x, b.y);
 
     // Where it came from, for the edge-of-screen marker. Gas and burning have
     // no direction, and an angle of zero already means "from the east", so
@@ -1344,6 +1376,12 @@ export class BrawlEngine {
       b.pendingBurst = null;
       b.isJumping = false;
       b.deaths++;
+      this.emitSound('death', b.x, b.y);
+      // The satisfaction of a kill is the killer's alone, and a bot does not
+      // need telling.
+      if (source && !source.isBot && source.id !== b.id) {
+        this.emitSound('kill', undefined, undefined, source.id);
+      }
 
       if (source) source.kills++;
       const killer = source;
@@ -1414,7 +1452,7 @@ export class BrawlEngine {
         y: this.gemMine.y + Math.sin(ang) * r,
         radius: 12,
       });
-      this.onSoundTriggered?.({ type: 'gem_pickup' });
+      this.emitSound('gem_pickup', this.gemMine.x, this.gemMine.y);
     }
   }
 
@@ -1430,7 +1468,7 @@ export class BrawlEngine {
           b.hp = Math.min(b.maxHp, b.hp + 400);
           this.powerCubes.splice(i, 1);
           this.addFloatingNumber('+1 GÜÇ KÜPÜ', b.x, b.y - 25, '#22c55e');
-          this.onSoundTriggered?.({ type: 'cube_pickup' });
+          this.emitSound('cube_pickup', b.x, b.y);
           break;
         }
       }
@@ -1445,7 +1483,7 @@ export class BrawlEngine {
           b.gemsCarried++;
           this.gems.splice(i, 1);
           this.addFloatingNumber('+1 ELMAS', b.x, b.y - 25, '#c084fc');
-          this.onSoundTriggered?.({ type: 'gem_pickup' });
+          this.emitSound('gem_pickup', b.x, b.y);
           break;
         }
       }
@@ -1505,7 +1543,7 @@ export class BrawlEngine {
           this.winnerPlayerId = winner.id;
           this.starPlayerId = winner.id;
         }
-        this.onSoundTriggered?.({ type: 'star_player' });
+        this.emitSound('star_player');
       }
     } else {
       // Gem Grab Rules
@@ -1527,7 +1565,7 @@ export class BrawlEngine {
         if (this.countdownTeam !== winningTeam) {
           this.countdownTeam = winningTeam;
           this.countdownTimer = 15.0; // 15s Countdown begins!
-          this.onSoundTriggered?.({ type: 'alarm' });
+          this.emitSound('alarm');
         } else {
           this.countdownTimer -= dt;
           if (this.countdownTimer <= 0) {
@@ -1538,7 +1576,7 @@ export class BrawlEngine {
             const winningBrawlers = this.brawlers.filter(b => b.team === winningTeam && !b.isClone);
             winningBrawlers.sort((a, b) => (b.gemsCarried * 2 + b.kills) - (a.gemsCarried * 2 + a.kills));
             this.starPlayerId = winningBrawlers[0]?.id || null;
-            this.onSoundTriggered?.({ type: 'star_player' });
+            this.emitSound('star_player');
           }
         }
       } else {

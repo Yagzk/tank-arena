@@ -299,6 +299,9 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
     }
 
     case 'heal':
+      // A pulse that reaches other people is worth hearing; a single brawler's
+      // own regeneration, ticking every frame, is not.
+      if (action.target === 'allies') world.sound('heal_pulse', ctx.originX, ctx.originY);
       applyHeal(world, caster, {
         amount: action.amount * ctx.scale,
         radius: action.target === 'allies' ? (action.radius ?? 200) : undefined,
@@ -309,6 +312,7 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       break;
 
     case 'shield':
+      world.sound('shield_up', ctx.originX, ctx.originY);
       applyShield(
         world,
         caster,
@@ -437,7 +441,7 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       break;
 
     case 'sound':
-      world.sound(action.cue);
+      world.sound(action.cue, ctx.originX, ctx.originY);
       break;
   }
 }

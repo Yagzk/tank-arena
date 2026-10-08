@@ -77,7 +77,7 @@ export interface SimWorld {
   /** True when `a` may harm `b` under the current mode's friendly-fire rules. */
   isHostile(team: number, other: BrawlerEntity): boolean;
 
-  sound(type: BrawlSoundEvent['type']): void;
+  sound(type: BrawlSoundEvent['type'], x?: number, y?: number): void;
 
   vfx(
     type: VisualEffect['type'],

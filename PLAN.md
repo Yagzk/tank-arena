@@ -367,12 +367,21 @@ Her mod için: kurallar · kazanma koşulu · HUD · harita tipi · bot davranı
 - [x] Hasar yönü göstergesi — gaz/ateşte (yönü olmayan hasar) gösterilmez
 - [x] Vurulan bedenin beyaz parlaması
 
-## 6.2 Ses — **şu an en zayıf halka**
-- [ ] Her karaktere ayrı atış / isabet / süper sesi, katmanlı
-- [ ] Anons sesleri ("HESAPLAŞMA!", "BAŞLA!", "MAÇIN YILDIZI")
-- [ ] Lobi + mod başına müzik
-- [ ] Mesafeye göre ses seviyesi, stereo konumlandırma
-- [ ] Ses havuzu ve kısma (aynı ses üst üste binmesin)
+## 6.2 Ses
+- [x] Sesler **veri**: `audio/sounds.ts` tarif tablosu + tek çalıcı. 25 ses; vuruş,
+      ölüm, öldürme, canlanma, patlama, kalkan, iyileştirme, taret dahil
+- [x] Anons — tarayıcının Türkçe sesiyle ("Hesaplaşma!", "Başla!", "Zafer!");
+      Türkçe ses yoksa susar (İngilizce sesin Türkçe okuması yoktan kötü)
+- [x] Lobi + mod başına müzik — üretken, dosyasız (`audio/music.ts`)
+- [x] Mesafeye göre ses seviyesi + stereo konumlandırma; uzak çatışma da hâlâ duyulur
+- [x] Ses havuzu ve kısma — aynı ses tarifinin bekleme süresi, dolunca dokuyu önce
+      atan öncelik sistemi, çıkışta sınırlayıcı
+- [x] Kanal başına ses ayarı (genel/efekt/müzik/anons), kalıcı
+- [ ] Her karaktere özel atış/isabet/süper sesi (şu an ortak tarifler; yeni
+      karakterlerin hepsi mevcut seslerden birini kullanıyor)
+
+> "Süperin hazır" sesi her oyuncu için *herkese* çalıyordu (botlar dahil).
+> Olaylar artık kime ait olduğunu ve nerede olduğunu taşıyor.
 
 ## 6.3 Animasyon
 - [ ] Durum makinesi: idle / koşu / atak / hasar / ölüm / zafer

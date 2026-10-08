@@ -132,52 +132,36 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Audio trigger handler
+  // Browsers keep audio silent until the player has done something. The first
+  // click, key or touch unlocks it, and whatever music was waiting starts.
+  useEffect(() => {
+    const unlock = () => {
+      brawlAudio.unlock();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // The music is the room's: gentle in the lobby, and each mode has its own.
+  useEffect(() => {
+    brawlAudio.music(isInGame ? gameMode : 'lobby');
+    if (!isInGame) brawlAudio.clearListener();
+  }, [isInGame, gameMode]);
+
+  // Audio trigger handler. Which sound it is, where it happened and who it is
+  // for all come with the event; deciding how it sounds from here is the audio
+  // module's job, not this file's.
   const handleSoundEvent = useCallback((event: BrawlSoundEvent) => {
-    switch (event.type) {
-      case 'scatter_shot':
-        brawlAudio.playScatterShot();
-        break;
-      case 'rapid_shot':
-        brawlAudio.playRapidShot();
-        break;
-      case 'heavy_punch':
-        brawlAudio.playHeavyPunch();
-        break;
-      case 'heavy_leap':
-        brawlAudio.playHeavyLeap();
-        break;
-      case 'rocket_launch':
-        brawlAudio.playRocketLaunch();
-        break;
-      case 'blade_throw':
-        brawlAudio.playBladeThrow();
-        break;
-      case 'super_ready':
-        brawlAudio.playSuperReady();
-        break;
-      case 'super_blast':
-        brawlAudio.playSuperBlast();
-        break;
-      case 'gem_pickup':
-        brawlAudio.playGemPickup();
-        break;
-      case 'cube_pickup':
-        brawlAudio.playPowerCubePickup();
-        break;
-      case 'star_player':
-        brawlAudio.playStarPlayer();
-        break;
-      case 'gadget_activate':
-        brawlAudio.playGadget();
-        break;
-      case 'band_aid':
-        brawlAudio.playBandAid();
-        break;
-      case 'rapid_reload':
-        brawlAudio.playReload();
-        break;
-    }
+    // A cue addressed to somebody else — their Super is ready, their kill — is
+    // not for this player to hear.
+    if (event.to && event.to !== myPlayerIdRef.current) return;
+    brawlAudio.play(event);
   }, []);
 
   /**

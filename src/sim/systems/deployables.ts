@@ -79,6 +79,7 @@ function act(
   if (!d.actionKey) return;
   const actions = getActions(d.actionKey);
   if (!actions) return;
+  if (d.kind === 'turret') world.sound('turret_shot', d.x, d.y);
   runActions(contextFor(world, d, owner, aimAngle, targetX, targetY), actions);
 }
 
