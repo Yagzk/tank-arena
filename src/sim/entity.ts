@@ -84,6 +84,10 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     isBot: opts.isBot,
     kills: 0,
     deaths: 0,
+    charge: 0,
+    comboIndex: 0,
+    comboTimer: 0,
+    reflectTimer: 0,
     bounty: 1,
     pendingBurst: null,
     gadgetCharges: 3,
@@ -154,6 +158,10 @@ export function respawnBrawler(
   b.rootTimer = 0;
   b.revealTimer = 0;
   b.phaseTimer = 0;
+  b.reflectTimer = 0;
+  b.charge = 0;
+  b.comboIndex = 0;
+  b.comboTimer = 0;
 
   b.timeSinceLastDamage = 0;
   b.timeSinceLastAttack = 99;

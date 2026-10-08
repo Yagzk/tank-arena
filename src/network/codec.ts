@@ -24,6 +24,7 @@
 
 import type {
   BrawlerEntity,
+  DeployedEntity,
   BrawlProjectile,
   BrawlSnapshot,
   BrawlWall,
@@ -55,6 +56,9 @@ const SKIP: ReadonlySet<string> = new Set([
   'burnDamagePerSec',
   'attackCooldown',
   'decoyLifetime',
+  // Only the simulation reads which hit of a combo is next.
+  'comboIndex',
+  'comboTimer',
 ]);
 
 /**
@@ -88,6 +92,8 @@ const SCALE: Readonly<Record<string, number>> = {
   rootTimer: 100,
   phaseTimer: 100,
   revealTimer: 100,
+  reflectTimer: 100,
+  charge: 100,
   respawnTimer: 100,
   burnTimer: 100,
   gadgetCooldown: 100,
@@ -265,6 +271,49 @@ export function decodeEffect(t: unknown[], index: number): VisualEffect {
   };
 }
 
+/**
+ * Deployables as tuples. A Super that leaves six mines and five wall blocks on
+ * the field used to be eleven full objects in every packet; the client reads
+ * nine of their nineteen fields, and all of the rest is the simulation's.
+ */
+export function encodeDeployable(d: DeployedEntity): unknown[] {
+  return [
+    d.id,
+    d.kind,
+    d.brawlerId,
+    d.team,
+    Math.round(d.x * 10),
+    Math.round(d.y * 10),
+    Math.round(d.angle * 100),
+    Math.round(d.radius),
+    Math.round(d.hp),
+    Math.round(d.maxHp),
+    Math.round(d.range),
+    d.behaviour,
+  ];
+}
+
+export function decodeDeployable(t: unknown[]): DeployedEntity {
+  return {
+    id: t[0] as string,
+    ownerId: '',
+    kind: t[1] as DeployedEntity['kind'],
+    brawlerId: t[2] as DeployedEntity['brawlerId'],
+    team: t[3] as number,
+    x: (t[4] as number) / 10,
+    y: (t[5] as number) / 10,
+    angle: (t[6] as number) / 100,
+    radius: t[7] as number,
+    hp: t[8] as number,
+    maxHp: t[9] as number,
+    range: t[10] as number,
+    behaviour: t[11] as DeployedEntity['behaviour'],
+    lifetime: 0,
+    actTimer: 0,
+    interval: 0,
+  } as DeployedEntity;
+}
+
 export function encodeFloating(f: FloatingNumber): unknown[] {
   return [f.text, Math.round(f.x), Math.round(f.y), f.color, Math.round(f.alpha * 100)];
 }
@@ -288,12 +337,13 @@ export function decodeFloating(t: unknown[], index: number): FloatingNumber {
 /** A snapshot as it travels. Static geometry is present only when it changed. */
 export type NetSnapshot = Omit<
   BrawlSnapshot,
-  'brawlers' | 'projectiles' | 'visualEffects' | 'floatingNumbers' | 'walls' | 'bushes'
+  'brawlers' | 'projectiles' | 'visualEffects' | 'floatingNumbers' | 'walls' | 'bushes' | 'deployables'
 > & {
   b: unknown[][];
   pr: unknown[][];
   fx: unknown[][];
   fn: unknown[][];
+  dp: unknown[][];
   /** Present on a keyframe or when a wall or bush has been destroyed. */
   statics?: { walls: BrawlWall[]; bushes: Bush[] };
 };
@@ -320,7 +370,7 @@ export class SnapshotEncoder {
   }
 
   public encode(snap: BrawlSnapshot, nowMs: number): NetSnapshot {
-    const { brawlers, projectiles, visualEffects, floatingNumbers, walls, bushes, ...rest } = snap;
+    const { brawlers, projectiles, visualEffects, floatingNumbers, walls, bushes, deployables, ...rest } = snap;
 
     const key = walls.length * 100000 + bushes.length;
     const sendStatics = key !== this.lastKey || nowMs - this.lastKeyframeAt >= KEYFRAME_MS;
@@ -339,6 +389,7 @@ export class SnapshotEncoder {
       pr: projectiles.map(encodeProjectile),
       fx: effects.slice(fxStart).map(encodeEffect),
       fn: floatingNumbers.slice(fnStart).map(encodeFloating),
+      dp: (deployables ?? []).map(encodeDeployable),
     };
     if (sendStatics) net.statics = { walls, bushes };
     return net;
@@ -356,7 +407,7 @@ export class SnapshotDecoder {
   }
 
   public decode(net: NetSnapshot): BrawlSnapshot {
-    const { b, pr, fx, fn, statics, ...rest } = net;
+    const { b, pr, fx, fn, dp, statics, ...rest } = net;
     if (statics) {
       this.walls = statics.walls;
       this.bushes = statics.bushes;
@@ -367,6 +418,7 @@ export class SnapshotDecoder {
       projectiles: pr.map(decodeProjectile),
       visualEffects: fx.map(decodeEffect),
       floatingNumbers: fn.map(decodeFloating),
+      deployables: (dp ?? []).map(decodeDeployable),
       walls: this.walls,
       bushes: this.bushes,
     };

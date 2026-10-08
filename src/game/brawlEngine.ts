@@ -356,10 +356,12 @@ export class BrawlEngine {
   private contextFor(
     b: BrawlerEntity,
     input: BrawlPlayerInput,
-    isSuper: boolean
+    isSuper: boolean,
+    scale = 1
   ): AbilityContext {
     const reach = isSuper ? SUPER_DEFAULT_REACH : BRAWLERS[b.brawlerId].range;
     return makeContext(this.world, b, {
+      scale,
       aimAngle: input.aimAngle,
       targetX: input.superTargetX ?? b.x + Math.cos(input.aimAngle) * reach,
       targetY: input.superTargetY ?? b.y + Math.sin(input.aimAngle) * reach,
@@ -651,6 +653,12 @@ export class BrawlEngine {
 
       if (b.attackCooldown > 0) b.attackCooldown -= dt;
 
+      // A patient attack builds up while nothing is being fired.
+      const chargeTrait = kit.traits?.charge;
+      if (chargeTrait && b.ammo >= 1 && !b.pendingBurst) {
+        b.charge = Math.min(1, b.charge + dt / chargeTrait.time);
+      }
+
       // Natural Health Regeneration (+13% HP/sec after 3s out of combat)
       b.timeSinceLastDamage += dt;
       b.timeSinceLastAttack += dt;
@@ -917,7 +925,19 @@ export class BrawlEngine {
           input.aimAngle,
           0.45
         );
-        executeAbility(this.contextFor(b, input, false), kit.attack);
+        // Whatever the kit does to vary an attack: how charged it is, and
+        // which hit of a combo this is.
+        const charge = kit.traits?.charge;
+        const scale = charge ? charge.minScale + (charge.maxScale - charge.minScale) * b.charge : 1;
+        b.charge = 0;
+        let spec = kit.attack;
+        if (kit.combo) {
+          if (b.comboTimer <= 0) b.comboIndex = 0;
+          spec = kit.combo[b.comboIndex % kit.combo.length];
+          b.comboIndex++;
+          b.comboTimer = kit.comboWindow ?? 1;
+        }
+        executeAbility(this.contextFor(b, input, false, scale), spec);
       }
     }
   }
@@ -1137,7 +1157,8 @@ export class BrawlEngine {
         const d = this.deployables[i];
         // Your own turret does not eat your bullets, and a barrier only stops
         // the team it was not placed by.
-        if (!this.isHostileTeam(p.team, d.team)) continue;
+        // A built wall stops everybody's shots; the rest only deal with enemies.
+        if (d.kind !== 'wall' && !this.isHostileTeam(p.team, d.team)) continue;
         if (p.hitIds && p.hitIds.indexOf(d.id) !== -1) continue;
 
         sweepCircleVsCircle(p.x, p.y, p.radius, stepX, stepY, d.x, d.y, d.radius, this.sweep);
@@ -1232,7 +1253,7 @@ export class BrawlEngine {
         const d = hitDeployable;
         // A barrier soaks the shot without taking damage — that is what makes
         // it cover rather than a target.
-        if (d.behaviour !== 'blocker') {
+        if (d.behaviour !== 'blocker' && this.isHostileTeam(p.team, d.team)) {
           d.hp -= p.damage;
           this.addFloatingNumber(`-${p.damage}`, d.x, d.y - 18, '#fbbf24');
         }
@@ -1246,6 +1267,18 @@ export class BrawlEngine {
           p.x += stepX * (1 - bestT);
           p.y += stepY * (1 - bestT);
         }
+        continue;
+      }
+
+      if (hitKind === 'brawler' && hitTarget && hitTarget.reflectTimer > 0) {
+        // Sent back where it came from, as the reflector's own.
+        p.vx = -p.vx;
+        p.vy = -p.vy;
+        p.ownerId = hitTarget.id;
+        p.team = hitTarget.team;
+        p.traveled = 0;
+        p.hitIds = [];
+        this.addEffect('hit_spark', hitX, hitY, 24, '#e0f2fe', 0.2, Math.atan2(p.vy, p.vx), 0.7);
         continue;
       }
 
@@ -1365,7 +1398,18 @@ export class BrawlEngine {
     }
     for (const box of this.boxes) pushOutOfRect(b, radius, box, horizontal);
     for (const safe of this.safes) pushOutOfRect(b, radius, safe, horizontal);
+    for (const d of this.deployables) {
+      if (d.kind !== 'wall') continue;
+      const r = this.wallScratch;
+      r.x = d.x - d.radius;
+      r.y = d.y - d.radius;
+      r.w = d.radius * 2;
+      r.h = d.radius * 2;
+      pushOutOfRect(b, radius, r, horizontal);
+    }
   }
+
+  private wallScratch = { x: 0, y: 0, w: 0, h: 0 };
 
   /**
    * Rebuilds the bot navigation grid when the level changes shape. Walls

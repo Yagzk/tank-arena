@@ -52,7 +52,9 @@ export type StatusKind =
   /** Cannot move, can still shoot. */
   | 'root'
   /** Visible to enemies even inside a bush. */
-  | 'reveal';
+  | 'reveal'
+  /** Enemy shots that touch this body are sent back at their owner. */
+  | 'reflect';
 
 export interface StatusSpec {
   kind: StatusKind;
@@ -168,6 +170,8 @@ export type AbilityAction =
       burn?: { duration: number; damagePerSec: number };
       /** Applied to every body the blast catches. */
       statuses?: StatusSpec[];
+      /** Fraction of the damage dealt that the caster takes back as health. */
+      lifesteal?: number;
     }
   | { type: 'hazard'; at: Anchor; anchorOffset?: number; hazard: HazardSpec }
   | {
@@ -179,6 +183,21 @@ export type AbilityAction =
     }
   | { type: 'heal'; target: 'self' | 'allies'; amount: number; radius?: number }
   | { type: 'shield'; target: 'self' | 'allies'; amount: number; duration: number; radius?: number }
+  /**
+   * A bolt that jumps: it strikes the nearest enemy in `range`, then the
+   * nearest *other* enemy within `hopRange` of that one, and so on.
+   */
+  | {
+      type: 'chain';
+      range: number;
+      hops: number;
+      hopRange: number;
+      damage: DamageSpec;
+      /** Each hop deals this fraction of the one before. One means no falloff. */
+      falloff?: number;
+      statuses?: StatusSpec[];
+      color?: string;
+    }
   | { type: 'ammo'; amount: number }
   | { type: 'superCharge'; percent: number }
   /** A short burst of speed along the aim angle. */
@@ -231,7 +250,7 @@ export type AbilityAction =
   | {
       type: 'summon';
       /** `decoy` is a dummy body; everything else acts on its own. */
-      kind: 'decoy' | 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier';
+      kind: 'decoy' | 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier' | 'wall';
       lifetime: number;
       /** Where it goes: ahead of the caster by default, or on the aimed point. */
       at?: Anchor;
@@ -246,6 +265,11 @@ export type AbilityAction =
       speed?: number;
       /** What it does each time it acts — fires, detonates, heals. */
       onAct?: AbilityAction[];
+      /**
+       * Places several side by side, across the aim direction and centred on
+       * the anchor. A wall that is one block is a pillar; this makes it a wall.
+       */
+      row?: { count: number; spacing: number };
     }
   | {
       type: 'vfx';
@@ -296,6 +320,12 @@ export interface KitTraits {
    * per full health bar lost. This is what makes a tank's Super inevitable.
    */
   superChargeFromDamageTaken?: number;
+  /**
+   * A patient attack: the longer it has been since the last shot, the harder
+   * the next one hits. `time` is seconds to full charge; the scale runs from
+   * `minScale` straight after a shot to `maxScale` when fully charged.
+   */
+  charge?: { time: number; minScale: number; maxScale: number };
 }
 
 /**
@@ -330,6 +360,13 @@ export interface Kit {
   /** Ammo slots. Three is common but not universal. */
   maxAmmo: number;
   attack: AbilitySpec;
+  /**
+   * A chain of attacks that replaces `attack`: the first shot uses the first
+   * entry, the next (within `comboWindow` seconds) the second, and so on, then
+   * round again. The last one is usually the big one.
+   */
+  combo?: AbilitySpec[];
+  comboWindow?: number;
   super: AbilitySpec;
   gadget: AbilitySpec;
   passives?: PassiveSpec[];

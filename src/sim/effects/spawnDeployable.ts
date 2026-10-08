@@ -17,6 +17,7 @@ const BEHAVIOUR: Record<DeployedKind, DeployedEntity['behaviour']> = {
   mine: 'proximity',
   healStation: 'aura',
   barrier: 'blocker',
+  wall: 'solid',
 };
 
 /** Sensible bodies, so a kit only states what is distinctive about its own. */
@@ -26,6 +27,7 @@ const DEFAULT_RADIUS: Record<DeployedKind, number> = {
   mine: 13,
   healStation: 22,
   barrier: 30,
+  wall: 30,
 };
 
 export interface SpawnDeployableParams {

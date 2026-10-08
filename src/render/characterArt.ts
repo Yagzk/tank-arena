@@ -44,7 +44,31 @@ export type WeaponKind =
   /** A hooked chain, coiled in one hand. */
   | 'hook'
   /** A crystal staff. */
-  | 'frost';
+  | 'frost'
+  /** A lantern on a pole, held out ahead. */
+  | 'lantern'
+  /** A round shield on the forearm and a short baton. */
+  | 'buckler'
+  /** A staff that ends in a bulb with two leaves. */
+  | 'sprout'
+  /** A censer swung on a short chain. */
+  | 'censer'
+  /** A long rifle with a scope, held two-handed. */
+  | 'rifle'
+  /** A long-hafted axe with a crescent blade. */
+  | 'axe'
+  /** Two crescent throwing blades, held low. */
+  | 'boomerang'
+  /** Two long knives in reverse grip. */
+  | 'knives'
+  /** A round bomb with a clock face and a lit fuse. */
+  | 'bomb'
+  /** A medical case with a cross, and a syringe. */
+  | 'medkit'
+  /** A bundle of sticks with a burning fuse. */
+  | 'dynamite'
+  /** A horseshoe magnet held forward. */
+  | 'magnet';
 
 export type Headgear =
   | 'hood'
@@ -821,6 +845,260 @@ function drawArmsAndWeapon(
       ctx.beginPath();
       ctx.roundRect(s * 0.4, -s * 0.2, s * 0.2, s * 0.4, s * 0.06);
       fillStroke(ctx, style.accent, outline * 1.6);
+      ctx.restore();
+      break;
+    }
+
+    case 'lantern': {
+      arm(-1, reach * 0.55, shoulderY * 0.7);
+      arm(1, reach * 0.4, shoulderY * 1.0);
+      ctx.save();
+      ctx.translate(reach * 0.5, -shoulderY * 0.7);
+      ctx.beginPath();
+      ctx.roundRect(0, -s * 0.03, s * 0.58, s * 0.06, s * 0.03);
+      fillStroke(ctx, style.secondary, outline * 1.2);
+      ctx.beginPath();
+      ctx.roundRect(s * 0.5, -s * 0.13, s * 0.22, s * 0.26, s * 0.06);
+      fillStroke(ctx, style.accent, outline * 1.5);
+      ellipsePath(ctx, s * 0.61, 0, s * 0.05, s * 0.07);
+      ctx.fillStyle = '#fff7d6';
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+
+    case 'buckler': {
+      arm(-1, reach * 0.62, shoulderY * 1.05);
+      arm(1, reach * 0.48, shoulderY * 0.9);
+      ctx.save();
+      ctx.translate(reach * 0.62, -shoulderY * 1.05);
+      ellipsePath(ctx, 0, 0, s * 0.3, s * 0.3);
+      fillStroke(ctx, style.secondary, outline * 1.8);
+      ellipsePath(ctx, 0, 0, s * 0.2, s * 0.2);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ellipsePath(ctx, 0, 0, s * 0.07, s * 0.07);
+      fillStroke(ctx, style.primary, outline);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(reach * 0.48, shoulderY * 0.9);
+      ctx.beginPath();
+      ctx.roundRect(0, -s * 0.045, s * 0.4, s * 0.09, s * 0.04);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ctx.restore();
+      break;
+    }
+
+    case 'sprout': {
+      arm(-1, reach * 0.5, shoulderY * 0.7);
+      arm(1, reach * 0.68, shoulderY * 0.6);
+      ctx.save();
+      ctx.translate(reach * 0.6, 0);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.1, -s * 0.035, s * 0.6, s * 0.07, s * 0.03);
+      fillStroke(ctx, style.secondary, outline * 1.3);
+      ellipsePath(ctx, s * 0.54, 0, s * 0.14, s * 0.14);
+      fillStroke(ctx, style.accent, outline * 1.5);
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.translate(s * 0.58, 0);
+        ctx.rotate(side * 0.7);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(s * 0.12, side * s * 0.1, s * 0.3, 0);
+        ctx.quadraticCurveTo(s * 0.12, -side * s * 0.02, 0, 0);
+        ctx.closePath();
+        fillStroke(ctx, style.hair, outline * 1.1);
+        ctx.restore();
+      }
+      ctx.restore();
+      break;
+    }
+
+    case 'censer': {
+      arm(-1, reach * 0.6, shoulderY * 0.9);
+      arm(1, reach * 0.3, shoulderY * 1.1);
+      ctx.save();
+      ctx.translate(reach * 0.6, -shoulderY * 0.9);
+      ctx.lineWidth = outline * 1.4;
+      ctx.strokeStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(s * 0.28, s * 0.1);
+      ctx.stroke();
+      ctx.translate(s * 0.3, s * 0.11);
+      ellipsePath(ctx, 0, 0, s * 0.15, s * 0.15);
+      fillStroke(ctx, style.secondary, outline * 1.6);
+      ellipsePath(ctx, 0, 0, s * 0.07, s * 0.07);
+      ctx.fillStyle = style.accent;
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+
+    case 'rifle': {
+      arm(-1, reach * 0.9, shoulderY * 0.3);
+      arm(1, reach * 0.55, shoulderY * 0.5);
+      ctx.save();
+      ctx.translate(reach * 0.4, 0);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.1, -s * 0.06, s * 1.12, s * 0.12, s * 0.04);
+      fillStroke(ctx, style.secondary, outline * 1.5);
+      ctx.beginPath();
+      ctx.roundRect(s * 0.28, -s * 0.12, s * 0.3, s * 0.07, s * 0.03);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ctx.beginPath();
+      ctx.roundRect(s * 0.92, -s * 0.09, s * 0.12, s * 0.18, s * 0.03);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ctx.restore();
+      break;
+    }
+
+    case 'axe': {
+      arm(-1, reach * 0.55, shoulderY * 0.7);
+      arm(1, reach * 0.8, shoulderY * 0.55);
+      ctx.save();
+      ctx.translate(reach * 0.45, 0);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.1, -s * 0.04, s * 0.85, s * 0.08, s * 0.03);
+      fillStroke(ctx, style.secondary, outline * 1.4);
+      ctx.beginPath();
+      ctx.moveTo(s * 0.62, 0);
+      ctx.quadraticCurveTo(s * 0.7, -s * 0.34, s * 0.9, -s * 0.3);
+      ctx.quadraticCurveTo(s * 0.82, 0, s * 0.9, s * 0.3);
+      ctx.quadraticCurveTo(s * 0.7, s * 0.34, s * 0.62, 0);
+      ctx.closePath();
+      fillStroke(ctx, style.accent, outline * 1.6);
+      ctx.restore();
+      break;
+    }
+
+    case 'boomerang': {
+      for (const side of [-1, 1]) {
+        arm(side, reach * 0.62, shoulderY * 1.0);
+        ctx.save();
+        ctx.translate(reach * 0.62, side * shoulderY * 1.0);
+        ctx.rotate(side * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.2);
+        ctx.quadraticCurveTo(s * 0.34, -s * 0.06, s * 0.1, s * 0.22);
+        ctx.quadraticCurveTo(s * 0.14, 0, 0, -s * 0.2);
+        ctx.closePath();
+        fillStroke(ctx, style.accent, outline * 1.4);
+        ctx.restore();
+      }
+      break;
+    }
+
+    case 'knives': {
+      for (const side of [-1, 1]) {
+        arm(side, reach * 0.5, shoulderY * 0.85);
+        ctx.save();
+        ctx.translate(reach * 0.5, side * shoulderY * 0.85);
+        ctx.rotate(side * 0.1);
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.04, 0);
+        ctx.lineTo(s * 0.12, -s * 0.05);
+        ctx.lineTo(s * 0.56, 0);
+        ctx.lineTo(s * 0.12, s * 0.05);
+        ctx.closePath();
+        fillStroke(ctx, style.accent, outline * 1.2);
+        ctx.restore();
+      }
+      break;
+    }
+
+    case 'bomb': {
+      arm(1, reach * 0.62, shoulderY * 0.6);
+      arm(-1, reach * 0.3, shoulderY * 1.1);
+      ctx.save();
+      ctx.translate(reach * 0.72, shoulderY * 0.4);
+      ellipsePath(ctx, 0, 0, s * 0.2, s * 0.2);
+      fillStroke(ctx, style.secondary, outline * 1.7);
+      ellipsePath(ctx, 0, 0, s * 0.11, s * 0.11);
+      fillStroke(ctx, style.accent, outline);
+      ctx.lineWidth = outline;
+      ctx.strokeStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -s * 0.07);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(s * 0.05, s * 0.03);
+      ctx.stroke();
+      // The fuse, with a spark.
+      ctx.beginPath();
+      ctx.moveTo(s * 0.12, -s * 0.16);
+      ctx.quadraticCurveTo(s * 0.26, -s * 0.28, s * 0.3, -s * 0.2);
+      ctx.stroke();
+      ellipsePath(ctx, s * 0.3, -s * 0.2, s * 0.04, s * 0.04);
+      ctx.fillStyle = '#fde047';
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+
+    case 'medkit': {
+      arm(-1, reach * 0.5, shoulderY * 0.9);
+      arm(1, reach * 0.62, shoulderY * 0.8);
+      ctx.save();
+      ctx.translate(reach * 0.5, -shoulderY * 0.9);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.04, -s * 0.15, s * 0.34, s * 0.3, s * 0.05);
+      fillStroke(ctx, '#f8fafc', outline * 1.5);
+      ctx.fillStyle = style.accent;
+      ctx.fillRect(s * 0.1, -s * 0.09, s * 0.06, s * 0.18);
+      ctx.fillRect(s * 0.04, -s * 0.03, s * 0.18, s * 0.06);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(reach * 0.62, shoulderY * 0.8);
+      ctx.beginPath();
+      ctx.roundRect(0, -s * 0.035, s * 0.46, s * 0.07, s * 0.03);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ctx.restore();
+      break;
+    }
+
+    case 'dynamite': {
+      arm(1, reach * 0.62, shoulderY * 0.7);
+      arm(-1, reach * 0.45, shoulderY * 0.8);
+      ctx.save();
+      ctx.translate(reach * 0.66, shoulderY * 0.5);
+      for (const off of [-0.11, 0, 0.11]) {
+        ctx.beginPath();
+        ctx.roundRect(0, s * off - s * 0.045, s * 0.36, s * 0.09, s * 0.03);
+        fillStroke(ctx, style.accent, outline * 1.2);
+      }
+      ctx.lineWidth = outline;
+      ctx.strokeStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.moveTo(s * 0.36, 0);
+      ctx.quadraticCurveTo(s * 0.5, -s * 0.12, s * 0.58, -s * 0.04);
+      ctx.stroke();
+      ellipsePath(ctx, s * 0.58, -s * 0.04, s * 0.045, s * 0.045);
+      ctx.fillStyle = '#fde047';
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+
+    case 'magnet': {
+      arm(-1, reach * 0.6, shoulderY * 0.7);
+      arm(1, reach * 0.6, shoulderY * 0.7);
+      ctx.save();
+      ctx.translate(reach * 0.62, 0);
+      ctx.lineWidth = s * 0.12;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.2, Math.PI * 0.6, Math.PI * 1.4, true);
+      ctx.stroke();
+      ctx.lineWidth = s * 0.08;
+      ctx.strokeStyle = style.accent;
+      ctx.stroke();
+      // The two poles.
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = side === 1 ? '#ef4444' : '#e2e8f0';
+        ctx.fillRect(s * 0.18, side * s * 0.19 - s * 0.05, s * 0.14, s * 0.1);
+      }
       ctx.restore();
       break;
     }

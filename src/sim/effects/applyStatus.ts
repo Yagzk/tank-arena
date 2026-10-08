@@ -68,6 +68,10 @@ export function applyStatus(target: BrawlerEntity, s: StatusSpec): void {
     case 'reveal':
       target.revealTimer = extend(target.revealTimer, s.duration);
       break;
+
+    case 'reflect':
+      target.reflectTimer = extend(target.reflectTimer, s.duration);
+      break;
   }
 }
 
@@ -89,6 +93,8 @@ export function tickStatuses(b: BrawlerEntity, dt: number): void {
   if (b.silenceTimer > 0) b.silenceTimer -= dt;
   if (b.rootTimer > 0) b.rootTimer -= dt;
   if (b.revealTimer > 0) b.revealTimer -= dt;
+  if (b.reflectTimer > 0) b.reflectTimer -= dt;
+  if (b.comboTimer > 0) b.comboTimer -= dt;
   if (b.phaseTimer > 0) b.phaseTimer -= dt;
   if (b.shieldTimer > 0) {
     b.shieldTimer -= dt;

@@ -8,6 +8,7 @@ import {
   DeployedEntity,
 } from '../types/brawl';
 import { isTeamMode } from '../game/modes';
+import { getKit } from '../sim/kits';
 import { MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import {
   drawCharacter,
@@ -1211,6 +1212,27 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('✚', 0, -20 * p);
+      } else if (fx.type === 'beam') {
+        // A line that was a bolt a moment ago: bright, then thinning out.
+        const p = fx.progress || 0;
+        ctx.rotate(fx.angle ?? 0);
+        ctx.shadowColor = fx.color;
+        ctx.shadowBlur = 16;
+        ctx.strokeStyle = fx.color;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 9 * (1 - p) + 2;
+        ctx.globalAlpha = 1 - p * 0.6;
+        // A little crackle in the middle, so it reads as lightning, not a ruler.
+        const mid = fx.radius / 2;
+        const jag = (Math.sin(fx.x * 0.31 + fx.y * 0.17 + p * 30)) * 9;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(mid, jag);
+        ctx.lineTo(fx.radius, 0);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3 * (1 - p) + 1;
+        ctx.stroke();
       } else if (fx.type === 'dash') {
         // Dash Dust Streaks
         const p = fx.progress || 0;
@@ -1506,6 +1528,37 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     //    height, which is what reads as "airborne" from directly above.
     drawCharacterShadow(ctx, 54, -elevateY);
 
+    // A patient attack builds up where it can be seen: a ring that fills.
+    const chargeTrait = getKit(b.brawlerId).traits?.charge;
+    if (chargeTrait && b.charge > 0.02) {
+      ctx.save();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 36, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = b.charge >= 1 ? '#fde047' : BRAWLERS[b.brawlerId].color;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = b.charge >= 1 ? 14 : 0;
+      ctx.beginPath();
+      ctx.arc(0, 0, 36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * b.charge);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // A reflecting body wears a pane of light that shots bounce off.
+    if (b.reflectTimer > 0) {
+      ctx.save();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(224, 242, 254, ' + (0.55 + 0.35 * Math.sin(performance.now() * 0.02)) + ')';
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.16)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 44, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // 2. Super Charged Aura (Signature Nova Arena Glowing Yellow Ring at feet)
     if (b.superCharge >= 100) {
       ctx.save();
@@ -1745,6 +1798,24 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     const angle = Math.atan2(p.vy, p.vx);
     ctx.rotate(angle);
+
+    // Anything this fast is a beam: a bright streak, not a bullet.
+    if (Math.hypot(p.vx, p.vy) > 2400) {
+      const half = Math.max(3, p.radius);
+      const len = 260;
+      const g = ctx.createLinearGradient(-len, 0, 24, 0);
+      g.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      g.addColorStop(0.7, p.color);
+      g.addColorStop(1, '#ffffff');
+      ctx.fillStyle = g;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 18;
+      ctx.fillRect(-len, -half, len + 24, half * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-len * 0.5, -half * 0.35, len * 0.5 + 24, half * 0.7);
+      ctx.restore();
+      return;
+    }
 
     if (p.brawlerId === 'fuse') {
       // Brock Guided Rocket with Flame Exhaust
@@ -2075,7 +2146,38 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.lineWidth = 3;
     ctx.strokeStyle = '#15161f';
 
-    if (d.kind === 'turret') {
+    if (d.kind === 'wall') {
+      // A square slab that shows its wear: lighter cracks as it takes hits.
+      const wear = 1 - Math.max(0, d.hp) / Math.max(1, d.maxHp);
+      ctx.beginPath();
+      ctx.roundRect(-r, -r, r * 2, r * 2, r * 0.18);
+      ctx.fillStyle = style.secondary;
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.roundRect(-r * 0.78, -r * 0.78, r * 1.56, r * 1.56, r * 0.12);
+      ctx.fillStyle = style.primary;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Leaf-like ridges in the accent colour.
+      ctx.strokeStyle = style.accent;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.5, r * 0.4);
+      ctx.lineTo(0, -r * 0.45);
+      ctx.lineTo(r * 0.5, r * 0.4);
+      ctx.stroke();
+      if (wear > 0.35) {
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.7, -r * 0.2);
+        ctx.lineTo(-r * 0.1, r * 0.1);
+        ctx.lineTo(-r * 0.3, r * 0.65);
+        ctx.stroke();
+      }
+    } else if (d.kind === 'turret') {
       // Hexagonal base and a barrel that follows whatever it is tracking.
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {

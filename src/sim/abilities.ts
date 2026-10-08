@@ -178,6 +178,23 @@ function nearestHostile(
   return best;
 }
 
+/**
+ * After the caster has been moved, whatever follows in the same list happens
+ * where they now are. `self` is resolved from the context, which was built
+ * before the move, so without this a teleport followed by a blast went off at
+ * the place the caster had just left.
+ */
+function followBody(ctx: AbilityContext, fromX: number, fromY: number): void {
+  if (ctx.originX === fromX && ctx.originY === fromY) {
+    ctx.originX = ctx.caster.x;
+    ctx.originY = ctx.caster.y;
+  }
+  if (ctx.hereX === fromX && ctx.hereY === fromY) {
+    ctx.hereX = ctx.caster.x;
+    ctx.hereY = ctx.caster.y;
+  }
+}
+
 export function runActions(ctx: AbilityContext, actions: AbilityAction[]): void {
   for (let i = 0; i < actions.length; i++) runAction(ctx, actions[i]);
 }
@@ -266,6 +283,27 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         }
       }
 
+      if (action.lifesteal) {
+        // Counted before the blast lands, from who it will reach: the heal is a
+        // share of what the caster is about to deal, body by body.
+        const reach = action.radius + 22;
+        const damage = resolveDamage(action.damage, ctx);
+        let dealt = 0;
+        for (const other of world.brawlers) {
+          if (other.id === caster.id || !other.isAlive || other.isJumping) continue;
+          if (!world.isHostile(caster.team, other)) continue;
+          if (Math.hypot(other.x - ex, other.y - ey) <= reach) dealt += damage;
+        }
+        if (dealt > 0) {
+          applyHeal(world, caster, {
+            amount: dealt * action.lifesteal,
+            showNumber: true,
+            originX: caster.x,
+            originY: caster.y,
+          });
+        }
+      }
+
       world.explode({
         x: ex,
         y: ey,
@@ -278,6 +316,42 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         burn: action.burn,
         excludeId: ctx.excludeId,
       });
+      break;
+    }
+
+    case 'chain': {
+      const hit = new Set<string>([caster.id]);
+      let fromX = ctx.originX;
+      let fromY = ctx.originY;
+      let reach = action.range;
+      let damage = resolveDamage(action.damage, ctx);
+      const color = action.color ?? '#facc15';
+
+      for (let hop = 0; hop < action.hops; hop++) {
+        let best: BrawlerEntity | null = null;
+        let bestDist = reach;
+        for (const other of world.brawlers) {
+          if (hit.has(other.id) || !other.isAlive || other.isJumping) continue;
+          if (!world.isHostile(caster.team, other)) continue;
+          const d = Math.hypot(other.x - fromX, other.y - fromY);
+          if (d < bestDist) {
+            bestDist = d;
+            best = other;
+          }
+        }
+        if (!best) break;
+
+        hit.add(best.id);
+        const angle = Math.atan2(best.y - fromY, best.x - fromX);
+        world.vfx('beam', fromX, fromY, bestDist, color, 0.22, angle, 0.8);
+        applyDamage(world, { target: best, amount: damage, sourceId: caster.id });
+        applyStatuses(best, action.statuses);
+
+        fromX = best.x;
+        fromY = best.y;
+        reach = action.hopRange;
+        damage *= action.falloff ?? 1;
+      }
       break;
     }
 
@@ -413,13 +487,19 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         const target = nearestHostile(world, caster, action.behindNearestEnemy);
         if (target) {
           const behind = Math.atan2(caster.y - target.y, caster.x - target.x) + Math.PI;
+          const fromX = caster.x;
+          const fromY = caster.y;
           teleport(caster, target.x + Math.cos(behind) * 52, target.y + Math.sin(behind) * 52);
           caster.aimAngle = Math.atan2(target.y - caster.y, target.x - caster.x);
+          followBody(ctx, fromX, fromY);
         }
         break;
       }
       const offset = action.anchorOffset ?? 0;
+      const fromX = caster.x;
+      const fromY = caster.y;
       teleport(caster, anchorX(action.at, offset, ctx), anchorY(action.at, offset, ctx));
+      followBody(ctx, fromX, fromY);
       break;
     }
 
@@ -452,20 +532,30 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       }
       const offset = action.offset ?? 56;
       const at = action.at ?? 'aim';
-      spawnDeployable(world, {
-        owner: caster,
-        kind: action.kind,
-        x: anchorX(at, offset, ctx),
-        y: anchorY(at, offset, ctx),
-        angle: ctx.aimAngle,
-        lifetime: action.lifetime,
-        hp: action.hp ?? 1000,
-        radius: action.radius,
-        interval: action.interval,
-        range: action.range,
-        speed: action.speed,
-        actionKey: keyFor(action),
-      });
+      const baseX = anchorX(at, offset, ctx);
+      const baseY = anchorY(at, offset, ctx);
+      const count = action.row ? action.row.count : 1;
+      const spacing = action.row ? action.row.spacing : 0;
+      // Across the aim direction, centred on the anchor.
+      const across = ctx.aimAngle + Math.PI / 2;
+
+      for (let i = 0; i < count; i++) {
+        const along = (i - (count - 1) / 2) * spacing;
+        spawnDeployable(world, {
+          owner: caster,
+          kind: action.kind,
+          x: baseX + Math.cos(across) * along,
+          y: baseY + Math.sin(across) * along,
+          angle: ctx.aimAngle,
+          lifetime: action.lifetime,
+          hp: action.hp ?? 1000,
+          radius: action.radius,
+          interval: action.interval,
+          range: action.range,
+          speed: action.speed,
+          actionKey: keyFor(action),
+        });
+      }
       break;
     }
 

@@ -109,6 +109,9 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
       if (action.statuses) {
         action.statuses.forEach((s, i) => checkStatus(p, path + '.statuses[' + i + ']', s));
       }
+      if (action.lifesteal !== undefined && !(action.lifesteal > 0 && action.lifesteal <= 2)) {
+        p.at(path, 'lifesteal is a fraction of damage dealt, above 0 and at most 2');
+      }
       break;
 
     case 'pull':
@@ -187,7 +190,7 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
       if (!(action.lifetime > 0)) p.at(path, 'a summon needs a positive lifetime');
       if (action.kind !== 'decoy') {
         if (!(action.hp! > 0)) p.at(path, 'a deployable needs health, or it cannot be destroyed');
-        if (action.kind !== 'barrier') {
+        if (action.kind !== 'barrier' && action.kind !== 'wall') {
           if (!action.onAct || action.onAct.length === 0) {
             p.at(path, 'a ' + action.kind + ' with no onAct list would just sit there');
           }
@@ -199,6 +202,18 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
         }
       }
       if (action.onAct) checkActions(p, path + '.onAct', action.onAct, depth + 1);
+      break;
+
+    case 'chain':
+      if (!(action.range > 0)) p.at(path, 'a chain needs a positive range');
+      if (!(action.hops >= 1)) p.at(path, 'a chain needs at least one hop');
+      if (!(action.hopRange > 0)) p.at(path, 'a chain needs a positive hop range');
+      if (action.falloff !== undefined && !(action.falloff > 0 && action.falloff <= 1)) {
+        p.at(path, 'chain falloff is a fraction above 0 and up to 1');
+      }
+      if (action.statuses) {
+        action.statuses.forEach((s, i) => checkStatus(p, path + '.statuses[' + i + ']', s));
+      }
       break;
 
     case 'vfx':
@@ -262,6 +277,18 @@ export function validateKit(kit: Kit): string[] {
   }
   if (traits?.superChargeFromDamageTaken !== undefined && traits.superChargeFromDamageTaken < 0) {
     p.at('traits.superChargeFromDamageTaken', 'cannot be negative');
+  }
+  if (traits?.charge) {
+    const c = traits.charge;
+    if (!(c.time > 0)) p.at('traits.charge.time', 'must be positive');
+    if (!(c.minScale > 0 && c.maxScale >= c.minScale)) {
+      p.at('traits.charge', 'needs 0 < minScale <= maxScale');
+    }
+  }
+  if (kit.combo) {
+    if (kit.combo.length < 2) p.at('combo', 'a combo of one attack is just the attack');
+    if (!(kit.comboWindow! > 0)) p.at('comboWindow', 'a combo needs a positive window');
+    kit.combo.forEach((spec, i) => checkAbility(p, 'combo[' + i + ']', spec));
   }
 
   return p.list;

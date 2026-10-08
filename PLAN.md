@@ -271,26 +271,26 @@ Dalganın getirdiği ilkeller: `pull` (vuran mermi hedefi çeker; mesafeyle sın
 karakterin üstünden aşmaz), atılımda `throughBodies` (beden iterme kapalı),
 patlamada `statuses`. Üç yeni silah çizimi (isteka, kanca, kristal asa) + hançerler.
 
-## Dalga 3 — Minyon, bariyer, duvar inşası, ifşa → kadro 18
+## Dalga 3 — Minyon, bariyer, duvar inşası, ifşa → kadro 18 · **bitti**
 
-- [ ] **BEKÇİ** · Konuşlandırıcı · Çift atış · Süper: peşinden koşan yaratık
-- [ ] **KALKAN** · Destek · Orta menzil · Süper: mermi durduran bariyer
-- [ ] **FİLİZ** · Kontrol · Lob eden tohum · Süper: geçici duvar örer
-- [ ] **SİS** · Keşif · Hızlı atış · Süper: ifşa + susturma
+- [x] **BEKÇİ** · Konuşlandırıcı · Çift atış · Süper: peşinden koşan yaratık
+- [x] **KALKAN** · Destek · Orta menzil · Süper: mermi durduran bariyer
+- [x] **FİLİZ** · Kontrol · Lob eden tohum · Süper: geçici duvar örer
+- [x] **SİS** · Keşif · Hızlı atış · Süper: ifşa + susturma
 
-## Dalga 4 — Şarjlı atış, ışın, yakın dövüş yayı, ışınlanma → kadro 22
+## Dalga 4 — Şarjlı atış, ışın, yakın dövüş yayı, ışınlanma → kadro 22 · **bitti**
 
-- [ ] **LUMEN** · Keskin nişancı · Şarjlı delici ışın · Süper: zincirleme hüzme
-- [ ] **ÖRS** · Tank · Yakın dövüş süpürme · Süper: sersemleten koçbaşı hücumu
-- [ ] **DEVİR** · Dövüşçü · 3'lü kombo + bumerang · Süper: can çalan girdap
-- [ ] **GÖLGE** · Suikastçı · Çift bıçak · Süper: hedefin arkasına ışınlanma
+- [x] **LUMEN** · Keskin nişancı · Şarjlı delici ışın · Süper: zincirleme hüzme
+- [x] **ÖRS** · Tank · Yakın dövüş süpürme · Süper: sersemleten koçbaşı hücumu
+- [x] **DEVİR** · Dövüşçü · 3'lü kombo + bumerang · Süper: can çalan girdap
+- [x] **GÖLGE** · Suikastçı · Çift bıçak · Süper: hedefin arkasına ışınlanma
 
-## Dalga 5 — Arketip tamamlama → kadro 24
+## Dalga 5 — Arketip tamamlama → kadro 26 (planda 24 yazıyordu; dört daha eklenince 26) · **bitti**
 
-- [ ] **TİKTAK** · Lob eden yakınlık mayınları
-- [ ] **PANSUMAN** · İyileştirme istasyonu + kalkan
-- [ ] **DİNAMİT** · Çift lob, duvar yıkma
-- [ ] **MIKNATIS** · Mermi soğurma / yansıtma
+- [x] **TİKTAK** · Lob eden yakınlık mayınları
+- [x] **PANSUMAN** · İyileştirme istasyonu + kalkan
+- [x] **DİNAMİT** · Çift lob, duvar yıkma
+- [x] **MIKNATIS** · Mermi soğurma / yansıtma
 
 ### Her karakter için bitti sayılma ölçütü
 - [x] Kit verisi + görsel stil (`characterStyles.ts`) + silüet ayrımı —
@@ -501,3 +501,12 @@ Teknik değil, kaynak kararı — zamanı gelince sorulacak:
 - Her commit öncesi: `npx tsc --noEmit` · `npm test` · `npm run build`
 - Her oynanış değişikliği tarayıcıda, iki ekran boyutunda da denenir.
 - Haftalık kullanım limiti **%96**'ya gelince çalışma durdurulur.
+
+
+### Dalga 3–5'in getirdiği ilkeller
+`summon wall` + `row` (katı, her iki tarafın mermisini durduran, düşman ateşiyle aşınan blok sırası),
+`Kit.traits.charge` (bekledikçe güçlenen atış; ışın = çok hızlı delici mermi), `Kit.combo` (vuruş
+zinciri, pencere süresi), `chain` (düşmandan düşmana atlayan şimşek), explosion `lifesteal`,
+`reflect` durumu (düşman mermisini sahibine geri yollar), `beam` görsel efekti.
+Birlikte: ışınlanmadan sonra aynı listedeki `self` eylemleri yeni konumda çalışır (eskiden
+eski konumda patlıyordu), ağdaki yerleşik nesneler demet olarak kodlanır.

@@ -12,7 +12,19 @@ export type BrawlerId =
   | 'karambol'
   | 'fisilti'
   | 'cengel'
-  | 'buz';
+  | 'buz'
+  | 'bekci'
+  | 'kalkan'
+  | 'filiz'
+  | 'sis'
+  | 'lumen'
+  | 'ors'
+  | 'devir'
+  | 'golge'
+  | 'tiktak'
+  | 'pansuman'
+  | 'dinamit'
+  | 'miknatis';
 
 export interface BrawlerConfig {
   id: BrawlerId;
@@ -488,6 +500,378 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     projectileCount: 1,
     spreadAngle: 0,
   },
+  bekci: {
+    id: 'bekci',
+    name: 'BEKÇİ',
+    title: 'Mahalle Bekçisi',
+    rarity: 'Kupa Yolu',
+    color: '#f59e0b',
+    secondaryColor: '#b45309',
+    avatarBg: 'from-amber-400 to-orange-800',
+    maxHp: 3800,
+    speed: 180,
+    reloadTime: 1.5,
+    attackCooldown: 0.5,
+    acceleration: 1500,
+    superHitsRequired: 3.0,
+    range: 400,
+    damagePerAttack: 420,
+    superChargePerHit: 14,
+    description:
+      'İkili atışıyla tek hedefe yüklenir. Süperi, düşmanın peşinden koşup yanında patlayan bir köpektir.',
+    attackName: 'İkiz Atış',
+    attackDesc: 'Birbirine yakın iki mermi atar.',
+    superName: 'Bekçi Köpeği',
+    superDesc: 'En yakın düşmana koşan ve yanında patlayan bir köpek salar.',
+    gadgetName: 'Düdük',
+    gadgetDesc: 'Kısa süre hızlanır ve bir cephane kazanır.',
+    starPowerName: 'Keskin Kulak',
+    starPowerDesc: 'Köpek daha uzun yaşar.',
+    projectileSpeed: 640,
+    projectileCount: 2,
+    spreadAngle: 0.16,
+  },
+  kalkan: {
+    id: 'kalkan',
+    name: 'KALKAN',
+    title: 'Siper Ustası',
+    rarity: 'Ender',
+    color: '#38bdf8',
+    secondaryColor: '#0369a1',
+    avatarBg: 'from-sky-400 to-blue-900',
+    maxHp: 4300,
+    speed: 175,
+    reloadTime: 1.45,
+    attackCooldown: 0.55,
+    acceleration: 1500,
+    superHitsRequired: 3.0,
+    range: 380,
+    damagePerAttack: 560,
+    superChargePerHit: 14,
+    description:
+      'Orta menzilde sağlam atış yapar. Süperi, düşman mermilerini durdurup dost mermilerini geçiren bir siper kurar.',
+    attackName: 'Kalkan Darbesi',
+    attackDesc: 'Dengeli, tek bir mermi.',
+    superName: 'Siper Duvarı',
+    superDesc: 'Düşman mermilerini durduran üç parçalı bir bariyer kurar.',
+    gadgetName: 'Koruma Alanı',
+    gadgetDesc: 'Yakındaki dostlara kalkan verir.',
+    starPowerName: 'Sağlam Siper',
+    starPowerDesc: 'Bariyer daha uzun kalır.',
+    projectileSpeed: 600,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  filiz: {
+    id: 'filiz',
+    name: 'FİLİZ',
+    title: 'Bahçe Büyücüsü',
+    rarity: 'Süper Ender',
+    color: '#4ade80',
+    secondaryColor: '#15803d',
+    avatarBg: 'from-green-400 to-emerald-900',
+    maxHp: 3300,
+    speed: 175,
+    reloadTime: 1.7,
+    attackCooldown: 0.6,
+    acceleration: 1450,
+    superHitsRequired: 2.8,
+    range: 480,
+    damagePerAttack: 700,
+    superChargePerHit: 14,
+    description:
+      'Duvar aşan tohumlarla düşmanı yavaşlatır. Süperi sahaya canlı bir çit örer.',
+    attackName: 'Tohum Bombası',
+    attackDesc: 'Duvarların üstünden aşan, yavaşlatan bir tohum.',
+    superName: 'Canlı Çit',
+    superDesc: '5 parçalık, 8 saniye duran sağlam bir duvar örer.',
+    gadgetName: 'Sarmaşık',
+    gadgetDesc: 'Etraftakileri bir an köklendirir.',
+    starPowerName: 'Derin Kök',
+    starPowerDesc: 'Çit daha uzun dayanır.',
+    projectileSpeed: 520,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  sis: {
+    id: 'sis',
+    name: 'SİS',
+    title: 'Gözcü',
+    rarity: 'Efsanevi',
+    color: '#a78bfa',
+    secondaryColor: '#6d28d9',
+    avatarBg: 'from-violet-400 to-purple-900',
+    maxHp: 3000,
+    speed: 215,
+    reloadTime: 1.2,
+    attackCooldown: 0.4,
+    acceleration: 1600,
+    superHitsRequired: 3.0,
+    range: 410,
+    damagePerAttack: 340,
+    superChargePerHit: 13,
+    description:
+      'Hızlı ve çevik. Süperi bir alandaki herkesi çalılıkta bile açığa çıkarır ve süperlerini susturur.',
+    attackName: 'Duman Oku',
+    attackDesc: 'Hızlı tek mermi.',
+    superName: 'Sis Perdesi',
+    superDesc: 'Geniş alandaki düşmanları 5 sn ifşa eder, 3 sn susturur.',
+    gadgetName: 'İşaret Fişeği',
+    gadgetDesc: 'Uzaktaki düşmanları bir an ifşa eder.',
+    starPowerName: 'Keskin Göz',
+    starPowerDesc: 'İfşa daha uzun sürer.',
+    projectileSpeed: 760,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  lumen: {
+    id: 'lumen',
+    name: 'LUMEN',
+    title: 'Işık Nişancısı',
+    rarity: 'Efsanevi',
+    color: '#fde047',
+    secondaryColor: '#a16207',
+    avatarBg: 'from-yellow-300 to-amber-800',
+    maxHp: 2600,
+    speed: 170,
+    reloadTime: 1.8,
+    attackCooldown: 0.9,
+    acceleration: 1400,
+    superHitsRequired: 3.0,
+    range: 720,
+    damagePerAttack: 1200,
+    superChargePerHit: 22,
+    description:
+      'Bekledikçe güçlenen, her şeyi delip geçen bir ışın atar. Süperi düşmandan düşmana atlayan şimşektir.',
+    attackName: 'Işın',
+    attackDesc: 'Atış arası ne kadar uzunsa o kadar sert vurur; gövdeleri deler.',
+    superName: 'Zincir Şimşek',
+    superDesc: '5 düşmana kadar zıplayan bir şimşek.',
+    gadgetName: 'Geri Sıçrama',
+    gadgetDesc: 'Arkaya doğru ışınlanır.',
+    starPowerName: 'Odak',
+    starPowerDesc: 'Şarj daha çabuk dolar.',
+    projectileSpeed: 3200,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  ors: {
+    id: 'ors',
+    name: 'ÖRS',
+    title: 'Demirci',
+    rarity: 'Süper Ender',
+    color: '#fb7185',
+    secondaryColor: '#9f1239',
+    avatarBg: 'from-rose-400 to-red-900',
+    maxHp: 6200,
+    speed: 185,
+    reloadTime: 0.9,
+    attackCooldown: 0.4,
+    acceleration: 1400,
+    superHitsRequired: 2.6,
+    range: 190,
+    damagePerAttack: 520,
+    superChargePerHit: 12,
+    description:
+      'Yakın dövüşte geniş bir süpürmeyle herkesi savurur. Süperi, çarptığı herkesi sersemleten bir hücumdur.',
+    attackName: 'Süpürme',
+    attackDesc: 'Geniş bir yayda, yakındaki herkese vurur ve iter.',
+    superName: 'Koçbaşı Hücumu',
+    superDesc: 'İleri atılır, çarptıklarını sersemletir.',
+    gadgetName: 'Yer Tokmağı',
+    gadgetDesc: 'Etrafındakileri savurur ve yavaşlatır.',
+    starPowerName: 'Demir Deri',
+    starPowerDesc: 'Daha az hasar alır.',
+    projectileSpeed: 900,
+    projectileCount: 6,
+    spreadAngle: 1.7,
+  },
+  devir: {
+    id: 'devir',
+    name: 'DEVİR',
+    title: 'Meydan Okuyucu',
+    rarity: 'Ender',
+    color: '#fb923c',
+    secondaryColor: '#c2410c',
+    avatarBg: 'from-orange-400 to-red-800',
+    maxHp: 4400,
+    speed: 190,
+    reloadTime: 1.1,
+    attackCooldown: 0.35,
+    acceleration: 1550,
+    superHitsRequired: 2.8,
+    range: 260,
+    damagePerAttack: 400,
+    superChargePerHit: 14,
+    description:
+      'Üç vuruşluk kombo yapar, sonuncusu geri dönen bir bumerangdır. Süperi can çalan bir kasırgadır.',
+    attackName: 'Kesik',
+    attackDesc: 'Üçlü kombo: iki kesik ve bir bumerang.',
+    superName: 'Kıyım Girdabı',
+    superDesc: 'Etrafındakilere vurur, verdiği hasarın bir kısmıyla iyileşir.',
+    gadgetName: 'Atılış',
+    gadgetDesc: 'Kısa, hasar almayan bir atılış.',
+    starPowerName: 'Ritim',
+    starPowerDesc: 'Kombo penceresi genişler.',
+    projectileSpeed: 760,
+    projectileCount: 3,
+    spreadAngle: 0.6,
+  },
+  golge: {
+    id: 'golge',
+    name: 'GÖLGE',
+    title: 'Gece Yürüyen',
+    rarity: 'Efsanevi',
+    color: '#818cf8',
+    secondaryColor: '#3730a3',
+    avatarBg: 'from-indigo-400 to-slate-900',
+    maxHp: 3000,
+    speed: 215,
+    reloadTime: 1.3,
+    attackCooldown: 0.4,
+    acceleration: 1600,
+    superHitsRequired: 3.2,
+    range: 250,
+    damagePerAttack: 380,
+    superChargePerHit: 14,
+    description:
+      'Çift bıçakla kısa menzilde savaşır. Süperiyle en yakın düşmanın arkasına ışınlanıp saplar.',
+    attackName: 'İkiz Bıçak',
+    attackDesc: 'İki bıçak fırlatır.',
+    superName: 'Arkadan Vuruş',
+    superDesc: 'Düşmanın arkasına ışınlanır, sersemletip ağır hasar verir.',
+    gadgetName: 'Duman Bombası',
+    gadgetDesc: 'Kısa süre görünmez olup hızlanır.',
+    starPowerName: 'Sessiz Adım',
+    starPowerDesc: 'Görünmezlik daha uzun sürer.',
+    projectileSpeed: 780,
+    projectileCount: 2,
+    spreadAngle: 0.22,
+  },
+  tiktak: {
+    id: 'tiktak',
+    name: 'TİKTAK',
+    title: 'Saatçi',
+    rarity: 'Ender',
+    color: '#fbbf24',
+    secondaryColor: '#92400e',
+    avatarBg: 'from-yellow-400 to-amber-900',
+    maxHp: 2800,
+    speed: 170,
+    reloadTime: 1.6,
+    attackCooldown: 0.6,
+    acceleration: 1450,
+    superHitsRequired: 2.8,
+    range: 450,
+    damagePerAttack: 560,
+    superChargePerHit: 14,
+    description:
+      'Duvar aşan bombalar atar. Süperi sahaya, bastığı anda patlayan mayınlar eker.',
+    attackName: 'Saatli Bomba',
+    attackDesc: 'Düştüğü yerde patlayan bir bomba.',
+    superName: 'Mayın Tarlası',
+    superDesc: 'Hedef bölgeye 6 mayın saçar.',
+    gadgetName: 'Ayak Altı',
+    gadgetDesc: 'Bulunduğu yere mayın bırakır ve hızlanır.',
+    starPowerName: 'Hassas Saat',
+    starPowerDesc: 'Mayınlar daha çabuk kurulur.',
+    projectileSpeed: 540,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  pansuman: {
+    id: 'pansuman',
+    name: 'PANSUMAN',
+    title: 'Revir Hemşiresi',
+    rarity: 'Kupa Yolu',
+    color: '#86efac',
+    secondaryColor: '#15803d',
+    avatarBg: 'from-emerald-300 to-green-900',
+    maxHp: 3600,
+    speed: 175,
+    reloadTime: 1.5,
+    attackCooldown: 0.55,
+    acceleration: 1500,
+    superHitsRequired: 3.0,
+    range: 400,
+    damagePerAttack: 450,
+    superChargePerHit: 14,
+    description:
+      'Sade bir atış yapar. Süperi, içindekileri hem iyileştiren hem koruyan bir revir kurar.',
+    attackName: 'Şırınga',
+    attackDesc: 'Tek mermi.',
+    superName: 'Seyyar Revir',
+    superDesc: '9 saniye boyunca yarım saniyede bir iyileştirir ve kalkan verir.',
+    gadgetName: 'Pansuman',
+    gadgetDesc: 'Kendini hemen iyileştirir.',
+    starPowerName: 'Hızlı Müdahale',
+    starPowerDesc: 'Revir daha geniş alanı kapsar.',
+    projectileSpeed: 640,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  dinamit: {
+    id: 'dinamit',
+    name: 'DİNAMİT',
+    title: 'Yıkımcı',
+    rarity: 'Süper Ender',
+    color: '#f87171',
+    secondaryColor: '#b91c1c',
+    avatarBg: 'from-red-400 to-rose-900',
+    maxHp: 2800,
+    speed: 175,
+    reloadTime: 1.8,
+    attackCooldown: 0.7,
+    acceleration: 1450,
+    superHitsRequired: 2.8,
+    range: 470,
+    damagePerAttack: 600,
+    superChargePerHit: 12,
+    description:
+      'Arka arkaya iki dinamit fırlatır; patlamalar duvarları da yıkar. Süperi koca bir demettir.',
+    attackName: 'Çifte Fitil',
+    attackDesc: 'Kısa aralıkla iki dinamit, duvarları yıkar.',
+    superName: 'Dinamit Demeti',
+    superDesc: 'Bölgeye 6 dinamit yağdırır.',
+    gadgetName: 'Uzun Fitil',
+    gadgetDesc: 'Önünde büyük bir patlama yaratır.',
+    starPowerName: 'Fazla Barut',
+    starPowerDesc: 'Patlamalar daha geniş.',
+    projectileSpeed: 560,
+    projectileCount: 2,
+    spreadAngle: 0,
+  },
+  miknatis: {
+    id: 'miknatis',
+    name: 'MIKNATIS',
+    title: 'Demir Çekirdek',
+    rarity: 'Efsanevi',
+    color: '#7dd3fc',
+    secondaryColor: '#0e7490',
+    avatarBg: 'from-cyan-300 to-sky-900',
+    maxHp: 4600,
+    speed: 170,
+    reloadTime: 1.5,
+    attackCooldown: 0.55,
+    acceleration: 1450,
+    superHitsRequired: 3.0,
+    range: 360,
+    damagePerAttack: 620,
+    superChargePerHit: 14,
+    description:
+      'Sağlam bir atış yapar. Süperi takımın üstüne mermileri sahibine geri gönderen bir yansıtma alanı serer.',
+    attackName: 'Çekim Darbesi',
+    attackDesc: 'İteleyen tek mermi.',
+    superName: 'Yansıtma Alanı',
+    superDesc: 'Yakındaki herkesin mermileri geri yansıtmasını sağlar.',
+    gadgetName: 'Çekirdek Kalkanı',
+    gadgetDesc: 'Kısa süre mermi yansıtır ve kalkan alır.',
+    starPowerName: 'Güçlü Alan',
+    starPowerDesc: 'Yansıtma daha uzun sürer.',
+    projectileSpeed: 580,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
 };
 
 /**
@@ -615,6 +999,13 @@ export interface BrawlerEntity {
   kills: number;
   /** Times this brawler has been taken out. Matters in modes with respawn. */
   deaths: number;
+  /** Charged attacks: how much of the charge is built up, 0..1. */
+  charge: number;
+  /** Combo attacks: which hit of the chain comes next, and how long it stays live. */
+  comboIndex: number;
+  comboTimer: number;
+  /** While above zero, enemy shots that touch this brawler are sent back. */
+  reflectTimer: number;
   /** Bounty: the stars the one who downs this brawler collects. Grows with every kill, resets on death. */
   bounty: number;
   /**
@@ -796,7 +1187,7 @@ export interface DeployedEntity {
   spent?: boolean;
 }
 
-export type DeployedKind = 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier';
+export type DeployedKind = 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier' | 'wall';
 
 export type DeployedBehaviour =
   /** Shoots the nearest enemy it can see. */
@@ -808,7 +1199,9 @@ export type DeployedBehaviour =
   /** Acts on its own team, on a timer, regardless of enemies. */
   | 'aura'
   /** Does nothing but stand in the way of projectiles. */
-  | 'blocker';
+  | 'blocker'
+  /** A solid block: stops bodies and every side's shots, and can be shot down. */
+  | 'solid';
 
 export interface ThornField {
   id: string;
@@ -843,7 +1236,9 @@ export interface VisualEffect {
     | 'dash'
     | 'band_aid'
     | 'hit_spark'
-    | 'muzzle_flash';
+    | 'muzzle_flash'
+    /** A glowing line from (x, y) along `angle`, `radius` long. Chains and beams. */
+    | 'beam';
   x: number;
   y: number;
   radius: number;

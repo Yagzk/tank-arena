@@ -166,7 +166,9 @@ export function updateDeployables(world: SimWorld, dt: number): void {
       }
 
       case 'blocker':
-        // Stands still and stops bullets. The projectile system does the work.
+      case 'solid':
+        // Stands still and stops bullets (and, for a solid block, bodies). The
+        // engine's collision code does the work.
         break;
     }
   }

@@ -27,6 +27,18 @@ import { karambolKit } from './karambol';
 import { fisiltiKit } from './fisilti';
 import { cengelKit } from './cengel';
 import { buzKit } from './buz';
+import { bekciKit } from './bekci';
+import { kalkanKit } from './kalkan';
+import { filizKit } from './filiz';
+import { sisKit } from './sis';
+import { lumenKit } from './lumen';
+import { orsKit } from './ors';
+import { devirKit } from './devir';
+import { golgeKit } from './golge';
+import { tiktakKit } from './tiktak';
+import { pansumanKit } from './pansuman';
+import { dinamitKit } from './dinamit';
+import { miknatisKit } from './miknatis';
 
 export const KITS: Record<BrawlerId, Kit> = {
   mira: miraKit,
@@ -43,6 +55,18 @@ export const KITS: Record<BrawlerId, Kit> = {
   fisilti: fisiltiKit,
   cengel: cengelKit,
   buz: buzKit,
+  bekci: bekciKit,
+  kalkan: kalkanKit,
+  filiz: filizKit,
+  sis: sisKit,
+  lumen: lumenKit,
+  ors: orsKit,
+  devir: devirKit,
+  golge: golgeKit,
+  tiktak: tiktakKit,
+  pansuman: pansumanKit,
+  dinamit: dinamitKit,
+  miknatis: miknatisKit,
 };
 
 /**
@@ -106,6 +130,7 @@ function compileActions(prefix: string, actions: AbilityAction[]): void {
 
 function compileKit(kit: Kit): void {
   compileActions(kit.id + '.attack', kit.attack.actions);
+  kit.combo?.forEach((spec, i) => compileActions(kit.id + '.combo' + i, spec.actions));
   compileActions(kit.id + '.super', kit.super.actions);
   compileActions(kit.id + '.gadget', kit.gadget.actions);
   kit.passives?.forEach((passive, i) => {
