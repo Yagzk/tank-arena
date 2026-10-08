@@ -20,10 +20,15 @@
  * peer-hosted match freezes for everybody the moment the host's window slips
  * behind another one.
  *
- * So the simulation runs on a timer and the renderer on rAF. The accumulator
+ * So the simulation runs on a timer and the renderer on rAF. The timer is not
+ * a plain `setInterval` either: that is throttled to one wake-up a second the
+ * moment the page is hidden, which freezes a hosted match for everybody the
+ * instant its host alt-tabs. It runs in a Web Worker instead. The accumulator
  * absorbs timer jitter, and a throttled wake-up simply arrives with more time
  * to account for, which is exactly the case fixed-timestep catch-up handles.
  */
+
+import { createTicker, type Ticker } from './ticker';
 
 export const TICK_RATE = 60;
 export const FIXED_DT = 1 / TICK_RATE;
@@ -93,6 +98,15 @@ export interface LoopCallbacks {
   /** Advances the simulation by exactly FIXED_DT seconds. */
   update: (dt: number, tick: number) => void;
   /**
+   * Runs once after a batch of steps, with how many there were.
+   *
+   * Anything that should happen at most once per wake-up belongs here rather
+   * than in `update`: after a stall the loop catches up with dozens of steps
+   * at once, and sending a network packet from inside each of them turns one
+   * hiccup into a burst that floods every client.
+   */
+  afterSteps?: (steps: number) => void;
+  /**
    * Draws a frame. `alpha` is how far the renderer sits between the last two
    * simulation states; `frameDt` is real elapsed time, for purely cosmetic
    * animation that does not affect gameplay.
@@ -105,7 +119,7 @@ export class GameLoop {
   private lastSimTime = 0;
   private lastRenderTime = 0;
   private rafId = 0;
-  private timerId: ReturnType<typeof setInterval> | null = null;
+  private readonly ticker: Ticker;
   private running = false;
   private tick = 0;
 
@@ -114,7 +128,18 @@ export class GameLoop {
   /** Smoothed frames per second, for the diagnostics overlay. */
   public fps = 60;
 
-  constructor(private readonly callbacks: LoopCallbacks) {}
+  /** `ticker` is replaceable so a test can hand the loop a clock it controls. */
+  constructor(
+    private readonly callbacks: LoopCallbacks,
+    ticker: Ticker = createTicker()
+  ) {
+    this.ticker = ticker;
+  }
+
+  /** Whether the simulation clock survives the tab being hidden. */
+  public get survivesBackground(): boolean {
+    return this.ticker.usesWorker;
+  }
 
   public start(): void {
     if (this.running) return;
@@ -125,17 +150,16 @@ export class GameLoop {
     this.lastRenderTime = now;
     this.accumulator = 0;
 
-    this.timerId = setInterval(this.simulate, SIM_TIMER_MS);
+    // The beat comes from a worker, so a host who alt-tabs does not freeze the
+    // match for everybody else. See `ticker.ts`.
+    this.ticker.start(this.simulate, SIM_TIMER_MS);
     this.rafId = requestAnimationFrame(this.frame);
   }
 
   public stop(): void {
     this.running = false;
     cancelAnimationFrame(this.rafId);
-    if (this.timerId !== null) {
-      clearInterval(this.timerId);
-      this.timerId = null;
-    }
+    this.ticker.stop();
   }
 
   public get currentTick(): number {
@@ -157,6 +181,7 @@ export class GameLoop {
 
     this.accumulator = plan.remainder;
     this.lastStepCount = plan.steps;
+    if (plan.steps > 0) this.callbacks.afterSteps?.(plan.steps);
   };
 
   private frame = (now: number): void => {

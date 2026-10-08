@@ -11,6 +11,13 @@
 import { BRAWLERS, type BrawlerEntity, type BrawlerId } from '../types/brawl';
 import { getKit } from './kits';
 
+/**
+ * `lastDamageAngle` when the last damage had no direction — gas, fire — or
+ * there has been none. A real angle is within ±π, and an angle of zero already
+ * means "from the east", so "none" needs a value no direction can take.
+ */
+export const NO_DAMAGE_DIRECTION = 99;
+
 export interface SpawnOptions {
   id: string;
   name: string;
@@ -92,7 +99,7 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     silenceTimer: 0,
     rootTimer: 0,
     revealTimer: 0,
-    lastDamageAngle: 0,
+    lastDamageAngle: NO_DAMAGE_DIRECTION,
     isClone: opts.isClone ?? false,
     decoyLifetime: opts.decoyLifetime,
   };
@@ -145,6 +152,9 @@ export function respawnBrawler(
 
   b.timeSinceLastDamage = 0;
   b.timeSinceLastAttack = 99;
+  // Respawning resets the damage timer, which would otherwise light the
+  // marker for a second pointing at whoever killed the last life.
+  b.lastDamageAngle = NO_DAMAGE_DIRECTION;
 
   // A few frames of protection, or a brawler that respawns into a pair of
   // enemies camping the base dies before the screen has even settled.

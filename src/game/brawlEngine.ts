@@ -28,7 +28,7 @@ import { Rng } from '../core/rng';
 import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
-import { createBrawlerEntity, respawnBrawler } from '../sim/entity';
+import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim/entity';
 import { updateDeployables } from '../sim/systems/deployables';
 import { getKit } from '../sim/kits';
 import { getActions } from '../sim/kits/registry';
@@ -1305,10 +1305,12 @@ export class BrawlEngine {
     b.hp -= through;
     b.timeSinceLastDamage = 0;
 
+    // Where it came from, for the edge-of-screen marker. Gas and burning have
+    // no direction, and an angle of zero already means "from the east", so
+    // they get a value no real angle can take.
     const source = this.brawlers.find(s => s.id === killerId);
-    if (source && source.id !== b.id) {
-      b.lastDamageAngle = Math.atan2(source.y - b.y, source.x - b.x);
-    }
+    b.lastDamageAngle =
+      source && source.id !== b.id ? Math.atan2(source.y - b.y, source.x - b.x) : NO_DAMAGE_DIRECTION;
 
     // A tank's Super filling from damage taken is what makes its engage
     // inevitable rather than optional. It is a kit trait, not a name check.

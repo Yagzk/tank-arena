@@ -363,19 +363,29 @@ export const App: React.FC = () => {
           setSnapshot(engine.getSnapshot());
         }
 
+        netAccumulator += dt;
+      },
+      afterSteps: () => {
+        // Once per wake-up, never once per step. After a stall the loop
+        // catches up with dozens of steps in a row, and sending from inside
+        // each of them turned one hiccup into a burst of packets that flooded
+        // every client at once.
         const pm = peerManagerRef.current;
-        if (!isSingleplayer && pm && pm.connections.size > 0) {
-          netAccumulator += dt;
-          if (netAccumulator >= netSnapshotInterval(pm.connections.size)) {
-            netAccumulator = 0;
-            // Encoded once and handed to every peer: the work of building the
-            // packet does not grow with the size of the room.
-            pm.broadcastState({
-              type: 'STATE',
-              snapshot: encoderRef.current.encode(engine.getSnapshot(), performance.now()),
-            });
-          }
+        if (isSingleplayer || !pm || pm.connections.size === 0) {
+          netAccumulator = 0;
+          return;
         }
+        const interval = netSnapshotInterval(pm.connections.size);
+        if (netAccumulator < interval) return;
+        // Keep the remainder, so the average rate stays what it should be
+        // instead of drifting below it by up to a step every time.
+        netAccumulator %= interval;
+        // Encoded once and handed to every peer: the work of building the
+        // packet does not grow with the size of the room.
+        pm.broadcastState({
+          type: 'STATE',
+          snapshot: encoderRef.current.encode(engine.getSnapshot(), performance.now()),
+        });
       },
       render: () => {
         // The canvas owns its own render loop and pulls state directly.
@@ -386,6 +396,7 @@ export const App: React.FC = () => {
     gameLoopRef.current?.stop();
     gameLoopRef.current = loop;
     loop.start();
+    profiler.clockSource = loop.survivesBackground ? 'worker' : 'timer';
   };
 
   // Send local input

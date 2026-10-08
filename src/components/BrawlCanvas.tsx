@@ -60,6 +60,9 @@ const HIT_FLASH_STYLE = {
   headgear: 'hood',
 } as const;
 
+/** How long the kill announcement stays up, in milliseconds. */
+const KILL_BANNER_MS = 1500;
+
 /** Seconds the edge marker stays up after you are hit. */
 const DAMAGE_MARKER_SECONDS = 1.1;
 
@@ -102,8 +105,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   const screenShakeRef = useRef<{ intensity: number; timer: number }>({ intensity: 0, timer: 0 });
   /** Kills the local player had last frame, to notice a new one. */
   const myKillsRef = useRef(0);
-  /** Seconds left on the flash that marks a kill you just got. */
-  const killFlashRef = useRef(0);
+  /** When the last kill you got happened, in ms, and what to say about it. */
+  const killFlashRef = useRef<{ at: number; text: string } | null>(null);
 
   // Super Aiming Mode Toggle (Space / Right-Click / Touch Super Button)
   const isSuperAimingRef = useRef<boolean>(false);
@@ -656,6 +659,28 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       }
 
       ctx.restore(); // Restore world translation
+
+      // Feedback that lives on the screen rather than in the world.
+      if (snap && myBrawler) {
+        // A kill is the one thing in a fight that deserves to be announced.
+        if (myBrawler.kills > myKillsRef.current && myKillsRef.current >= 0) {
+          const mine = [...snap.killFeed].reverse().find(k => k.killerName === myBrawler.name);
+          killFlashRef.current = {
+            at: performance.now(),
+            text: mine ? mine.victimName + ' ELENDİ' : 'ELENDİ',
+          };
+          // The shake that goes with it: a kill should be felt, not just read.
+          screenShakeRef.current = { intensity: 7, timer: 0.18 };
+        }
+        myKillsRef.current = myBrawler.kills;
+
+        drawEdgeIndicators(ctx, view, cam, snap, myBrawler);
+        if (killFlashRef.current) {
+          const age = performance.now() - killFlashRef.current.at;
+          if (age < KILL_BANNER_MS) drawKillBanner(ctx, view, killFlashRef.current.text, age);
+          else killFlashRef.current = null;
+        }
+      }
 
       // 16. MOBILE ON-SCREEN CONTROLS (Screen space overlay)
       if (isTouchDevice) {
@@ -2015,6 +2040,131 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   };
 
   /**
+   * Arrows for enemies you cannot see, and a wedge for the side you were just
+   * hit from.
+   *
+   * Taking fire from somewhere off the edge of the screen is the most common
+   * way to die without understanding why. The wedge answers "where did that
+   * come from"; the arrows answer "who is about to".
+   */
+  const drawEdgeIndicators = (
+    ctx: CanvasRenderingContext2D,
+    view: ViewMetrics,
+    cam: { x: number; y: number },
+    snap: BrawlSnapshot,
+    me: BrawlerEntity
+  ) => {
+    if (!me.isAlive) return;
+
+    const cx = view.w / 2;
+    const cy = view.h / 2;
+    const inset = 30;
+
+    // ---- nearest threats that are off screen ---------------------------
+    const off: Array<{ sx: number; sy: number; dist: number; color: string }> = [];
+    for (const b of snap.brawlers) {
+      if (b.id === me.id || !b.isAlive || b.isClone || b.team === me.team) continue;
+      // The same visibility rule as drawing them: an arrow must not give away
+      // somebody hiding in a bush.
+      if (b.isInBush && !b.isVisibleToEnemies) continue;
+
+      const sx = cx + (b.x - cam.x) * view.zoom;
+      const sy = cy + (b.y - cam.y) * view.zoom;
+      if (sx > -12 && sx < view.w + 12 && sy > -12 && sy < view.h + 12) continue;
+
+      const dist = Math.hypot(b.x - me.x, b.y - me.y);
+      if (dist > 1600) continue;
+      off.push({ sx, sy, dist, color: BRAWLERS[b.brawlerId]?.color ?? '#ef4444' });
+    }
+    off.sort((a, b) => a.dist - b.dist);
+
+    for (const t of off.slice(0, 4)) {
+      const dx = t.sx - cx;
+      const dy = t.sy - cy;
+      // Walk the ray from the centre out to the inset rectangle.
+      const k = Math.min(
+        (cx - inset) / Math.max(Math.abs(dx), 1e-6),
+        (cy - inset) / Math.max(Math.abs(dy), 1e-6)
+      );
+      const px = cx + dx * k;
+      const py = cy + dy * k;
+      const alpha = Math.max(0.35, Math.min(0.95, 1 - (t.dist - 500) / 1100));
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(Math.atan2(dy, dx));
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(13, 0);
+      ctx.lineTo(-8, -10);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(-8, 10);
+      ctx.closePath();
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#15161f';
+      ctx.stroke();
+      // The enemy's own colour, so two arrows can be told apart at a glance.
+      ctx.beginPath();
+      ctx.arc(-9, 0, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = t.color;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ---- where the last hit came from ----------------------------------
+    const since = me.timeSinceLastDamage;
+    if (since < DAMAGE_MARKER_SECONDS && Math.abs(me.lastDamageAngle) <= 10) {
+      const fade = 1 - since / DAMAGE_MARKER_SECONDS;
+      const radius = Math.min(view.w, view.h) * 0.34;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(me.lastDamageAngle);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 18;
+      ctx.strokeStyle = 'rgba(15, 23, 42, ' + fade * 0.45 + ')';
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, -0.3, 0.3);
+      ctx.stroke();
+      ctx.lineWidth = 11;
+      ctx.strokeStyle = 'rgba(239, 68, 68, ' + fade * 0.9 + ')';
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, -0.3, 0.3);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  /** The announcement for a kill: pops in, holds, fades. */
+  const drawKillBanner = (
+    ctx: CanvasRenderingContext2D,
+    view: ViewMetrics,
+    text: string,
+    ageMs: number
+  ) => {
+    // A fast overshoot into place, so it arrives with some force.
+    const pop = Math.min(1, ageMs / 140);
+    const scale = 0.6 + 0.4 * pop + Math.sin(pop * Math.PI) * 0.18;
+    const fade = ageMs > KILL_BANNER_MS - 400 ? (KILL_BANNER_MS - ageMs) / 400 : 1;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, fade);
+    ctx.translate(view.w / 2, view.h * 0.2);
+    ctx.scale(scale, scale);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.font = 'bold 28px Orbitron, system-ui, sans-serif';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#0f172a';
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = '#facc15';
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  };
+
+  /**
    * What you see while you are waiting to come back.
    *
    * Two different situations share this overlay, and they need to read
@@ -2090,7 +2240,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       Object.entries(profiler.counts)
         .map(([label, value]) => `${label} ${value}`)
         .join('   '),
-      `zoom ${view.zoom.toFixed(2)}   dpr ${view.dpr}   view ${Math.round(view.worldW)}x${Math.round(view.worldH)}`,
+      `zoom ${view.zoom.toFixed(2)}   dpr ${view.dpr}   view ${Math.round(view.worldW)}x${Math.round(view.worldH)}   clock ${profiler.clockSource}`,
     ];
 
     ctx.save();

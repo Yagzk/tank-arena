@@ -62,6 +62,12 @@ export class Profiler {
   public counts: Record<string, number> = {};
   /** Fixed steps executed in the most recent frame. */
   public stepsLastFrame = 0;
+  /**
+   * Whether the simulation clock is a worker, which keeps running when the tab
+   * is hidden, or a plain timer, which does not. Shown on the F3 overlay,
+   * because "does it survive alt-tab" is not something you can see otherwise.
+   */
+  public clockSource: 'worker' | 'timer' | 'none' = 'none';
 
   public get fps(): number {
     const avg = this.frame.average;
