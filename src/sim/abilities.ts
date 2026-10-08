@@ -68,6 +68,8 @@ export interface AbilityContext {
   scale: number;
   /** A body any blast in this list must spare. See `ExplosionParams`. */
   excludeId?: string;
+  /** The body a projectile's on-hit list is running for. */
+  hitId?: string;
 }
 
 /** Spawn angles for one delivery pattern, reused so firing allocates nothing. */
@@ -247,9 +249,26 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
 
     case 'explosion': {
       const offset = action.anchorOffset ?? 0;
+      const ex = anchorX(action.at, offset, ctx);
+      const ey = anchorY(action.at, offset, ctx);
+
+      if (action.statuses) {
+        // Applied to everything the blast will reach, before it lands, so a
+        // status is not handed to a body that is about to be gone.
+        const reach = (action.radius + 22) * (action.radius + 22);
+        for (const other of world.brawlers) {
+          if (other.id === caster.id || other.isJumping || other.id === ctx.excludeId) continue;
+          if (!world.isHostile(caster.team, other)) continue;
+          const dx = other.x - ex;
+          const dy = other.y - ey;
+          if (dx * dx + dy * dy > reach) continue;
+          applyStatuses(other, action.statuses);
+        }
+      }
+
       world.explode({
-        x: anchorX(action.at, offset, ctx),
-        y: anchorY(action.at, offset, ctx),
+        x: ex,
+        y: ey,
         ownerId: caster.id,
         team: caster.team,
         damage: Math.round(resolveDamage(action.damage, ctx)),
@@ -334,10 +353,39 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       chargeSuperFlat(caster, action.percent);
       break;
 
-    case 'dash':
+    case 'dash': {
       applyDash(caster, ctx.aimAngle, action.speed);
+      if (action.throughBodies) {
+        // About as long as the impulse takes to decay to a walk, so the
+        // phasing lasts exactly as long as the dash does.
+        caster.phaseTimer = Math.max(caster.phaseTimer, 0.45);
+      }
       applyStatuses(caster, action.statuses);
       break;
+    }
+
+    case 'pull': {
+      let target: BrawlerEntity | null = null;
+      if (action.on === 'hit') {
+        target = ctx.hitId ? (world.brawlers.find(b => b.id === ctx.hitId && b.isAlive) ?? null) : null;
+      } else {
+        target = nearestHostile(world, caster, action.range);
+      }
+      if (!target) {
+        if (action.missText) world.banner(action.missText, caster.x, caster.y - 26, '#94a3b8');
+        break;
+      }
+      applyPull(target, caster.x, caster.y, action.force);
+      applyStatuses(target, action.statuses);
+      if (action.damage !== undefined) {
+        applyDamage(world, {
+          target,
+          amount: resolveDamage(action.damage, ctx),
+          sourceId: caster.id,
+        });
+      }
+      break;
+    }
 
     case 'jump': {
       const dx = ctx.targetX - caster.x;
@@ -544,6 +592,7 @@ export function runProjectileHooks(
     hereY: y,
     scale: 1,
     excludeId: opts.excludeId,
+    hitId: opts.kind === 'hit' ? opts.excludeId : undefined,
   };
 
   if (opts.kind === 'hit' && hooks.onHit) runActions(ctx, hooks.onHit);

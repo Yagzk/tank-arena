@@ -8,7 +8,11 @@ export type BrawlerId =
   | 'molotof'
   | 'ustabasi'
   | 'nagme'
-  | 'zirh';
+  | 'zirh'
+  | 'karambol'
+  | 'fisilti'
+  | 'cengel'
+  | 'buz';
 
 export interface BrawlerConfig {
   id: BrawlerId;
@@ -360,6 +364,130 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     projectileCount: 3,
     spreadAngle: 0.2,
   },
+  karambol: {
+    id: 'karambol',
+    name: 'KARAMBOL',
+    title: 'Bilardo Ustası',
+    rarity: 'Kupa Yolu',
+    color: '#84cc16',
+    secondaryColor: '#4d7c0f',
+    avatarBg: 'from-lime-500 to-green-900',
+    maxHp: 3000,
+    speed: 180,
+    reloadTime: 1.5,
+    attackCooldown: 0.5,
+    acceleration: 1500,
+    superHitsRequired: 3,
+    range: 520,
+    damagePerAttack: 520,
+    superChargePerHit: 12,
+    description:
+      'Duvarı düşman sanır, düşmanı duvar. Mermileri kenardan seker; köşeyi dönen biri onu hiç göremeden vurulur.',
+    attackName: 'Isteka Vuruşu',
+    attackDesc: 'Duvardan iki kez seken tek bir top. Sekmeyi hesaplayan isabet eder.',
+    superName: 'Sekme Seli',
+    superDesc: 'Her yöne seken 8 top; kapalı bir odayı tamamen doldurur.',
+    gadgetName: 'Hızlı Top',
+    gadgetDesc: 'Kısa süre hızlanır ve bir cephane kazanır.',
+    starPowerName: 'Üç Bant',
+    starPowerDesc: 'Toplar bir kez daha seker.',
+    projectileSpeed: 600,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  fisilti: {
+    id: 'fisilti',
+    name: 'FISILTI',
+    title: 'Gölgenin Fısıltısı',
+    rarity: 'Süper Ender',
+    color: '#6366f1',
+    secondaryColor: '#3730a3',
+    avatarBg: 'from-indigo-500 to-violet-900',
+    maxHp: 3200,
+    speed: 205,
+    reloadTime: 1.4,
+    attackCooldown: 0.45,
+    acceleration: 1800,
+    superHitsRequired: 3.2,
+    range: 200,
+    damagePerAttack: 460,
+    superChargePerHit: 11,
+    description:
+      'Önce atılır, sonra keser. Kalabalığın içinden geçip dağınık bir takımı tek hamlede parçalar.',
+    attackName: 'Çifte Kesik',
+    attackDesc: 'İleri sıçrayıp üç bıçaklık yakın bir yay çizer.',
+    superName: 'Gölge Sıçraması',
+    superDesc: 'Düşmanların içinden geçen bir atılım; yol boyunca hasar verir ve 2 cephane doldurur.',
+    gadgetName: 'Sis Adımı',
+    gadgetDesc: 'Kısa süre görünmez olur ve hızlanır.',
+    starPowerName: 'Keskin Bıçak',
+    starPowerDesc: 'Yakın vuruşlar daha çok hasar verir.',
+    projectileSpeed: 520,
+    projectileCount: 3,
+    spreadAngle: 0.9,
+  },
+  cengel: {
+    id: 'cengel',
+    name: 'ÇENGEL',
+    title: 'Zincirbaz',
+    rarity: 'Ender',
+    color: '#ca8a04',
+    secondaryColor: '#713f12',
+    avatarBg: 'from-yellow-600 to-amber-900',
+    maxHp: 3400,
+    speed: 175,
+    reloadTime: 1.5,
+    attackCooldown: 0.55,
+    acceleration: 1400,
+    superHitsRequired: 3,
+    range: 520,
+    damagePerAttack: 800,
+    superChargePerHit: 15,
+    description:
+      'Zincirinin ucundaki kancayla kimseyi uzak tutmaz. Süperi, korunaktan çıkamayanı kendine çeker ve sersemletir.',
+    attackName: 'Zincir Atışı',
+    attackDesc: 'Uzun menzilli, tek hedefli ağır bir atış.',
+    superName: 'Kanca',
+    superDesc: 'İlk vurduğu düşmanı yanına çeker ve sersemletir; çekilenin koruması yok olur.',
+    gadgetName: 'Çek Gel',
+    gadgetDesc: 'Yakındaki en yakın düşmanı hemen kendine çeker.',
+    starPowerName: 'Sıkı Zincir',
+    starPowerDesc: 'Çekilen düşman daha uzun sersemler.',
+    projectileSpeed: 620,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
+  buz: {
+    id: 'buz',
+    name: 'BUZ',
+    title: 'Kış Bekçisi',
+    rarity: 'Süper Ender',
+    color: '#7dd3fc',
+    secondaryColor: '#0e7490',
+    avatarBg: 'from-sky-300 to-cyan-800',
+    maxHp: 3300,
+    speed: 170,
+    reloadTime: 1.6,
+    attackCooldown: 0.55,
+    acceleration: 1450,
+    superHitsRequired: 2.8,
+    range: 440,
+    damagePerAttack: 650,
+    superChargePerHit: 14,
+    description:
+      'Her atışı yavaşlatır, süperi donduran bir alan kurar. Kaçamayan düşman, hareket edemeden vurulur.',
+    attackName: 'Kırağı',
+    attackDesc: 'Vurduğu düşmanı yavaşlatan bir buz parçası.',
+    superName: 'Kış Çemberi',
+    superDesc: 'Geniş bir alandaki herkesi 2.5 saniye yerine çiviler ve yavaşlatır.',
+    gadgetName: 'Buz Zırhı',
+    gadgetDesc: 'Kendine kalkan çeker ve yakındaki düşmanları yavaşlatır.',
+    starPowerName: 'Kalıcı Don',
+    starPowerDesc: 'Yavaşlatma daha uzun sürer.',
+    projectileSpeed: 560,
+    projectileCount: 1,
+    spreadAngle: 0,
+  },
 };
 
 /**
@@ -486,6 +614,11 @@ export interface BrawlerEntity {
   rootTimer: number;
   /** Visible to enemies even inside a bush. */
   revealTimer: number;
+  /**
+   * Passes through other bodies while positive. A dash that shoulders its way
+   * through a crowd is not an escape, it is a traffic jam.
+   */
+  phaseTimer: number;
   /**
    * The last input of this player's the server has received, by the client's
    * own numbering, and how many milliseconds ago it arrived. A predicting

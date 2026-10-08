@@ -106,6 +106,17 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
         if (!(action.burn.duration > 0)) p.at(path, 'burn duration must be positive');
         if (!(action.burn.damagePerSec > 0)) p.at(path, 'burn damage per second must be positive');
       }
+      if (action.statuses) {
+        action.statuses.forEach((s, i) => checkStatus(p, path + '.statuses[' + i + ']', s));
+      }
+      break;
+
+    case 'pull':
+      if (!(action.range > 0)) p.at(path, 'a pull needs a positive range');
+      if (!(action.force > 0)) p.at(path, 'a pull needs a positive force');
+      if (action.statuses) {
+        action.statuses.forEach((s, i) => checkStatus(p, path + '.statuses[' + i + ']', s));
+      }
       break;
 
     case 'hazard':

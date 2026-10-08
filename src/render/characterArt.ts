@@ -36,7 +36,15 @@ export type WeaponKind =
   /** A resonator held two-handed at chest height. */
   | 'horn'
   /** A slab hammer carried over one shoulder. */
-  | 'hammer';
+  | 'hammer'
+  /** A long cue held two-handed, tip forward. */
+  | 'cue'
+  /** Two short curved daggers, held low. */
+  | 'daggers'
+  /** A hooked chain, coiled in one hand. */
+  | 'hook'
+  /** A crystal staff. */
+  | 'frost';
 
 export type Headgear =
   | 'hood'
@@ -703,6 +711,97 @@ function drawArmsAndWeapon(
       ctx.beginPath();
       ctx.roundRect(-s * 0.18, -s * 0.06, s * 0.14, s * 0.12, s * 0.04);
       fillStroke(ctx, style.secondary, outline * 1.3);
+      ctx.restore();
+      break;
+    }
+
+    case 'cue': {
+      // Two hands along a long pole: the longest weapon in the set, so the
+      // silhouette is a line, which nothing else is.
+      arm(-1, reach * 0.55, shoulderY * 0.6);
+      arm(1, reach * 0.88, shoulderY * 0.5);
+
+      ctx.save();
+      ctx.translate(reach * 0.3, 0);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.05, -s * 0.045, s * 0.95, s * 0.09, s * 0.04);
+      fillStroke(ctx, style.secondary, outline * 1.4);
+      ctx.beginPath();
+      ctx.roundRect(s * 0.78, -s * 0.05, s * 0.14, s * 0.1, s * 0.04);
+      fillStroke(ctx, style.accent, outline * 1.2);
+      ctx.restore();
+      break;
+    }
+
+    case 'daggers': {
+      // Held low and out to the sides, blades forward.
+      for (const side of [-1, 1]) {
+        arm(side, reach * 0.68, shoulderY * 0.95);
+        ctx.save();
+        ctx.translate(reach * 0.68, side * shoulderY * 0.95);
+        ctx.rotate(side * 0.18);
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.04, 0);
+        ctx.quadraticCurveTo(s * 0.14, -side * s * 0.1, s * 0.34, 0);
+        ctx.quadraticCurveTo(s * 0.14, -side * s * 0.03, -s * 0.04, 0);
+        ctx.closePath();
+        fillStroke(ctx, style.accent, outline * 1.2);
+        ctx.restore();
+      }
+      break;
+    }
+
+    case 'hook': {
+      arm(-1, reach * 0.5, shoulderY * 0.8);
+      arm(1, reach * 0.38, shoulderY * 1.2);
+
+      // A loop of chain in the trailing hand...
+      ctx.save();
+      ctx.translate(reach * 0.38, shoulderY * 1.2);
+      ctx.lineWidth = outline * 1.6;
+      ctx.strokeStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.17, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = outline * 0.8;
+      ctx.strokeStyle = style.accent;
+      ctx.stroke();
+      ctx.restore();
+
+      // ...and the hook itself leading in the other.
+      ctx.save();
+      ctx.translate(reach * 0.5, -shoulderY * 0.8);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(s * 0.3, 0);
+      ctx.arc(s * 0.3, s * 0.1, s * 0.1, -Math.PI / 2, Math.PI * 0.7);
+      ctx.lineWidth = outline * 2.2;
+      ctx.strokeStyle = OUTLINE;
+      ctx.stroke();
+      ctx.lineWidth = outline * 1.1;
+      ctx.strokeStyle = style.accent;
+      ctx.stroke();
+      ctx.restore();
+      break;
+    }
+
+    case 'frost': {
+      // A staff topped with a faceted crystal.
+      arm(-1, reach * 0.55, shoulderY * 0.7);
+      arm(1, reach * 0.7, shoulderY * 0.6);
+
+      ctx.save();
+      ctx.translate(reach * 0.62, 0);
+      ctx.beginPath();
+      ctx.roundRect(-s * 0.1, -s * 0.04, s * 0.6, s * 0.08, s * 0.03);
+      fillStroke(ctx, style.secondary, outline * 1.3);
+      ctx.beginPath();
+      ctx.moveTo(s * 0.5, 0);
+      ctx.lineTo(s * 0.62, -s * 0.12);
+      ctx.lineTo(s * 0.82, 0);
+      ctx.lineTo(s * 0.62, s * 0.12);
+      ctx.closePath();
+      fillStroke(ctx, style.accent, outline * 1.5);
       ctx.restore();
       break;
     }

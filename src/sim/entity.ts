@@ -99,6 +99,7 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     silenceTimer: 0,
     rootTimer: 0,
     revealTimer: 0,
+    phaseTimer: 0,
     lastDamageAngle: NO_DAMAGE_DIRECTION,
     inputAck: 0,
     inputAckAge: 0,
@@ -151,6 +152,7 @@ export function respawnBrawler(
   b.silenceTimer = 0;
   b.rootTimer = 0;
   b.revealTimer = 0;
+  b.phaseTimer = 0;
 
   b.timeSinceLastDamage = 0;
   b.timeSinceLastAttack = 99;

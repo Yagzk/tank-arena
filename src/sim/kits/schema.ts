@@ -166,6 +166,8 @@ export type AbilityAction =
       knockback?: number;
       spawnFire?: boolean;
       burn?: { duration: number; damagePerSec: number };
+      /** Applied to every body the blast catches. */
+      statuses?: StatusSpec[];
     }
   | { type: 'hazard'; at: Anchor; anchorOffset?: number; hazard: HazardSpec }
   | {
@@ -180,7 +182,30 @@ export type AbilityAction =
   | { type: 'ammo'; amount: number }
   | { type: 'superCharge'; percent: number }
   /** A short burst of speed along the aim angle. */
-  | { type: 'dash'; speed: number; statuses?: StatusSpec[] }
+  | {
+      type: 'dash';
+      speed: number;
+      /** Passes through bodies instead of shouldering them aside. */
+      throughBodies?: boolean;
+      statuses?: StatusSpec[];
+    }
+  /**
+   * Drags a body toward the caster — a hook, a vortex.
+   *
+   * As a projectile's `onHit` it pulls the body that was hit, which is what
+   * makes a hook a hook: the shot decides who gets pulled. On its own it pulls
+   * the nearest enemy in reach.
+   */
+  | {
+      type: 'pull';
+      on?: 'hit' | 'nearest';
+      range: number;
+      /** Impulse toward the caster, clamped by the gap so nobody overshoots. */
+      force: number;
+      damage?: DamageSpec;
+      statuses?: StatusSpec[];
+      missText?: string;
+    }
   /** An arc over walls, with an optional landing payload. */
   | {
       type: 'jump';

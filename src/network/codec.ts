@@ -86,6 +86,7 @@ const SCALE: Readonly<Record<string, number>> = {
   shieldTimer: 100,
   silenceTimer: 100,
   rootTimer: 100,
+  phaseTimer: 100,
   revealTimer: 100,
   respawnTimer: 100,
   burnTimer: 100,

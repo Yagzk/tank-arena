@@ -776,6 +776,8 @@ export class BrawlEngine {
       // Brawler vs Brawler soft push
       for (const other of this.brawlers) {
         if (other.id === b.id || !other.isAlive || other.isJumping) continue;
+        // A body mid-dash goes through others rather than shoving them.
+        if (b.phaseTimer > 0 || other.phaseTimer > 0) continue;
         if (circleIntersect({ x: b.x, y: b.y, radius: brawlerRadius }, { x: other.x, y: other.y, radius: brawlerRadius })) {
           const d = dist(b.x, b.y, other.x, other.y) || 1;
           const overlap = brawlerRadius * 2 - d;

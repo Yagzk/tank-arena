@@ -256,12 +256,20 @@ Her dalga, kendi karakterlerini mümkün kılan ilkelleri **önce** getirir.
 - [x] **ZIRH** · Tank · 3'lü balyoz · Süper: takıma 2600 kalkan · Gadget:
       savuran sarsıntı + kendine kalkan · Hasar aldıkça şarj
 
-## Dalga 2 — Sektirme, delen atılım, çekme, köklenme → kadro 14
+## Dalga 2 — Sektirme, delen atılım, çekme, köklenme → kadro 14 · **bitti**
 
-- [ ] **KARAMBOL** · Nişancı · Duvardan seken mermiler · Süper: uzun sekme seli
-- [ ] **FISILTI** · Suikastçı · Kısa yay vuruşu · Süper: içinden geçen atılım, isabette cephane
-- [ ] **ÇENGEL** · Kontrol · Tek hedefli atış · Süper: düşmanı çeker + sersemletir
-- [ ] **BUZ** · Kontrol · Yavaşlatan atış · Süper: kökleyen buz alanı
+- [x] **KARAMBOL** · Nişancı · Duvardan iki kez seken top · Süper: her yöne seken 8 top
+      · Gadget: hızlanma + cephane
+- [x] **FISILTI** · Suikastçı · İleri atılıp kesen yakın yay · Süper: bedenlerin
+      *içinden* geçen atılım, yol boyunca hasar, 2 cephane doldurur · Gadget: görünmezlik
+- [x] **ÇENGEL** · Kontrol · Tek hedefli ağır atış · Süper: ilk vurduğunu yanına çeker
+      + sersemletir · Gadget: en yakın düşmanı çek
+- [x] **BUZ** · Kontrol · Yavaşlatan atış · Süper: alandakileri köklemeye yavaşlatma ·
+      Gadget: kalkan + çevreyi yavaşlat
+
+Dalganın getirdiği ilkeller: `pull` (vuran mermi hedefi çeker; mesafeyle sınırlı,
+karakterin üstünden aşmaz), atılımda `throughBodies` (beden iterme kapalı),
+patlamada `statuses`. Üç yeni silah çizimi (isteka, kanca, kristal asa) + hançerler.
 
 ## Dalga 3 — Minyon, bariyer, duvar inşası, ifşa → kadro 18
 

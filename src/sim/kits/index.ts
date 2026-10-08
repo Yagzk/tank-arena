@@ -23,6 +23,10 @@ import { molotofKit } from './molotof';
 import { ustabasiKit } from './ustabasi';
 import { nagmeKit } from './nagme';
 import { zirhKit } from './zirh';
+import { karambolKit } from './karambol';
+import { fisiltiKit } from './fisilti';
+import { cengelKit } from './cengel';
+import { buzKit } from './buz';
 
 export const KITS: Record<BrawlerId, Kit> = {
   mira: miraKit,
@@ -35,6 +39,10 @@ export const KITS: Record<BrawlerId, Kit> = {
   ustabasi: ustabasiKit,
   nagme: nagmeKit,
   zirh: zirhKit,
+  karambol: karambolKit,
+  fisilti: fisiltiKit,
+  cengel: cengelKit,
+  buz: buzKit,
 };
 
 /**
