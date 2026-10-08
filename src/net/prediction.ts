@@ -24,6 +24,7 @@
 import { BRAWLERS, type BrawlerEntity, type BrawlWall, type PowerCubeBox } from '../types/brawl';
 import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { getKit } from '../sim/kits';
+import { conditionalMods } from '../sim/conditions';
 
 interface Held {
   seq: number;
@@ -62,6 +63,8 @@ export class Predictor {
 
   private brawlerId = 'mira' as BrawlerEntity['brawlerId'];
   private slowTimer = 0;
+  private slowAmount = 0;
+  private speedMod = 1;
   private speedBoostTimer = 0;
   private speedBoostMagnitude = 1;
   private rootTimer = 0;
@@ -137,6 +140,8 @@ export class Predictor {
     const shown = this.active ? this.position() : null;
 
     this.slowTimer = me.slowTimer;
+    this.slowAmount = me.slowAmount;
+    this.speedMod = conditionalMods(me, getKit(me.brawlerId, me.starPower)).speed;
     this.speedBoostTimer = me.speedBoostTimer;
     this.speedBoostMagnitude = me.speedBoostMagnitude;
     this.rootTimer = me.rootTimer;
@@ -229,10 +234,11 @@ export class Predictor {
       moveY,
       maxSpeedFor(
         cfg.speed,
-        traits?.speedMultiplier ?? 1,
+        (traits?.speedMultiplier ?? 1) * this.speedMod,
         this.slowTimer,
         this.speedBoostTimer,
-        this.speedBoostMagnitude
+        this.speedBoostMagnitude,
+        this.slowAmount
       ),
       cfg.acceleration,
       this.rootTimer > 0,

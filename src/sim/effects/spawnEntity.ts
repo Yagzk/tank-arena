@@ -15,6 +15,8 @@ export interface SpawnDecoyParams {
   owner: BrawlerEntity;
   lifetime: number;
   offset?: number;
+  /** Damage the decoy deals to whoever it touches, once a second. */
+  touchDamage?: number;
 }
 
 export function spawnDecoy(world: SimWorld, p: SpawnDecoyParams): BrawlerEntity {
@@ -39,7 +41,9 @@ export function spawnDecoy(world: SimWorld, p: SpawnDecoyParams): BrawlerEntity 
   decoy.aimAngle = owner.aimAngle;
   // It can never shoot, so it should never look like it is about to.
   decoy.ammo = 0;
-  decoy.gadgetCharges = 0;
+  decoy.gadgetCooldown = 9999;
+  decoy.touchDamage = p.touchDamage;
+  decoy.decoyOwnerId = owner.id;
 
   world.brawlers.push(decoy);
   return decoy;

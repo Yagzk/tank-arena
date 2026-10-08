@@ -37,8 +37,9 @@ import { MODES, SAFE_HP, bountyPayout, decideByScore, decideHeist, decideRound, 
 import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim/entity';
 import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { updateDeployables } from '../sim/systems/deployables';
-import { getKit } from '../sim/kits';
+import { getKit, gadgetOf } from '../sim/kits';
 import { damageFactor } from '../sim/damageFactor';
+import { conditionalMods } from '../sim/conditions';
 import { getActions } from '../sim/kits/registry';
 import {
   executeAbility,
@@ -442,6 +443,9 @@ export class BrawlEngine {
         x: spawn.x,
         y: spawn.y,
         isBot: p.isBot,
+        // A bot takes whatever the roll gives it; a person, what they chose.
+        gadget: p.gadget ?? (p.isBot ? this.rng.int(0, 1) : 0),
+        starPower: p.starPower ?? (p.isBot ? this.rng.int(0, 1) : 0),
       });
       // Where this brawler returns to if the mode allows it, fixed for the
       // whole match so a death never relocates someone's base.
@@ -653,7 +657,7 @@ export class BrawlEngine {
       }
 
       const cfg = BRAWLERS[b.brawlerId];
-      const kit = getKit(b.brawlerId);
+      const kit = getKit(b.brawlerId, b.starPower);
 
       // Remember where the body was so the renderer can interpolate between
       // simulation ticks instead of snapping once every 1/60 s.
@@ -663,8 +667,13 @@ export class BrawlEngine {
       // Ammo refills one whole slot at a time. The old fractional counter let
       // you fire the instant the bar ticked over, so the ammo display never
       // matched what the brawler could actually do.
-      if (b.ammo < b.maxAmmo) {
-        b.reloadTimer += dt;
+      const mods = conditionalMods(b, kit);
+      if (mods.healPerSec > 0 && b.hp < b.maxHp) {
+        b.hp = Math.min(b.maxHp, b.hp + b.maxHp * mods.healPerSec * dt);
+      }
+      // A channelled Super keeps both hands busy: nothing reloads under it.
+      if (b.ammo < b.maxAmmo && !b.pendingBurst?.channel) {
+        b.reloadTimer += dt * mods.reload;
         while (b.reloadTimer >= cfg.reloadTime && b.ammo < b.maxAmmo) {
           b.reloadTimer -= cfg.reloadTime;
           b.ammo += 1;
@@ -729,6 +738,14 @@ export class BrawlEngine {
           b.x += Math.cos(ang) * 190 * dt;
           b.y += Math.sin(ang) * 190 * dt;
           b.aimAngle = ang;
+          // A clone that has a touch hurts what it reaches, once a second.
+          if (b.touchDamage) {
+            b.decoyTouchTimer = (b.decoyTouchTimer ?? 0) - dt;
+            if (b.decoyTouchTimer <= 0 && dist(b.x, b.y, enemy.x, enemy.y) <= 56) {
+              this.damageBrawler(enemy, b.touchDamage, b.decoyOwnerId ?? b.id);
+              b.decoyTouchTimer = 1;
+            }
+          }
         }
         b.decoyLifetime = (b.decoyLifetime ?? 0) - dt;
         if (b.decoyLifetime <= 0 || b.hp <= 0) {
@@ -792,6 +809,14 @@ export class BrawlEngine {
         continue; // Airborne brawler skips ground collisions & input
       }
 
+      // A channelled Super is cancelled by being stunned or thrown about.
+      if (
+        b.pendingBurst?.channel &&
+        (b.stunTimer > 0 || Math.hypot(b.knockbackVx, b.knockbackVy) > 260)
+      ) {
+        b.pendingBurst = null;
+      }
+
       // Attacks that fire over several ticks rather than all at once.
       const burst = b.pendingBurst;
       if (burst) {
@@ -850,10 +875,11 @@ export class BrawlEngine {
         input.moveY,
         maxSpeedFor(
           cfg.speed,
-          kit.traits?.speedMultiplier ?? 1,
+          (kit.traits?.speedMultiplier ?? 1) * mods.speed,
           b.slowTimer,
           b.speedBoostTimer,
-          b.speedBoostMagnitude
+          b.speedBoostMagnitude,
+          b.slowAmount
         ),
         cfg.acceleration,
         b.rootTimer > 0,
@@ -915,11 +941,14 @@ export class BrawlEngine {
       // character's name.
       // Whoever has the ball has their hands full: no gadget, no Super.
       const carryingBall = this.ball !== null && this.ball.carrier === b.id;
-      if (input.gadget && !carryingBall && b.gadgetCharges > 0 && b.gadgetCooldown <= 0) {
-        b.gadgetCharges--;
-        b.gadgetCooldown = GADGET_COOLDOWN;
+      const gadget = gadgetOf(kit, b.gadgetIndex);
+      if (input.gadget && !carryingBall && gadget && b.gadgetCooldown <= 0 && this.gadgetRequirementMet(b, gadget)) {
+        // A gadget that loads a special shot starts its cooldown only when the
+        // shot has been fired; until then the button stays down.
+        b.gadgetCooldown = gadget.cooldownAfterUse ? 9999 : gadget.cooldown;
+        b.gadgetPending = gadget.cooldownAfterUse === true;
         this.emitSound('gadget_activate', b.x, b.y);
-        executeAbility(this.contextFor(b, input, false), kit.gadget);
+        runActions(this.contextFor(b, input, false), gadget.actions);
       }
 
       if (input.superAttack && !carryingBall && b.superCharge >= 100 && b.silenceTimer <= 0) {
@@ -962,7 +991,21 @@ export class BrawlEngine {
           b.comboIndex++;
           b.comboTimer = kit.comboWindow ?? 1;
         }
-        executeAbility(this.contextFor(b, input, false, scale), spec);
+        let attackActions = spec.actions;
+        if (b.empowerUses > 0 && b.empowerKey) {
+          // A gadget has loaded something special in place of this attack.
+          attackActions = getActions(b.empowerKey) ?? attackActions;
+          b.empowerUses--;
+          if (b.empowerUses <= 0) {
+            b.empowerKey = undefined;
+            if (b.gadgetPending) {
+              b.gadgetPending = false;
+              const g = gadgetOf(kit, b.gadgetIndex);
+              b.gadgetCooldown = g ? g.cooldown : 0;
+            }
+          }
+        }
+        runActions(this.contextFor(b, input, false, scale), attackActions);
       }
     }
   }
@@ -986,6 +1029,10 @@ export class BrawlEngine {
 
       if (dist(x, y, b.x, b.y) <= radius + BRAWLER_RADIUS) {
         this.damageBrawler(b, damage, ownerId);
+        if (params.charge !== undefined) {
+          const owner = this.brawlers.find(o => o.id === ownerId);
+          if (owner) chargeSuperFlat(owner, params.charge);
+        }
         if (params.burn) {
           applyStatus(b, {
             kind: 'burn',
@@ -994,6 +1041,7 @@ export class BrawlEngine {
           });
         }
         if (params.knockback) applyKnockback(b, x, y, params.knockback, 0.35);
+        if (params.push) applyKnockback(b, x, y, params.push * 7, 0);
       }
     }
 
@@ -1183,7 +1231,7 @@ export class BrawlEngine {
         // Your own turret does not eat your bullets, and a barrier only stops
         // the team it was not placed by.
         // A built wall stops everybody's shots; the rest only deal with enemies.
-        if (d.kind !== 'wall' && !this.isHostileTeam(p.team, d.team)) continue;
+        if (d.behaviour !== 'solid' && !this.isHostileTeam(p.team, d.team)) continue;
         if (p.hitIds && p.hitIds.indexOf(d.id) !== -1) continue;
 
         sweepCircleVsCircle(p.x, p.y, p.radius, stepX, stepY, d.x, d.y, d.radius, this.sweep);
@@ -1295,6 +1343,13 @@ export class BrawlEngine {
         continue;
       }
 
+      if (hitKind === 'brawler' && hitTarget && hitTarget.absorbTimer > 0) {
+        // Destroyed on the shield, harmlessly.
+        this.addEffect('hit_spark', hitX, hitY, 20, '#e2e8f0', 0.18, Math.atan2(p.vy, p.vx), 0.5);
+        toRemove.add(p.id);
+        continue;
+      }
+
       if (hitKind === 'brawler' && hitTarget && hitTarget.reflectTimer > 0) {
         // Sent back where it came from, as the reflector's own.
         p.vx = -p.vx;
@@ -1330,7 +1385,12 @@ export class BrawlEngine {
 
         // Every connecting shot nudges the target. Without it, taking fire read
         // as a number appearing out of nowhere.
-        if (!p.knockbackForce) {
+        if (p.pushback) {
+          // A shove measured in distance, not a stun: it carries a body that far.
+          const speedP = Math.hypot(p.vx, p.vy) || 1;
+          hitTarget.knockbackVx += (p.vx / speedP) * p.pushback * 7;
+          hitTarget.knockbackVy += (p.vy / speedP) * p.pushback * 7;
+        } else if (!p.knockbackForce) {
           const nudge = 110 * weight;
           const speed = Math.hypot(p.vx, p.vy) || 1;
           hitTarget.knockbackVx += (p.vx / speed) * nudge;
@@ -1348,9 +1408,15 @@ export class BrawlEngine {
         }
 
         const owner = this.brawlers.find(o => o.id === p.ownerId);
-        // Supers do not charge the next Super.
-        if (!p.isSuper && owner) {
-          chargeSuperForDamage(owner, effectiveDmg);
+        if (owner) {
+          if (p.charge !== undefined) {
+            // The kit says exactly how much a hit is worth — less, where the
+            // damage itself falls off with distance.
+            chargeSuperFlat(owner, p.charge * this.falloffShare(p));
+          } else if (!p.isSuper) {
+            // Not yet stated: the old rule, a share of the damage dealt.
+            chargeSuperForDamage(owner, effectiveDmg);
+          }
         }
 
         this.detonateProjectile(p, hitX, hitY, 'hit', hitTarget.id);
@@ -1404,11 +1470,24 @@ export class BrawlEngine {
    * brackets: a blade crossing an invisible line changed its damage by 55%
    * from one pixel to the next.
    */
+  /** The damage multiplier a shot has reached by how far it has flown. */
+  private falloffMult(p: BrawlProjectile): number {
+    if (!p.falloff) return 1;
+    const f = p.falloff;
+    // Full strength to `hold`, then a straight line to the far end.
+    const t = clamp((p.traveled / f.range - f.hold) / Math.max(0.0001, 1 - f.hold), 0, 1);
+    return f.near + (f.far - f.near) * t;
+  }
+
+  /** How much of its best value a shot is worth now, for what scales with damage. */
+  private falloffShare(p: BrawlProjectile): number {
+    if (!p.falloff) return 1;
+    return this.falloffMult(p) / Math.max(p.falloff.near, p.falloff.far);
+  }
+
   private applyDamageFalloff(p: BrawlProjectile, damage: number): number {
     if (!p.falloff || p.isSuper) return damage;
-    const t = clamp(p.traveled / p.falloff.range, 0, 1);
-    const mult = p.falloff.near + (p.falloff.far - p.falloff.near) * smoothstep(t);
-    return Math.round(damage * mult);
+    return Math.round(damage * this.falloffMult(p));
   }
 
   /**
@@ -1426,7 +1505,7 @@ export class BrawlEngine {
     for (const box of this.boxes) pushOutOfRect(b, radius, box, horizontal);
     for (const safe of this.safes) pushOutOfRect(b, radius, safe, horizontal);
     for (const d of this.deployables) {
-      if (d.kind !== 'wall') continue;
+      if (d.behaviour !== 'solid' && d.behaviour !== 'cover') continue;
       const r = this.wallScratch;
       r.x = d.x - d.radius;
       r.y = d.y - d.radius;
@@ -1475,14 +1554,37 @@ export class BrawlEngine {
         if (!this.isHostile(tf.team, b)) continue;
 
         if (dist(tf.x, tf.y, b.x, b.y) <= tf.radius) {
-          b.slowTimer = Math.max(b.slowTimer, 0.5);
-          this.damageBrawler(b, Math.round(tf.damagePerSec * dt), tf.ownerId, false);
+          if (tf.slowAmount !== undefined) {
+            applyStatus(b, { kind: 'slow', duration: 1.05, magnitude: tf.slowAmount });
+          } else {
+            b.slowTimer = Math.max(b.slowTimer, 0.5);
+          }
+          const dealt = Math.round(tf.damagePerSec * dt);
+          this.damageBrawler(b, dealt, tf.ownerId, false);
+          this.healOwner(tf.ownerId, dealt * (tf.lifesteal ?? 0));
         }
       }
+      this.healSide(tf.team, tf.x, tf.y, tf.radius, (tf.healPerSec ?? 0) * dt);
 
       if (tf.duration <= 0) {
         this.thornFields.splice(i, 1);
       }
+    }
+  }
+
+  /** Health given back to a brawler, without a floating number every tick. */
+  private healOwner(id: string, amount: number) {
+    if (amount <= 0) return;
+    const o = this.brawlers.find(b => b.id === id && b.isAlive);
+    if (o) o.hp = Math.min(o.maxHp, o.hp + amount);
+  }
+
+  /** Health given to everyone on a side who is standing in a circle. */
+  private healSide(team: number, x: number, y: number, radius: number, amount: number) {
+    if (amount <= 0) return;
+    for (const b of this.brawlers) {
+      if (!b.isAlive || b.isClone || b.team !== team) continue;
+      if (dist(x, y, b.x, b.y) <= radius) b.hp = Math.min(b.maxHp, b.hp + amount);
     }
   }
 
@@ -1498,9 +1600,15 @@ export class BrawlEngine {
         if (!this.isHostile(fp.team, b)) continue;
 
         if (dist(fp.x, fp.y, b.x, b.y) <= fp.radius + 18) {
-          this.damageBrawler(b, Math.round(fp.damagePerSec * dt), fp.ownerId, false);
+          const dealt = Math.round(fp.damagePerSec * dt);
+          this.damageBrawler(b, dealt, fp.ownerId, false);
+          this.healOwner(fp.ownerId, dealt * (fp.lifesteal ?? 0));
+          if (fp.slowAmount !== undefined) {
+            applyStatus(b, { kind: 'slow', duration: 0.6, magnitude: fp.slowAmount });
+          }
         }
       }
+      this.healSide(fp.team, fp.x, fp.y, fp.radius, (fp.healPerSec ?? 0) * dt);
 
       for (const safe of this.safes) {
         if (safe.team === fp.team || safe.hp <= 0) continue;
@@ -1567,6 +1675,13 @@ export class BrawlEngine {
   ) {
     if (!b.isAlive || damage <= 0) return;
 
+    // A clone is flimsy by design: whatever hits it counts double.
+    if (b.isClone) damage *= 2;
+
+    // Standing guard and conditional toughness cut what gets through.
+    if (b.guardTimer > 0) damage *= 1 - b.guardAmount;
+    damage *= conditionalMods(b, getKit(b.brawlerId, b.starPower)).taken;
+
     if (b.immunityTimer > 0) {
       if (showFloating) this.addFloatingNumber('ENGELLENDİ', b.x, b.y - 22, '#93c5fd');
       return;
@@ -1592,7 +1707,7 @@ export class BrawlEngine {
 
     // A tank's Super filling from damage taken is what makes its engage
     // inevitable rather than optional. It is a kit trait, not a name check.
-    const traits = getKit(b.brawlerId).traits;
+    const traits = getKit(b.brawlerId, b.starPower).traits;
     if (traits?.superChargeFromDamageTaken && !b.isClone) {
       chargeSuperFlat(b, (through / b.maxHp) * traits.superChargeFromDamageTaken);
     }
@@ -1845,6 +1960,15 @@ export class BrawlEngine {
     return role === 'attack'
       ? { role, stand: front(enemy), target: { x: enemy.x + enemy.w / 2, y: enemy.y + enemy.h / 2 } }
       : { role, stand: front(own), target: { x: own.x + own.w / 2, y: own.y + own.h / 2 } };
+  }
+
+  /** Whether a gadget that needs one of the caster's own summons has one close enough. */
+  private gadgetRequirementMet(b: BrawlerEntity, gadget: { requires?: { deployable: string; within: number } }): boolean {
+    const need = gadget.requires;
+    if (!need) return true;
+    return this.deployables.some(
+      d => d.ownerId === b.id && d.kind === need.deployable && dist(d.x, d.y, b.x, b.y) <= need.within
+    );
   }
 
   /** Seconds of the match played so far, across any restarts. */

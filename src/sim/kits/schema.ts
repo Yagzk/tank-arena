@@ -13,7 +13,7 @@
  * of mechanic adds exactly one.
  */
 
-import type { BrawlerId, VisualEffect } from '../../types/brawl';
+import type { BrawlerId, DeployedKind, VisualEffect } from '../../types/brawl';
 import type { BrawlSoundEvent } from '../../game/brawlEngine';
 
 /**
@@ -54,20 +54,35 @@ export type StatusKind =
   /** Visible to enemies even inside a bush. */
   | 'reveal'
   /** Enemy shots that touch this body are sent back at their owner. */
-  | 'reflect';
+  | 'reflect'
+  /** Enemy shots that reach this body are destroyed without effect. */
+  | 'absorb'
+  /** Takes less damage: `magnitude` is the fraction cut. */
+  | 'guard'
+  /** The Super is in effect, for kits whose other traits depend on it. */
+  | 'superActive';
 
 export interface StatusSpec {
   kind: StatusKind;
   duration: number;
   /**
    * Meaning depends on the kind: damage per second for `burn`, a speed
-   * multiplier for `speed`, a damage pool for `shield`. Ignored otherwise.
+   * multiplier for `speed`, a damage pool for `shield`, the fraction of speed
+   * taken for `slow` (0.5 if absent), the fraction cut for `guard`.
    */
   magnitude?: number;
 }
 
 /** A damaging area left on the ground. */
 export interface HazardSpec {
+  /** Fraction of speed taken from enemies standing in it. */
+  slow?: number;
+  /** Fraction of the damage dealt that the owner gets back as health. */
+  lifesteal?: number;
+  /** Health per second for the owner's side standing in it. */
+  healPerSec?: number;
+  /** Colour of the ground, for ground that is not fire or thorns. */
+  tint?: string;
   /** `thorn` also slows whatever stands in it; `fire` only burns. */
   kind: 'thorn' | 'fire';
   radius: number;
@@ -112,7 +127,11 @@ export interface ProjectileSpec {
    * Close-range bonus. Damage is scaled by `near` at point blank and by `far`
    * at `distance` travelled, smoothly in between.
    */
-  falloff?: { near: number; far: number; distance: number };
+  falloff?: { near: number; far: number; distance: number; hold?: number };
+  /** Percent of the Super added to its owner when it hits a brawler. */
+  charge?: number;
+  /** Shoves a body it hits this many pixels, without stunning it. */
+  pushback?: number;
   /** Statuses applied to a body it connects with. */
   applyStatus?: StatusSpec[];
   /** Runs at the point of contact, only when it hits a body. */
@@ -128,7 +147,7 @@ export type Delivery =
   /** A fan of `count` projectiles spanning `arc` radians. */
   | { pattern: 'spread'; count: number; arc: number }
   /** `count` projectiles evenly around the caster. */
-  | { pattern: 'radial'; count: number };
+  | { pattern: 'radial'; count: number; fixed?: boolean };
 
 /** How a burst varies its aim from shot to shot. */
 export type BurstAim =
@@ -158,6 +177,10 @@ export type AbilityAction =
       amplitude?: number;
       /** Random displacement of the aim point, in pixels. */
       scatter?: number;
+      /** Pixels each shot is moved sideways, alternating, so a volley leaves in two streams. */
+      lateral?: number;
+      /** Blocks attacking and reloading until it ends; a stun or a shove cancels it. */
+      channel?: boolean;
     }
   | {
       type: 'explosion';
@@ -166,12 +189,16 @@ export type AbilityAction =
       damage: DamageSpec;
       radius: number;
       knockback?: number;
+      /** Pixels bodies are shoved away from the centre, without a stun. */
+      push?: number;
       spawnFire?: boolean;
       burn?: { duration: number; damagePerSec: number };
       /** Applied to every body the blast catches. */
       statuses?: StatusSpec[];
       /** Fraction of the damage dealt that the caster takes back as health. */
       lifesteal?: number;
+      /** Percent of the Super added to the caster for each brawler the blast hits. */
+      charge?: number;
     }
   | { type: 'hazard'; at: Anchor; anchorOffset?: number; hazard: HazardSpec }
   | {
@@ -181,7 +208,7 @@ export type AbilityAction =
       radius?: number;
       statuses: StatusSpec[];
     }
-  | { type: 'heal'; target: 'self' | 'allies'; amount: number; radius?: number }
+  | { type: 'heal'; target: 'self' | 'allies'; amount?: number; fraction?: number; radius?: number }
   | { type: 'shield'; target: 'self' | 'allies'; amount: number; duration: number; radius?: number }
   /**
    * A bolt that jumps: it strikes the nearest enemy in `range`, then the
@@ -199,11 +226,21 @@ export type AbilityAction =
       color?: string;
     }
   | { type: 'ammo'; amount: number }
+  /**
+   * The next `uses` ordinary attacks are replaced by `attack` — a gadget that
+   * loads a special shot rather than doing something on the spot. They still
+   * spend ammo, as the original ones do.
+   */
+  | { type: 'empower'; uses: number; attack: AbilityAction[] }
   | { type: 'superCharge'; percent: number }
   /** A short burst of speed along the aim angle. */
   | {
       type: 'dash';
-      speed: number;
+      /** How far it carries, in pixels. Takes the place of `speed`. */
+      distance?: number;
+      /** Enemies in its path are picked up and set down this far behind the caster. */
+      grabThrow?: number;
+      speed?: number;
       /** Passes through bodies instead of shouldering them aside. */
       throughBodies?: boolean;
       statuses?: StatusSpec[];
@@ -250,8 +287,16 @@ export type AbilityAction =
   | {
       type: 'summon';
       /** `decoy` is a dummy body; everything else acts on its own. */
-      kind: 'decoy' | 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier' | 'wall';
+      kind: DeployedKind | 'decoy';
       lifetime: number;
+      /** Health lost per second on its own, so something placed there fades. */
+      decay?: number;
+      /** Runs when it is destroyed or replaced. */
+      onDestroy?: AbilityAction[];
+      /** Placing another of this owner's destroys the first (and runs its `onDestroy`). */
+      unique?: boolean;
+      /** A decoy's touch: damage per hit, once a second. */
+      touchDamage?: number;
       /** Where it goes: ahead of the caster by default, or on the aimed point. */
       at?: Anchor;
       offset?: number;
@@ -284,6 +329,27 @@ export type AbilityAction =
   | { type: 'banner'; text: string; color: string }
   | { type: 'sound'; cue: BrawlSoundEvent['type'] };
 
+/** A gadget: an ability on a cooldown rather than a number of uses. */
+export interface GadgetSpec {
+  name: string;
+  description: string;
+  /** Seconds before it can be used again, counted from the press. */
+  cooldown: number;
+  /** Count the cooldown from the empowered attack being used, not from the press. */
+  cooldownAfterUse?: boolean;
+  actions: AbilityAction[];
+  /** Only usable while one of the caster's own summons of this kind is within reach. */
+  requires?: { deployable: DeployedKind; within: number };
+}
+
+/** A star power: a change to the character's kit, chosen before the match. */
+export interface StarPowerSpec {
+  name: string;
+  description: string;
+  /** Edits a private copy of the kit. The original is never touched. */
+  apply: (kit: Kit) => void;
+}
+
 export interface AbilitySpec {
   /** Shown in the UI. The mechanical name, not a description. */
   name: string;
@@ -312,9 +378,26 @@ export interface PassiveSpec {
 }
 
 /** Always-on numeric modifiers, which are cheaper as numbers than as actions. */
+/**
+ * A change that holds while a condition is true — a speed boost while
+ * invisible, a faster reload while hurt. Several can hold at once.
+ */
+export interface ConditionalMod {
+  when: 'invisible' | 'healthBelow' | 'inBush' | 'superActive';
+  /** Fraction of maximum health, for `healthBelow`. */
+  below?: number;
+  speed?: number;
+  reload?: number;
+  /** Multiplies the damage taken. */
+  taken?: number;
+  /** Health recovered per second, as a fraction of maximum. */
+  healPerSec?: number;
+}
+
 export interface KitTraits {
   /** Multiplies base movement speed. */
   speedMultiplier?: number;
+  conditional?: ConditionalMod[];
   /**
    * Super charge gained for taking damage, as a percentage of the Super bar
    * per full health bar lost. This is what makes a tank's Super inevitable.
@@ -343,17 +426,25 @@ export interface KitTraits {
  * configured range, so a character's reach and the distance its bot prefers
  * stay in step through a balance pass.
  */
+export type BotGadget =
+  | { when: 'enemyWithin'; range: number }
+  | { when: 'enemyBetween'; min: number; max: number }
+  | { when: 'outOfAmmo'; range: number }
+  | { when: 'chance'; range: number; probability: number }
+  /** Whenever it is off cooldown and there is anything in the fight at all. */
+  | { when: 'always' }
+  /** Never: for a gadget the bot cannot use well. */
+  | { when: 'never' };
+
 export interface BotProfile {
   /** Fraction of its range the bot will open fire at. */
   engageRange?: number;
   /** Band, in fractions of range, within which it will fire its Super. */
   superRange?: { min?: number; max?: number };
-  /** When the gadget is worth spending. */
-  gadget?:
-    | { when: 'enemyWithin'; range: number }
-    | { when: 'enemyBetween'; min: number; max: number }
-    | { when: 'outOfAmmo'; range: number }
-    | { when: 'chance'; range: number; probability: number };
+  /** When each of the two gadgets is worth spending. */
+  gadgets?: [BotGadget, BotGadget];
+  /** When the gadget is worth spending, for a character with one. */
+  gadget?: BotGadget;
   /**
    * True for an attack that arcs over walls. Without it a lobber would never
    * fire from behind cover, which is the only place it wants to be.
@@ -365,6 +456,8 @@ export interface Kit {
   id: BrawlerId;
   /** Ammo slots. Three is common but not universal. */
   maxAmmo: number;
+  /** Super percent for a hit of the ordinary attack, where a projectile does not say. */
+  chargePerHit?: number;
   attack: AbilitySpec;
   /**
    * A chain of attacks that replaces `attack`: the first shot uses the first
@@ -374,7 +467,12 @@ export interface Kit {
   combo?: AbilitySpec[];
   comboWindow?: number;
   super: AbilitySpec;
-  gadget: AbilitySpec;
+  /** Two gadgets, chosen before the match. */
+  gadgets?: [GadgetSpec, GadgetSpec];
+  /** Two star powers, chosen before the match. */
+  starPowers?: [StarPowerSpec, StarPowerSpec];
+  /** The one gadget of a character not yet moved to the two-gadget form. */
+  gadget?: AbilitySpec;
   passives?: PassiveSpec[];
   traits?: KitTraits;
   bot?: BotProfile;

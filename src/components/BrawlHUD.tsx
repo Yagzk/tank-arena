@@ -404,24 +404,21 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
                     window.dispatchEvent(new KeyboardEvent('keyup', { key: 'e', code: 'KeyE' }));
                   }, 80);
                 }}
-                disabled={(myBrawler.gadgetCharges || 0) <= 0 || (myBrawler.gadgetCooldown || 0) > 0}
+                disabled={(myBrawler.gadgetCooldown || 0) > 0}
                 className={`relative w-16 h-16 rounded-full border-4 flex flex-col items-center justify-center shadow-xl transition-all duration-150 cursor-pointer active:scale-95 ${
-                  (myBrawler.gadgetCharges || 0) > 0 && (myBrawler.gadgetCooldown || 0) <= 0
+                  (myBrawler.gadgetCooldown || 0) <= 0
                     ? 'border-emerald-400 bg-gradient-to-tr from-emerald-600 to-green-400 shadow-[0_0_25px_rgba(52,211,153,0.7)] hover:scale-105'
                     : 'border-slate-700 bg-slate-900/90 opacity-50 cursor-not-allowed'
                 }`}
               >
                 <span className="text-xl drop-shadow">⚡</span>
                 <span className="text-[9px] font-arcade font-black text-slate-950">
-                  {(myBrawler.gadgetCooldown || 0) > 0
-                    ? `${Math.ceil(myBrawler.gadgetCooldown || 0)}s`
-                    : `${myBrawler.gadgetCharges || 0}/3`}
+                  {(myBrawler.gadgetCooldown || 0) > 5000
+                    ? '…'
+                    : (myBrawler.gadgetCooldown || 0) > 0
+                      ? `${Math.ceil(myBrawler.gadgetCooldown || 0)}s`
+                      : 'HAZIR'}
                 </span>
-
-                {/* Charges badge */}
-                <div className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-slate-950 border border-emerald-400 text-[9px] font-arcade font-black text-emerald-300">
-                  x{myBrawler.gadgetCharges ?? 0}
-                </div>
               </button>
               <span className="text-[10px] font-bold text-slate-300 mt-1 uppercase tracking-wider">
                 [E] Aksesuar

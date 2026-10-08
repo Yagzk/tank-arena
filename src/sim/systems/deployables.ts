@@ -90,11 +90,13 @@ export function updateDeployables(world: SimWorld, dt: number): void {
 
     d.lifetime -= dt;
     if (d.actTimer > 0) d.actTimer -= dt;
+    if (d.decay) d.hp -= d.decay * dt;
 
     if (d.lifetime <= 0 || d.hp <= 0 || d.spent) {
       // Destroyed and expired look different on purpose: one is something you
       // did, the other is the clock running out.
       const violent = d.hp <= 0 || d.spent;
+      if (d.hp <= 0) runDestroy(world, d);
       world.vfx(
         violent ? 'explosion' : 'smoke_poof',
         d.x,
@@ -168,10 +170,30 @@ export function updateDeployables(world: SimWorld, dt: number): void {
 
       case 'blocker':
       case 'solid':
+      case 'cover':
         // Stands still and stops bullets (and, for a solid block, bodies). The
         // engine's collision code does the work.
         break;
     }
+  }
+}
+
+/** What a deployable does when it is broken or replaced. */
+function runDestroy(world: SimWorld, d: DeployedEntity): void {
+  if (!d.onDestroyKey) return;
+  const owner = world.brawlers.find(b => b.id === d.ownerId);
+  const actions = getActions(d.onDestroyKey);
+  if (!owner || !actions) return;
+  runActions(contextFor(world, d, owner, d.angle, d.x, d.y), actions);
+}
+
+/** Placing a second one of a kind replaces the first, and the first goes off. */
+export function removeOwnDeployables(world: SimWorld, owner: BrawlerEntity, kind: string): void {
+  for (let i = world.deployables.length - 1; i >= 0; i--) {
+    const d = world.deployables[i];
+    if (d.ownerId !== owner.id || d.kind !== kind) continue;
+    runDestroy(world, d);
+    world.deployables.splice(i, 1);
   }
 }
 

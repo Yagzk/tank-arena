@@ -175,6 +175,8 @@ export class Room {
         const player = this.players.find(p => p.id === peerId);
         if (player) {
           player.brawler = message.brawler;
+          player.gadget = message.gadget;
+          player.starPower = message.starPower;
           this.broadcastRoom();
         }
         break;

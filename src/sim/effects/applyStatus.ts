@@ -26,8 +26,25 @@ export function applyStatus(target: BrawlerEntity, s: StatusSpec): void {
       target.stunTimer = extend(target.stunTimer, s.duration);
       break;
 
-    case 'slow':
+    case 'slow': {
+      const amount = s.magnitude ?? 0.5;
+      // Two slows at once take the stronger, and a fresh one starts clean.
+      target.slowAmount = target.slowTimer > 0 ? Math.max(target.slowAmount, amount) : amount;
       target.slowTimer = extend(target.slowTimer, s.duration);
+      break;
+    }
+
+    case 'superActive':
+      target.superActiveTimer = extend(target.superActiveTimer, s.duration);
+      break;
+
+    case 'absorb':
+      target.absorbTimer = extend(target.absorbTimer, s.duration);
+      break;
+
+    case 'guard':
+      target.guardAmount = target.guardTimer > 0 ? Math.max(target.guardAmount, s.magnitude ?? 0.5) : (s.magnitude ?? 0.5);
+      target.guardTimer = extend(target.guardTimer, s.duration);
       break;
 
     case 'burn':
@@ -83,7 +100,16 @@ export function applyStatuses(target: BrawlerEntity, list: StatusSpec[] | undefi
 /** Advances every status timer by one tick. */
 export function tickStatuses(b: BrawlerEntity, dt: number): void {
   if (b.stunTimer > 0) b.stunTimer -= dt;
-  if (b.slowTimer > 0) b.slowTimer -= dt;
+  if (b.slowTimer > 0) {
+    b.slowTimer -= dt;
+    if (b.slowTimer <= 0) b.slowAmount = 0;
+  }
+  if (b.absorbTimer > 0) b.absorbTimer -= dt;
+  if (b.superActiveTimer > 0) b.superActiveTimer -= dt;
+  if (b.guardTimer > 0) {
+    b.guardTimer -= dt;
+    if (b.guardTimer <= 0) b.guardAmount = 0;
+  }
   if (b.speedBoostTimer > 0) {
     b.speedBoostTimer -= dt;
     if (b.speedBoostTimer <= 0) b.speedBoostMagnitude = 1;

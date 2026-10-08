@@ -163,8 +163,8 @@ export class ServerManager {
     this.send({ t: 'join', code, name, brawler });
   }
 
-  public pick(brawler: BrawlerId): void {
-    this.send({ t: 'pick', brawler });
+  public pick(brawler: BrawlerId, gadget = 0, starPower = 0): void {
+    this.send({ t: 'pick', brawler, gadget, starPower });
   }
 
   public setMode(mode: BrawlGameMode): void {

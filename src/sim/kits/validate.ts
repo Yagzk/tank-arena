@@ -61,8 +61,8 @@ function checkProjectile(p: Problems, path: string, spec: ProjectileSpec, depth:
   }
   if (spec.falloff) {
     if (!(spec.falloff.distance > 0)) p.at(path, 'falloff distance must be positive');
-    if (spec.falloff.near <= spec.falloff.far) {
-      p.at(path, 'falloff near multiplier should exceed far, or it is not a close-range bonus');
+    if (spec.falloff.near === spec.falloff.far) {
+      p.at(path, 'falloff with equal ends does nothing');
     }
   }
 
@@ -72,6 +72,9 @@ function checkProjectile(p: Problems, path: string, spec: ProjectileSpec, depth:
   if (spec.onHit) checkActions(p, path + '.onHit', spec.onHit, depth + 1);
   if (spec.onEnd) checkActions(p, path + '.onEnd', spec.onEnd, depth + 1);
 }
+
+/** Summons that only stand there: no list of things to do, no clock, no reach. */
+const PASSIVE_KINDS: readonly string[] = ['barrier', 'wall', 'cactus', 'vending'];
 
 function checkAction(p: Problems, path: string, action: AbilityAction, depth: number): void {
   switch (action.type) {
@@ -139,7 +142,9 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
       break;
 
     case 'heal':
-      if (!(action.amount > 0)) p.at(path, 'a heal needs a positive amount');
+      if (!((action.amount ?? 0) > 0) && !((action.fraction ?? 0) > 0)) {
+        p.at(path, 'a heal needs a positive amount or fraction');
+      }
       break;
 
     case 'shield':
@@ -156,7 +161,9 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
       break;
 
     case 'dash':
-      if (!(action.speed > 0)) p.at(path, 'a dash needs a positive speed');
+      if (!((action.speed ?? 0) > 0) && !((action.distance ?? 0) > 0)) {
+        p.at(path, 'a dash needs a positive speed or distance');
+      }
       if (action.statuses) {
         action.statuses.forEach((s, i) => checkStatus(p, path + '.statuses[' + i + ']', s));
       }
@@ -190,7 +197,7 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
       if (!(action.lifetime > 0)) p.at(path, 'a summon needs a positive lifetime');
       if (action.kind !== 'decoy') {
         if (!(action.hp! > 0)) p.at(path, 'a deployable needs health, or it cannot be destroyed');
-        if (action.kind !== 'barrier' && action.kind !== 'wall') {
+        if (!PASSIVE_KINDS.includes(action.kind)) {
           if (!action.onAct || action.onAct.length === 0) {
             p.at(path, 'a ' + action.kind + ' with no onAct list would just sit there');
           }
@@ -202,6 +209,7 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
         }
       }
       if (action.onAct) checkActions(p, path + '.onAct', action.onAct, depth + 1);
+      if (action.onDestroy) checkActions(p, path + '.onDestroy', action.onDestroy, depth + 1);
       break;
 
     case 'chain':
@@ -214,6 +222,12 @@ function checkAction(p: Problems, path: string, action: AbilityAction, depth: nu
       if (action.statuses) {
         action.statuses.forEach((s, i) => checkStatus(p, path + '.statuses[' + i + ']', s));
       }
+      break;
+
+    case 'empower':
+      if (!(action.uses >= 1)) p.at(path, 'an empower needs at least one use');
+      if (action.attack.length === 0) p.at(path, 'an empowered attack with no actions does nothing');
+      checkActions(p, path + '.attack', action.attack, depth + 1);
       break;
 
     case 'vfx':
@@ -255,7 +269,20 @@ export function validateKit(kit: Kit): string[] {
 
   checkAbility(p, 'attack', kit.attack);
   checkAbility(p, 'super', kit.super);
-  checkAbility(p, 'gadget', kit.gadget);
+  if (kit.gadget) checkAbility(p, 'gadget', kit.gadget);
+  if (!kit.gadget && !kit.gadgets) p.at('gadgets', 'a character needs at least one gadget');
+  kit.gadgets?.forEach((g, i) => {
+    const path = 'gadgets[' + i + ']';
+    if (!g.name) p.at(path, 'a gadget needs a name');
+    if (!(g.cooldown > 0)) p.at(path, 'a gadget needs a positive cooldown');
+    if (g.actions.length === 0) p.at(path, 'a gadget with no actions does nothing');
+    if (g.cooldownAfterUse && !g.actions.some(a => a.type === 'empower')) {
+      p.at(path, 'cooldownAfterUse only makes sense for a gadget that empowers an attack');
+    }
+    checkActions(p, path + '.actions', g.actions, 0);
+  });
+  if (kit.gadgets && kit.gadgets.length !== 2) p.at('gadgets', 'exactly two gadgets');
+  if (kit.starPowers && kit.starPowers.length !== 2) p.at('starPowers', 'exactly two star powers');
 
   kit.passives?.forEach((passive, i) => {
     const path = 'passives[' + i + ']';

@@ -6,7 +6,7 @@ import type { NetSnapshot } from './codec';
 export type NetworkMessage =
   | { type: 'JOIN'; name: string; brawler: BrawlerId }
   /** A client changing its pick while sitting in the room. */
-  | { type: 'PICK_BRAWLER'; brawler: BrawlerId }
+  | { type: 'PICK_BRAWLER'; brawler: BrawlerId; gadget?: number; starPower?: number }
   | { type: 'ROOM_UPDATE'; players: PlayerInfo[]; mode: BrawlGameMode }
   | { type: 'START_MATCH'; mode: BrawlGameMode }
   /** The host ending the round and bringing everybody back to the room. */
@@ -192,6 +192,8 @@ export class PeerManager {
       const player = this.players.find(p => p.id === conn.peer);
       if (!player) return;
       player.brawler = msg.brawler;
+      player.gadget = msg.gadget === 1 ? 1 : 0;
+      player.starPower = msg.starPower === 1 ? 1 : 0;
       this.callbacks.onPlayersChanged?.(this.players);
       this.broadcast({
         type: 'ROOM_UPDATE',
@@ -331,15 +333,17 @@ export class PeerManager {
    * room up again — which hands everybody a new code to type in. The host
    * owns the roster either way, so a client asks rather than tells.
    */
-  public setBrawler(brawler: BrawlerId) {
+  public setBrawler(brawler: BrawlerId, gadget = 0, starPower = 0) {
     if (!this.isHost) {
-      this.sendToHost({ type: 'PICK_BRAWLER', brawler });
+      this.sendToHost({ type: 'PICK_BRAWLER', brawler, gadget, starPower });
       return;
     }
 
     const me = this.players.find(p => p.id === this.myId);
-    if (!me || me.brawler === brawler) return;
+    if (!me || (me.brawler === brawler && (me.gadget ?? 0) === gadget && (me.starPower ?? 0) === starPower)) return;
     me.brawler = brawler;
+    me.gadget = gadget;
+    me.starPower = starPower;
     this.callbacks.onPlayersChanged?.(this.players);
     this.broadcast({
       type: 'ROOM_UPDATE',

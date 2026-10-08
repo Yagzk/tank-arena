@@ -13,7 +13,7 @@ import {
 import { dist } from '../core/math';
 import { hasLineOfSight } from '../core/collision';
 import { getKit } from '../sim/kits';
-import { BUSH_SIGHT } from './modes';
+import { BUSH_SIGHT, INVISIBLE_SIGHT } from './modes';
 import { NavGrid } from '../core/navGrid';
 
 /** Cubes a bot wants banked before it goes looking for a fight. */
@@ -26,7 +26,7 @@ const ENGAGE_DISTANCE = 260;
 const RETREAT_HEALTH = 0.42;
 
 /** A kick rolls about this far, so a bot shoots from inside it. */
-const KICK_RANGE = 470;
+const KICK_RANGE = 580;
 
 /**
  * Heist orders for one bot. An attacker walks to `stand` and shoots `target`,
@@ -101,7 +101,8 @@ export class BrawlBot {
       if (enemy.isInBush && !enemy.isVisibleToEnemies && dist(bot.x, bot.y, enemy.x, enemy.y) > BUSH_SIGHT) {
         continue;
       }
-      if (enemy.invisibilityTimer > 0) continue; // Leon invisible
+      // Invisible, unless it is close enough to be seen anyway.
+      if (enemy.invisibilityTimer > 0 && dist(bot.x, bot.y, enemy.x, enemy.y) > INVISIBLE_SIGHT) continue;
 
       const d = dist(bot.x, bot.y, enemy.x, enemy.y);
       if (d < minEnemyDist) {
@@ -223,9 +224,15 @@ export class BrawlBot {
         shouldSuper = targetDist >= min && targetDist <= max;
       }
 
-      const gadget = profile?.gadget;
-      if (bot.gadgetCharges > 0 && bot.gadgetCooldown <= 0 && gadget && !objectiveOnly) {
+      const gadget = profile?.gadgets ? profile.gadgets[bot.gadgetIndex] : profile?.gadget;
+      if (bot.gadgetCooldown <= 0 && gadget && !objectiveOnly) {
         switch (gadget.when) {
+          case 'always':
+            this.wantsGadget = true;
+            break;
+          case 'never':
+            this.wantsGadget = false;
+            break;
           case 'enemyWithin':
             this.wantsGadget = targetDist < gadget.range;
             break;

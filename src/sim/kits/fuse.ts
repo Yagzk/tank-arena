@@ -1,46 +1,37 @@
 import type { Kit } from './schema';
+import { speed, tiles } from './bs';
 
 /**
- * FUSE — artillery.
+ * FUSE — the rocketeer.
  *
- * One heavy rocket at a time, and a barrage that denies a whole area. Every
- * blast leaves ground burning, so a direct hit is rarely the point: the point
- * is that the tile is no longer somewhere you can stand.
- *
- * Note on the direct hit. Splash deliberately spares the body the rocket
- * actually connected with. Before the kit rewrite, a direct hit took the
- * rocket's damage *and* the full splash from the same rocket — 2720 instead of
- * 1360 — which quietly made this the hardest-hitting character in the game.
+ * One slow, long-reaching rocket that sets the ground alight where it lands,
+ * and a Super that rains nine of them over a wide patch while the thrower
+ * walks. Hitting something directly takes the rocket's damage once; the splash
+ * is for everyone else.
  */
 export const fuseKit: Kit = {
   id: 'fuse',
   maxAmmo: 3,
 
-  // Balance dial: see docs/DENGE.md.
-  traits: { damageScale: 0.6 },
-
   attack: {
-    name: 'Tekli Roket',
+    name: 'Roket',
     actions: [
       { type: 'sound', cue: 'rocket_launch' },
       {
         type: 'projectiles',
         delivery: { pattern: 'single' },
         projectile: {
-          speed: 560,
-          radius: 8,
-          damage: { ofAttack: 1 },
-          range: 540,
-          color: '#fbbf24',
-          offset: 25,
+          speed: speed(2700),
+          radius: 20,
+          damage: 2320,
+          range: tiles(9),
+          color: '#f59e0b',
+          offset: 24,
+          charge: 20,
           onEnd: [
-            {
-              type: 'explosion',
-              at: 'here',
-              damage: { ofAttack: 1 },
-              radius: 65,
-              spawnFire: true,
-            },
+            { type: 'explosion', at: 'here', damage: 2320, radius: tiles(1.5), charge: 9 },
+            { type: 'hazard', at: 'here', hazard: { kind: 'fire', radius: tiles(1), duration: 2.9, damagePerSec: 696 } },
+            { type: 'vfx', at: 'here', effect: 'explosion', radius: tiles(1.5), color: '#f97316', duration: 0.3, intensity: 0.7 },
           ],
         },
       },
@@ -50,49 +41,119 @@ export const fuseKit: Kit = {
   super: {
     name: 'Roket Yağmuru',
     actions: [
-      { type: 'sound', cue: 'super_blast' },
+      { type: 'banner', text: 'ROKET YAĞMURU!', color: '#fbbf24' },
       {
         type: 'burst',
         count: 9,
-        interval: 0.12,
-        // Rockets land scattered around the aim point rather than stacked on
-        // it, which is what turns the Super into area denial.
-        scatter: 170,
+        interval: 0.2,
+        scatter: 300,
+        channel: true,
         actions: [
-          {
-            type: 'explosion',
-            at: 'target',
-            damage: 950,
-            radius: 85,
-            spawnFire: true,
-          },
           { type: 'sound', cue: 'rocket_launch' },
+          {
+            type: 'projectiles',
+            delivery: { pattern: 'single' },
+            projectile: {
+              speed: 760,
+              radius: 14,
+              damage: 0,
+              range: tiles(8.33),
+              color: '#fde68a',
+              offset: 24,
+              motion: 'lob',
+              charge: 18.2,
+              onEnd: [
+                { type: 'explosion', at: 'here', damage: 2080, radius: tiles(1.5), charge: 18.2 },
+                { type: 'vfx', at: 'here', effect: 'explosion', radius: tiles(1.5), color: '#fbbf24', duration: 0.3, intensity: 0.7 },
+              ],
+            },
+          },
         ],
       },
     ],
   },
 
-  bot: {
-    engageRange: 0.92,
-    superRange: { max: 0.96 },
-    // The jump is an escape, so it is worth spending when something is close.
-    gadget: { when: 'enemyWithin', range: 120 },
-  },
+  gadgets: [
+    {
+      name: 'Roket Tepmesi',
+      description: 'Hedef bölgeye atlar; kalkarken ve inerken yakındakileri savurur.',
+      cooldown: 22,
+      actions: [
+        { type: 'explosion', at: 'self', damage: 1000, radius: tiles(2), push: tiles(2) },
+        {
+          type: 'jump',
+          distance: tiles(4),
+          onLand: [
+            { type: 'sound', cue: 'explosion' },
+            { type: 'explosion', at: 'self', damage: 1000, radius: tiles(2), push: tiles(2) },
+            { type: 'vfx', at: 'self', effect: 'shockwave', radius: tiles(2), color: '#fbbf24', duration: 0.4 },
+          ],
+        },
+      ],
+    },
+    {
+      name: 'Roket Yakıtı',
+      description: 'Sonraki atış yerleri de yıkan büyük bir roket olur.',
+      cooldown: 22,
+      cooldownAfterUse: true,
+      actions: [
+        {
+          type: 'empower',
+          uses: 1,
+          attack: [
+            { type: 'sound', cue: 'rocket_launch' },
+            {
+              type: 'projectiles',
+              delivery: { pattern: 'single' },
+              projectile: {
+                speed: speed(3500),
+                radius: 30,
+                damage: 2000,
+                range: tiles(9),
+                color: '#fb923c',
+                offset: 24,
+                breaksWalls: true,
+                charge: 20,
+                onEnd: [
+                  { type: 'explosion', at: 'here', damage: 2000, radius: tiles(1.5), charge: 9 },
+                  { type: 'vfx', at: 'here', effect: 'explosion', radius: tiles(1.8), color: '#f97316', duration: 0.35, intensity: 0.9 },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ],
 
-  gadget: {
-    name: 'İtki Fişeği',
-    actions: [
-      { type: 'banner', text: 'ROKET BAĞCIKLARI!', color: '#f59e0b' },
-      { type: 'jump', distance: 120 },
-      {
-        type: 'explosion',
-        at: 'self',
-        damage: 500,
-        radius: 75,
-        knockback: 250,
-        spawnFire: true,
+  starPowers: [
+    {
+      name: 'Daha Çok Roket',
+      description: 'Süper 9 yerine 13 roket yağdırır.',
+      apply: kit => {
+        for (const a of kit.super.actions) {
+          if (a.type === 'burst') {
+            a.count = 13;
+            a.interval = 0.15;
+          }
+        }
       },
-      { type: 'sound', cue: 'rocket_launch' },
+    },
+    {
+      name: 'Dördüncü Roket',
+      description: 'Bir cephane yuvası daha taşır.',
+      apply: kit => {
+        kit.maxAmmo = 4;
+      },
+    },
+  ],
+
+  bot: {
+    engageRange: 0.95,
+    superRange: { max: 0.95 },
+    gadgets: [
+      { when: 'enemyWithin', range: 150 },
+      { when: 'enemyBetween', min: 200, max: 540 },
     ],
   },
 };

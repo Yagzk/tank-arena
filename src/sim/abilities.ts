@@ -20,6 +20,7 @@ import type {
   PassiveSpec,
 } from './kits/schema';
 import { getActions, getHooks, keyFor } from './kits/registry';
+import { removeOwnDeployables } from './systems/deployables';
 import { damageFactor } from './damageFactor';
 import {
   applyDamage,
@@ -153,7 +154,7 @@ function resolveDelivery(delivery: Delivery, aimAngle: number): number {
     case 'radial': {
       const n = Math.min(delivery.count, angleScratch.length);
       for (let i = 0; i < n; i++) {
-        angleScratch[i] = aimAngle + (i * Math.PI * 2) / n;
+        angleScratch[i] = (delivery.fixed ? 0 : aimAngle) + (i * Math.PI * 2) / n;
       }
       return n;
     }
@@ -261,6 +262,8 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         targetY: ctx.targetY,
         isSuper: ctx.isSuper,
         damageMultiplier: ctx.damageMultiplier,
+        lateral: action.lateral ?? 0,
+        channel: action.channel === true,
       };
       break;
     }
@@ -313,6 +316,8 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
         damage: Math.round(resolveDamage(action.damage, ctx)),
         radius: action.radius,
         knockback: action.knockback,
+        push: action.push,
+        charge: action.charge,
         spawnFire: action.spawnFire,
         burn: action.burn,
         excludeId: ctx.excludeId,
@@ -397,7 +402,7 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       // own regeneration, ticking every frame, is not.
       if (action.target === 'allies') world.sound('heal_pulse', ctx.originX, ctx.originY);
       applyHeal(world, caster, {
-        amount: action.amount * ctx.scale,
+        amount: (action.fraction !== undefined ? action.fraction * caster.maxHp : (action.amount ?? 0)) * ctx.scale,
         radius: action.target === 'allies' ? (action.radius ?? 200) : undefined,
         showNumber: ctx.scale === 1,
         originX: ctx.originX,
@@ -428,8 +433,32 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
       chargeSuperFlat(caster, action.percent);
       break;
 
+    case 'empower': {
+      caster.empowerKey = keyFor(action);
+      caster.empowerUses = action.uses;
+      break;
+    }
+
     case 'dash': {
-      applyDash(caster, ctx.aimAngle, action.speed);
+      const impulse = action.distance !== undefined ? action.distance * 7 : (action.speed ?? 600);
+      applyDash(caster, ctx.aimAngle, impulse);
+      if (action.grabThrow !== undefined) {
+        // Everything the body is about to run into is lifted and set down behind it.
+        const reach = action.distance ?? impulse / 7;
+        const cos = Math.cos(ctx.aimAngle);
+        const sin = Math.sin(ctx.aimAngle);
+        for (const other of world.brawlers) {
+          if (other.id === caster.id || !other.isAlive || other.isJumping || other.isClone) continue;
+          if (!world.isHostile(caster.team, other) || other.immunityTimer > 0) continue;
+          const dx = other.x - caster.x;
+          const dy = other.y - caster.y;
+          const along = dx * cos + dy * sin;
+          const across = Math.abs(-dx * sin + dy * cos);
+          if (along < -10 || along > reach + 30 || across > 46) continue;
+          placeAt(other, caster.x - cos * action.grabThrow, caster.y - sin * action.grabThrow);
+          applyStatus(other, { kind: 'stun', duration: 0.6 });
+        }
+      }
       if (action.throughBodies) {
         // About as long as the impulse takes to decay to a walk, so the
         // phasing lasts exactly as long as the dash does.
@@ -528,9 +557,15 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
 
     case 'summon': {
       if (action.kind === 'decoy') {
-        spawnDecoy(world, { owner: caster, lifetime: action.lifetime, offset: action.offset });
+        spawnDecoy(world, {
+          owner: caster,
+          lifetime: action.lifetime,
+          offset: action.offset,
+          touchDamage: action.touchDamage,
+        });
         break;
       }
+      if (action.unique) removeOwnDeployables(world, caster, action.kind);
       const offset = action.offset ?? 56;
       const at = action.at ?? 'aim';
       const baseX = anchorX(at, offset, ctx);
@@ -555,6 +590,8 @@ function runAction(ctx: AbilityContext, action: AbilityAction): void {
           range: action.range,
           speed: action.speed,
           actionKey: keyFor(action),
+          decay: action.decay,
+          onDestroyKey: action.onDestroy ? keyFor(action.onDestroy) : undefined,
         });
       }
       break;
@@ -623,19 +660,25 @@ export function fireBurstShot(world: SimWorld, b: BrawlerEntity): void {
   const scatterX = burst.scatter ? (world.rng.next() - 0.5) * burst.scatter : 0;
   const scatterY = burst.scatter ? (world.rng.next() - 0.5) * burst.scatter : 0;
 
+  // Alternating sides, so a volley of one stream reads as two.
+  const side = burst.lateral ? (i % 2 === 0 ? 1 : -1) * burst.lateral : 0;
+  const aim = burst.aimAngle + offset;
+  const originX = b.x + Math.cos(aim + Math.PI / 2) * side;
+  const originY = b.y + Math.sin(aim + Math.PI / 2) * side;
+
   runActions(
     {
       world,
       caster: b,
-      aimAngle: burst.aimAngle + offset,
+      aimAngle: aim,
       targetX: burst.targetX + scatterX,
       targetY: burst.targetY + scatterY,
       damageMultiplier: burst.damageMultiplier,
       isSuper: burst.isSuper,
-      originX: b.x,
-      originY: b.y,
-      hereX: b.x,
-      hereY: b.y,
+      originX,
+      originY,
+      hereX: originX,
+      hereY: originY,
       scale: 1,
     },
     actions

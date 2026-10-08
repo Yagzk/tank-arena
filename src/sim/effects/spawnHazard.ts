@@ -27,6 +27,10 @@ export function spawnHazard(
       radius: spec.radius,
       duration: spec.duration,
       damagePerSec: Math.round(spec.damagePerSec),
+      slowAmount: spec.slow,
+      lifesteal: spec.lifesteal,
+      healPerSec: spec.healPerSec,
+      tint: spec.tint,
     });
     return;
   }
@@ -40,5 +44,9 @@ export function spawnHazard(
     radius: spec.radius,
     duration: spec.duration,
     damagePerSec: Math.round(spec.damagePerSec),
+    slowAmount: spec.slow,
+    lifesteal: spec.lifesteal,
+    healPerSec: spec.healPerSec,
+    tint: spec.tint,
   });
 }

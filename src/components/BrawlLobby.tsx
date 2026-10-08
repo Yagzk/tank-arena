@@ -1,3 +1,4 @@
+import { getKit } from '../sim/kits';
 import { AudioSettings } from './AudioSettings';
 import { ModePicker } from './ModePicker';
 import React, { useState } from 'react';
@@ -19,11 +20,55 @@ import {
   Skull,
 } from 'lucide-react';
 
+/** Two gadgets and two star powers, one of each chosen. Reads their names from the kit itself. */
+const LoadoutPicker: React.FC<{
+  brawler: BrawlerId;
+  loadout: { gadget: number; starPower: number };
+  setLoadout: (gadget: number, starPower: number) => void;
+}> = ({ brawler, loadout, setLoadout }) => {
+  const kit = getKit(brawler);
+  const gadgets = kit.gadgets;
+  const stars = kit.starPowers;
+  if (!gadgets || !stars) return null;
+
+  const option = (selected: boolean, tone: 'emerald' | 'amber', onClick: () => void, name: string, text: string) => (
+    <button
+      key={name}
+      onClick={onClick}
+      className={`text-left px-2.5 py-1.5 rounded-xl border transition cursor-pointer ${
+        selected
+          ? tone === 'emerald'
+            ? 'border-emerald-400 bg-emerald-500/20'
+            : 'border-amber-400 bg-amber-500/20'
+          : 'border-slate-700 bg-slate-900 hover:border-slate-500'
+      }`}
+    >
+      <span className={`font-bold ${tone === 'emerald' ? 'text-emerald-300' : 'text-amber-300'}`}>{name}</span>
+      <span className="block text-[10px] text-slate-400 leading-snug">{text}</span>
+    </button>
+  );
+
+  return (
+    <div className="flex flex-col gap-2 mt-3 pt-2 border-t border-slate-800/80 text-xs">
+      <span className="font-arcade text-[10px] font-black text-emerald-300">⚡ AKSESUAR</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {gadgets.map((g, i) => option(loadout.gadget === i, 'emerald', () => setLoadout(i, loadout.starPower), g.name, g.description))}
+      </div>
+      <span className="font-arcade text-[10px] font-black text-amber-300">⭐ YILDIZ GÜCÜ</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {stars.map((s, i) => option(loadout.starPower === i, 'amber', () => setLoadout(loadout.gadget, i), s.name, s.description))}
+      </div>
+    </div>
+  );
+};
+
 interface BrawlLobbyProps {
   playerName: string;
   setPlayerName: (name: string) => void;
   selectedBrawler: BrawlerId;
   setSelectedBrawler: (brawler: BrawlerId) => void;
+  loadout: { gadget: number; starPower: number };
+  setLoadout: (gadget: number, starPower: number) => void;
   gameMode: BrawlGameMode;
   setGameMode: (mode: BrawlGameMode) => void;
   roomCode: string;
@@ -49,6 +94,8 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
   setPlayerName,
   selectedBrawler,
   setSelectedBrawler,
+  loadout,
+  setLoadout,
   gameMode,
   setGameMode,
   roomCode,
@@ -189,26 +236,8 @@ export const BrawlLobby: React.FC<BrawlLobbyProps> = ({
                     </span>
                   </div>
 
-                  {/* Gadget & Star Power Detailed Badges */}
-                  <div className="flex flex-col gap-1.5 mt-3 pt-2 border-t border-slate-800/80 text-xs">
-                    <div className="flex items-start gap-2">
-                      <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-arcade text-[10px] font-black shrink-0">
-                        ⚡ AKSESUAR
-                      </span>
-                      <span className="text-slate-300">
-                        <strong className="text-emerald-400">{activeCfg.gadgetName}:</strong> {activeCfg.gadgetDesc}
-                      </span>
-                    </div>
-
-                    <div className="flex items-start gap-2">
-                      <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 font-arcade text-[10px] font-black shrink-0">
-                        ⭐ YILDIZ GÜCÜ
-                      </span>
-                      <span className="text-slate-300">
-                        <strong className="text-amber-400">{activeCfg.starPowerName}:</strong> {activeCfg.starPowerDesc}
-                      </span>
-                    </div>
-                  </div>
+                  {/* The two gadgets and two star powers: pick one of each. */}
+                  <LoadoutPicker brawler={selectedBrawler} loadout={loadout} setLoadout={setLoadout} />
                 </div>
               </div>
 

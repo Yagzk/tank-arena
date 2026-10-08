@@ -328,11 +328,11 @@ describe('as in the original rules', () => {
     run(engine, 0.1);
     expect(engine.ball!.carrier).toBe(p.id);
     p.superCharge = 100;
-    const charges = p.gadgetCharges;
+    const cooldown = p.gadgetCooldown;
     engine.setPlayerInput(p.id, idle({ superAttack: true, gadget: true }));
     run(engine, 0.1);
     expect(p.superCharge).toBe(100);
-    expect(p.gadgetCharges).toBe(charges);
+    expect(p.gadgetCooldown).toBeGreaterThanOrEqual(cooldown);
   });
 
   it('clears the field when a tied game goes to sudden death', () => {

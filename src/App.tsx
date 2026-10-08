@@ -53,6 +53,8 @@ export const App: React.FC = () => {
     return localStorage.getItem('brwl_player_name') || `Brawler-${Math.floor(100 + Math.random() * 900)}`;
   });
   const [selectedBrawler, setSelectedBrawlerState] = useState<BrawlerId>('mira');
+  /** Which of the two gadgets and two star powers the player took. Remembered per character. */
+  const [loadout, setLoadoutState] = useState(() => readLoadout('mira'));
 
   /**
    * Picking a character, before a room exists and from inside one.
@@ -62,9 +64,24 @@ export const App: React.FC = () => {
    * rather than tells and the answer comes back as a room update.
    */
   const setSelectedBrawler = (brawler: BrawlerId) => {
+    const kept = readLoadout(brawler);
     setSelectedBrawlerState(brawler);
-    peerManagerRef.current?.setBrawler(brawler);
-    serverRef.current?.pick(brawler);
+    setLoadoutState(kept);
+    peerManagerRef.current?.setBrawler(brawler, kept.gadget, kept.starPower);
+    serverRef.current?.pick(brawler, kept.gadget, kept.starPower);
+  };
+
+  const setLoadout = (gadget: number, starPower: number) => {
+    setLoadoutState({ gadget, starPower });
+    saveLoadout(selectedBrawler, gadget, starPower);
+    peerManagerRef.current?.setBrawler(selectedBrawler, gadget, starPower);
+    serverRef.current?.pick(selectedBrawler, gadget, starPower);
+  };
+
+  /** What the room says about this player is what they are playing with. */
+  const syncMe = (me: PlayerInfo) => {
+    setSelectedBrawlerState(me.brawler);
+    setLoadoutState({ gadget: me.gadget ?? 0, starPower: me.starPower ?? 0 });
   };
   const [gameMode, setGameMode] = useState<BrawlGameMode>('showdown');
   const [roomCode, setRoomCode] = useState<string>('');
@@ -221,7 +238,7 @@ export const App: React.FC = () => {
         setGameMode(mode);
         setIsHost(owner === myPlayerIdRef.current);
         const me = list.find(p => p.id === myPlayerIdRef.current);
-        if (me) setSelectedBrawlerState(me.brawler);
+        if (me) syncMe(me);
       },
       onStart: mode => {
         setGameMode(mode);
@@ -290,7 +307,7 @@ export const App: React.FC = () => {
         // The host owns the roster, so the picker shows what was actually
         // accepted rather than what this client asked for.
         const me = updatedPlayers.find(p => p.id === myPlayerIdRef.current);
-        if (me) setSelectedBrawlerState(me.brawler);
+        if (me) syncMe(me);
       },
       onInputReceived: (pId, input, seq) => {
         engineRef.current?.setPlayerInput(pId, input, seq);
@@ -327,7 +344,7 @@ export const App: React.FC = () => {
         // The host owns the roster, so the picker shows what was actually
         // accepted rather than what this client asked for.
         const me = updatedPlayers.find(p => p.id === myPlayerIdRef.current);
-        if (me) setSelectedBrawlerState(me.brawler);
+        if (me) syncMe(me);
       },
       onGameStart: mode => {
         setGameMode(mode);
@@ -386,6 +403,8 @@ export const App: React.FC = () => {
         isHost: true,
         score: 0,
         trophies: 0,
+        gadget: loadout.gadget,
+        starPower: loadout.starPower,
       },
       ...botNames.map((bName, i) => ({
         id: `bot-${i + 1}`,
@@ -662,6 +681,8 @@ export const App: React.FC = () => {
           setPlayerName={setPlayerName}
           selectedBrawler={selectedBrawler}
           setSelectedBrawler={setSelectedBrawler}
+          loadout={loadout}
+          setLoadout={setLoadout}
           gameMode={gameMode}
           setGameMode={handleSetGameMode}
           roomCode={roomCode}
@@ -715,4 +736,26 @@ export const App: React.FC = () => {
   );
 };
 
-export default App;
+export default App;/** A player's last gadget and star power for a character, kept in the browser. */
+function readLoadout(brawler: BrawlerId): { gadget: number; starPower: number } {
+  try {
+    const raw = localStorage.getItem('nova.loadout.' + brawler);
+    if (raw) {
+      const v = JSON.parse(raw);
+      return { gadget: v.gadget === 1 ? 1 : 0, starPower: v.starPower === 1 ? 1 : 0 };
+    }
+  } catch {
+    // Private windows and blocked storage just mean no memory.
+  }
+  return { gadget: 0, starPower: 0 };
+}
+
+function saveLoadout(brawler: BrawlerId, gadget: number, starPower: number): void {
+  try {
+    localStorage.setItem('nova.loadout.' + brawler, JSON.stringify({ gadget, starPower }));
+  } catch {
+    // Not remembering is fine.
+  }
+}
+
+

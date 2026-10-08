@@ -38,10 +38,11 @@ export function maxSpeedFor(
   traitMultiplier: number,
   slowTimer: number,
   speedBoostTimer: number,
-  speedBoostMagnitude: number
+  speedBoostMagnitude: number,
+  slowAmount = 0.5
 ): number {
   let speed = baseSpeed * traitMultiplier;
-  if (slowTimer > 0) speed *= 0.5;
+  if (slowTimer > 0) speed *= 1 - (slowAmount > 0 ? slowAmount : 0.5);
   if (speedBoostTimer > 0) speed *= speedBoostMagnitude;
   return speed;
 }

@@ -18,6 +18,12 @@ const BEHAVIOUR: Record<DeployedKind, DeployedEntity['behaviour']> = {
   healStation: 'aura',
   barrier: 'blocker',
   wall: 'solid',
+  cactus: 'cover',
+  vending: 'cover',
+  lollipop: 'aura',
+  pad: 'proximity',
+  tornado: 'aura',
+  head: 'chase',
 };
 
 /** Sensible bodies, so a kit only states what is distinctive about its own. */
@@ -28,6 +34,12 @@ const DEFAULT_RADIUS: Record<DeployedKind, number> = {
   healStation: 22,
   barrier: 30,
   wall: 30,
+  cactus: 34,
+  vending: 32,
+  lollipop: 22,
+  pad: 28,
+  tornado: 60,
+  head: 22,
 };
 
 export interface SpawnDeployableParams {
@@ -43,6 +55,8 @@ export interface SpawnDeployableParams {
   range?: number;
   speed?: number;
   actionKey?: string;
+  decay?: number;
+  onDestroyKey?: string;
 }
 
 export function spawnDeployable(world: SimWorld, p: SpawnDeployableParams): DeployedEntity {
@@ -68,6 +82,8 @@ export function spawnDeployable(world: SimWorld, p: SpawnDeployableParams): Depl
     range: p.range ?? 0,
     speed: p.speed,
     actionKey: p.actionKey,
+    decay: p.decay,
+    onDestroyKey: p.onDestroyKey,
   };
 
   world.deployables.push(entity);

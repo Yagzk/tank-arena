@@ -12,8 +12,8 @@ import {
 import type { SoundType } from './cues';
 import { THEMES, midiToHz, notesForStep, secondsPerStep, type ThemeName } from './music';
 import { DEFAULT_SETTINGS, loadSettings } from './brawlAudio';
-import { KITS } from '../sim/kits';
-import type { AbilityAction } from '../sim/kits/schema';
+import { KITS, getKit } from '../sim/kits';
+import type { BrawlerId } from '../types/brawl';
 
 describe('the recipes', () => {
   const entries = Object.entries(RECIPES) as Array<[SoundType, (typeof RECIPES)[SoundType]]>;
@@ -44,24 +44,14 @@ describe('the recipes', () => {
   it('cover every sound a kit asks for', () => {
     // A cue that has no recipe is silently dropped, which is exactly how a new
     // character ends up with no sound and nobody notices.
+    // Read straight off the serialised kit, so nothing nested can be missed:
+    // gadgets, combos, empowered shots, what a summon does when it breaks.
     const cues = new Set<string>();
-    const walk = (actions: AbilityAction[]) => {
-      for (const a of actions) {
-        if (a.type === 'sound') cues.add(a.cue);
-        if (a.type === 'burst') walk(a.actions);
-        if (a.type === 'jump' && a.onLand) walk(a.onLand);
-        if (a.type === 'summon' && a.onAct) walk(a.onAct);
-        if (a.type === 'projectiles') {
-          if (a.projectile.onHit) walk(a.projectile.onHit);
-          if (a.projectile.onEnd) walk(a.projectile.onEnd);
-        }
+    for (const id of Object.keys(KITS) as BrawlerId[]) {
+      for (const star of [0, 1]) {
+        const text = JSON.stringify(getKit(id, star));
+        for (const m of text.matchAll(/"type":"sound","cue":"([a-z_]+)"/g)) cues.add(m[1]);
       }
-    };
-    for (const kit of Object.values(KITS)) {
-      walk(kit.attack.actions);
-      walk(kit.super.actions);
-      walk(kit.gadget.actions);
-      for (const p of kit.passives ?? []) walk(p.actions);
     }
     expect(cues.size).toBeGreaterThan(5);
     for (const cue of cues) expect(RECIPES[cue as SoundType], cue).toBeDefined();

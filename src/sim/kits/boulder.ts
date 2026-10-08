@@ -1,39 +1,44 @@
 import type { Kit } from './schema';
+import { speed, tiles } from './bs';
 
 /**
- * BOULDER — tank.
+ * BOULDER — the brawler.
  *
- * Alternating punches at arm's length, and a leap that clears walls to land on
- * someone. The Super charges from damage *taken* as well as dealt, which is
- * what makes a tank's engage inevitable rather than optional.
+ * A flurry of four punches that has to be next to you, a huge body, and a Super
+ * that is a leap: it lands hard, knocks everything round it back and breaks
+ * cover. Taking damage charges the Super as much as dealing it does.
  */
 export const boulderKit: Kit = {
   id: 'boulder',
   maxAmmo: 3,
 
+  traits: {
+    // It takes 2.4 full health bars of damage to fill the Super.
+    superChargeFromDamageTaken: 100 / 2.4,
+  },
+
   attack: {
-    name: 'Çifte Yumruk',
+    name: 'Yumruk Yağmuru',
     actions: [
-      { type: 'sound', cue: 'heavy_punch' },
       {
         type: 'burst',
         count: 4,
-        interval: 0.08,
-        // Left, right, left, right — the punches read as a combination rather
-        // than as four identical projectiles.
-        aim: 'alternate',
-        amplitude: 0.14,
+        interval: 0.28,
+        lateral: 12,
         actions: [
+          { type: 'sound', cue: 'heavy_punch' },
           {
             type: 'projectiles',
             delivery: { pattern: 'single' },
             projectile: {
-              speed: 420,
-              radius: 9,
-              damage: { ofAttack: 1 },
-              range: 165,
-              color: '#38bdf8',
-              offset: 20,
+              speed: speed(3261),
+              radius: 26,
+              damage: 760,
+              range: tiles(3),
+              color: '#fb923c',
+              offset: 14,
+              piercesBodies: true,
+              charge: 9.5,
             },
           },
         ],
@@ -42,66 +47,69 @@ export const boulderKit: Kit = {
   },
 
   super: {
-    name: 'Göktaşı İnişi',
+    name: 'Göktaşı Dirseği',
     actions: [
       { type: 'sound', cue: 'heavy_leap' },
+      { type: 'banner', text: 'GÖKTAŞI DİRSEĞİ!', color: '#fdba74' },
       {
         type: 'jump',
         toTarget: true,
-        maxDistance: 380,
-        distance: 280,
+        maxDistance: tiles(9),
         onLand: [
           { type: 'sound', cue: 'super_blast' },
-          {
-            type: 'vfx',
-            at: 'here',
-            effect: 'ground_slam',
-            radius: 125,
-            color: '#f59e0b',
-            duration: 0.45,
-          },
-          {
-            type: 'explosion',
-            at: 'here',
-            damage: 1300,
-            radius: 125,
-            knockback: 420,
-            burn: { duration: 4, damagePerSec: 300 },
-          },
-          // Meteor Rush: the landing is an opening, so the speed to follow it
-          // up comes with it.
-          { type: 'status', target: 'self', statuses: [{ kind: 'speed', duration: 4, magnitude: 1.32 }] },
+          { type: 'explosion', at: 'self', damage: 1920, radius: tiles(2.67), push: tiles(2.6), charge: 25.2 },
+          { type: 'vfx', at: 'self', effect: 'ground_slam', radius: tiles(2.67), color: '#f97316', duration: 0.5 },
         ],
       },
     ],
   },
 
-  gadget: {
-    name: 'Savurma',
-    actions: [
-      {
-        type: 'grab',
-        range: 90,
-        throwDistance: 140,
-        damage: 480,
-        statuses: [{ kind: 'stun', duration: 0.6 }],
-        hitText: 'SAVURMA!',
-        missText: 'HEDEF YOK!',
+  gadgets: [
+    {
+      name: 'Arkaya Fırlatış',
+      description: 'İleri atılıp çarptığı düşmanları kapıp arkasına fırlatır.',
+      cooldown: 15,
+      actions: [{ type: 'dash', distance: tiles(2.67), grabThrow: tiles(2) }],
+    },
+    {
+      name: 'Meteor Kuşağı',
+      description: '1 saniye boyunca gelen bütün mermileri yok eden bir kalkan açar.',
+      cooldown: 20,
+      actions: [
+        { type: 'status', target: 'self', statuses: [{ kind: 'absorb', duration: 1 }] },
+        { type: 'vfx', at: 'self', effect: 'shockwave', radius: 70, color: '#fb923c', duration: 0.5 },
+      ],
+    },
+  ],
+
+  starPowers: [
+    {
+      name: 'Ateşli Düşüş',
+      description: 'Süperin vurduğu düşmanlar 4 saniyede 1800 hasarla yanar.',
+      apply: kit => {
+        const jump = kit.super.actions.find(a => a.type === 'jump');
+        const blast = jump && jump.type === 'jump' ? jump.onLand?.find(a => a.type === 'explosion') : undefined;
+        if (blast && blast.type === 'explosion') blast.burn = { duration: 4, damagePerSec: 450 };
       },
-    ],
-  },
+    },
+    {
+      name: 'Göktaşı Hızı',
+      description: 'Süperden sonra 3 saniye %25 hızlanır.',
+      apply: kit => {
+        const jump = kit.super.actions.find(a => a.type === 'jump');
+        if (jump && jump.type === 'jump') {
+          jump.onLand?.push({ type: 'status', target: 'self', statuses: [{ kind: 'speed', duration: 3, magnitude: 1.25 }] });
+        }
+      },
+    },
+  ],
 
   bot: {
-    engageRange: 0.97,
-    // The leap needs somewhere to leap to: useless point blank, wasted at
-    // the far end of the map.
-    superRange: { min: 0.6, max: 2.4 },
-    gadget: { when: 'enemyWithin', range: 80 },
-  },
-
-  traits: {
-    // Balance dial: see docs/DENGE.md.
-    damageScale: 0.75,
-    superChargeFromDamageTaken: 75,
+    engageRange: 1.0,
+    superRange: { min: 0.6, max: 3.0 },
+    gadgets: [
+      { when: 'enemyBetween', min: 60, max: 150 },
+      { when: 'enemyWithin', range: 260 },
+    ],
   },
 };

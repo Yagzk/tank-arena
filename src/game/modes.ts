@@ -267,6 +267,9 @@ export function decideByScore(
 /** How close, in world units, you must be to see somebody standing in a bush: two tiles. */
 export const BUSH_SIGHT = 120;
 
+/** How close an invisible body must be to be seen anyway: four tiles. */
+export const INVISIBLE_SIGHT = 240;
+
 /** Health a safe starts with. */
 export const SAFE_HP = 24000;
 

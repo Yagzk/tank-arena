@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { BrawlEngine } from '../game/brawlEngine';
 import { FIXED_DT } from '../core/loop';
-import { KITS } from './kits';
+import { KITS, withKit } from './kits';
+import type { Kit } from './kits/schema';
 import {
   BRAWLERS,
   type BrawlPlayerInput,
@@ -24,6 +25,30 @@ function players(...ids: BrawlerId[]): PlayerInfo[] {
 
 function idle(overrides: Partial<BrawlPlayerInput> = {}): BrawlPlayerInput {
   return { moveX: 0, moveY: 0, aimAngle: 0, attack: false, superAttack: false, ...overrides };
+}
+
+/**
+ * A character that plays the kit a test needs, whatever the real one is tuned
+ * to this week. Everything the test does not name is inert.
+ */
+const INERT: Omit<Kit, 'id'> = {
+  maxAmmo: 3,
+  attack: { name: 'a', actions: [{ type: 'banner', text: 'a', color: '#fff' }] },
+  super: { name: 's', actions: [{ type: 'banner', text: 's', color: '#fff' }] },
+  gadgets: [
+    { name: 'g', description: '', cooldown: 5, actions: [{ type: 'banner', text: 'g', color: '#fff' }] },
+    { name: 'h', description: '', cooldown: 5, actions: [{ type: 'banner', text: 'h', color: '#fff' }] },
+  ],
+};
+
+let restore: Array<() => void> = [];
+afterEach(() => {
+  for (const r of restore.reverse()) r();
+  restore = [];
+});
+
+function fixture(id: BrawlerId, over: Partial<Omit<Kit, 'id'>>): void {
+  restore.push(withKit(id, { ...INERT, ...over }));
 }
 
 /** A match on bare ground, so a test is about the ability and not the map. */
@@ -52,6 +77,18 @@ function run(engine: BrawlEngine, seconds: number): void {
 
 describe('delivery patterns', () => {
   it('fans a spread across its arc', () => {
+    fixture('mira', {
+      attack: {
+        name: 'fan',
+        actions: [
+          {
+            type: 'projectiles',
+            delivery: { pattern: 'spread', count: 5, arc: 0.5 },
+            projectile: { speed: 600, radius: 6, damage: 100, range: 400, color: '#fff' },
+          },
+        ],
+      },
+    });
     const engine = arena(players('mira', 'rivet'));
     engine.setPlayerInput('p0', idle({ attack: true }));
     engine.update(FIXED_DT);
@@ -62,12 +99,28 @@ describe('delivery patterns', () => {
     // The outermost pellets should sit half an arc either side of the aim
     // line. If the delivery collapsed, they would all share one heading.
     const headings = shots.map(p => Math.atan2(p.vy, p.vx)).sort((a, b) => a - b);
-    const arc = BRAWLERS.mira.spreadAngle;
-    expect(headings[0]).toBeCloseTo(-arc / 2, 4);
-    expect(headings[headings.length - 1]).toBeCloseTo(arc / 2, 4);
+    expect(headings[0]).toBeCloseTo(-0.25, 4);
+    expect(headings[headings.length - 1]).toBeCloseTo(0.25, 4);
   });
 
   it('spreads a radial burst evenly around the brawler', () => {
+    fixture('thorn', {
+      gadgets: [
+        {
+          name: 'ring',
+          description: '',
+          cooldown: 5,
+          actions: [
+            {
+              type: 'projectiles',
+              delivery: { pattern: 'radial', count: 16 },
+              projectile: { speed: 400, radius: 5, damage: 50, range: 300, color: '#fff' },
+            },
+          ],
+        },
+        INERT.gadgets![1],
+      ],
+    });
     const engine = arena(players('thorn', 'rivet'));
     engine.setPlayerInput('p0', idle({ gadget: true }));
     engine.update(FIXED_DT);
@@ -110,6 +163,27 @@ describe('delivery patterns', () => {
   it('sweeps a thrown handful across its arc', () => {
     // Four blades fired on one heading would be one blade as far as the player
     // can tell. The sweep is what makes the attack cover ground.
+    fixture('wisp', {
+      attack: {
+        name: 'sweep',
+        actions: [
+          {
+            type: 'burst',
+            count: 4,
+            interval: 0.1,
+            aim: 'sweep',
+            amplitude: 0.3,
+            actions: [
+              {
+                type: 'projectiles',
+                delivery: { pattern: 'single' },
+                projectile: { speed: 600, radius: 6, damage: 100, range: 400, color: '#fff' },
+              },
+            ],
+          },
+        ],
+      },
+    });
     const engine = arena(players('wisp', 'mira'));
     engine.setPlayerInput('p0', idle({ attack: true }));
     engine.update(FIXED_DT);
@@ -130,12 +204,37 @@ describe('delivery patterns', () => {
 
     expect(headings).toHaveLength(4);
     const spread = Math.max(...headings) - Math.min(...headings);
-    expect(spread).toBeCloseTo(0.28, 2);
+    expect(spread).toBeCloseTo(0.3, 2);
   });
 });
 
 describe('projectile hooks', () => {
   it('bursts a seed bomb into needles where it stops', () => {
+    fixture('thorn', {
+      attack: {
+        name: 'bomb',
+        actions: [
+          {
+            type: 'projectiles',
+            delivery: { pattern: 'single' },
+            projectile: {
+              speed: 480,
+              radius: 8,
+              damage: 100,
+              range: 390,
+              color: '#fff',
+              onEnd: [
+                {
+                  type: 'projectiles',
+                  delivery: { pattern: 'radial', count: 6 },
+                  projectile: { speed: 300, radius: 4, damage: 50, range: 200, color: '#fff', motion: 'curve', curveRate: 1 },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
     const engine = arena(players('thorn', 'rivet'));
     place(engine.brawlers[1], 2000, 2000); // out of the way
     engine.setPlayerInput('p0', idle({ attack: true }));
@@ -217,6 +316,22 @@ describe('projectile hooks', () => {
 
 describe('movement abilities', () => {
   it('runs a landing payload where the jump comes down', () => {
+    fixture('boulder', {
+      super: {
+        name: 'leap',
+        actions: [
+          {
+            type: 'jump',
+            toTarget: true,
+            maxDistance: 500,
+            onLand: [
+              { type: 'explosion', at: 'self', damage: 1000, radius: 120 },
+              { type: 'status', target: 'self', statuses: [{ kind: 'speed', duration: 3, magnitude: 1.25 }] },
+            ],
+          },
+        ],
+      },
+    });
     const engine = arena(players('boulder', 'mira'));
     const [jumper, victim] = engine.brawlers;
     place(jumper, 400, 400);
@@ -263,6 +378,21 @@ describe('movement abilities', () => {
 
 describe('statuses and passives', () => {
   it('turns a stealth Super into invisibility and speed', () => {
+    fixture('wisp', {
+      super: {
+        name: 'smoke',
+        actions: [
+          {
+            type: 'status',
+            target: 'self',
+            statuses: [
+              { kind: 'invisible', duration: 6 },
+              { kind: 'speed', duration: 6, magnitude: 1.3 },
+            ],
+          },
+        ],
+      },
+    });
     const engine = arena(players('wisp', 'mira'));
     const sneak = engine.brawlers[0];
     sneak.superCharge = 100;
@@ -276,6 +406,17 @@ describe('statuses and passives', () => {
   });
 
   it('fires a cooldown passive once, then holds it', () => {
+    fixture('mira', {
+      passives: [
+        {
+          name: 'Sargi',
+          trigger: 'lowHealth',
+          threshold: 0.4,
+          cooldown: 15,
+          actions: [{ type: 'heal', target: 'self', amount: 1800 }],
+        },
+      ],
+    });
     const engine = arena(players('mira', 'rivet'));
     const medic = engine.brawlers[0];
     medic.hp = medic.maxHp * 0.3;
@@ -285,7 +426,7 @@ describe('statuses and passives', () => {
     const afterHeal = medic.hp;
 
     expect(afterHeal).toBeGreaterThan(medic.maxHp * 0.3);
-    expect(medic.passiveCooldowns['Sargı']).toBeGreaterThan(0);
+    expect(medic.passiveCooldowns['Sargi']).toBeGreaterThan(0);
 
     // Dropped low again inside the cooldown, it must not heal a second time.
     medic.hp = medic.maxHp * 0.2;
@@ -294,6 +435,20 @@ describe('statuses and passives', () => {
   });
 
   it('heals a continuous passive by the second, not by the tick', () => {
+    fixture('wisp', {
+      super: {
+        name: 'smoke',
+        actions: [{ type: 'status', target: 'self', statuses: [{ kind: 'invisible', duration: 6 }] }],
+      },
+      passives: [
+        {
+          name: 'Gizli Sifa',
+          trigger: 'whileInvisible',
+          perSecond: true,
+          actions: [{ type: 'heal', target: 'self', amount: 700 }],
+        },
+      ],
+    });
     const engine = arena(players('wisp', 'mira'));
     const sneak = engine.brawlers[0];
     sneak.hp = 1000;

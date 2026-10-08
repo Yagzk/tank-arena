@@ -98,17 +98,21 @@ describe('the validator', () => {
     expect(validateKit(kit).join()).toMatch(/positive duration/);
   });
 
-  it('rejects a close-range bonus that is not one', () => {
+  it('rejects a falloff that does nothing, and allows one that grows with distance', () => {
     const kit = soundKit();
-    (kit.attack.actions[0] as {
+    const projectile = (kit.attack.actions[0] as {
       projectile: { falloff?: { near: number; far: number; distance: number } };
-    }).projectile.falloff = { near: 0.5, far: 1.5, distance: 300 };
-    expect(validateKit(kit).join()).toMatch(/near multiplier should exceed far/);
+    }).projectile;
+    projectile.falloff = { near: 1, far: 1, distance: 300 };
+    expect(validateKit(kit).join()).toMatch(/does nothing/);
+    // A sniper's shot is weaker up close, which is the same thing the other way round.
+    projectile.falloff = { near: 0.2, far: 1, distance: 300 };
+    expect(validateKit(kit)).toEqual([]);
   });
 
   it('refuses an empty ability rather than silently doing nothing', () => {
     const kit = soundKit();
-    kit.gadget.actions = [];
+    kit.gadget!.actions = [];
     expect(validateKit(kit).join()).toMatch(/no actions/);
   });
 
@@ -126,7 +130,7 @@ describe('compilation', () => {
     const burst = KITS.rivet.attack.actions.find(a => a.type === 'burst')!;
     const key = keyFor(burst);
     expect(key).toBeDefined();
-    expect(getActions(key!)).toHaveLength(1);
+    expect(getActions(key!)!.length).toBeGreaterThan(0);
   });
 
   it('registers the hooks a projectile carries', () => {
@@ -134,7 +138,7 @@ describe('compilation', () => {
     const action = KITS.thorn.attack.actions.find(a => a.type === 'projectiles')!;
     const key = keyFor(action.projectile);
     expect(key).toBeDefined();
-    expect(getHooks(key)?.onEnd).toHaveLength(1);
+    expect(getHooks(key)?.onEnd?.length).toBeGreaterThan(0);
   });
 
   it('registers a jump payload so it survives the flight', () => {

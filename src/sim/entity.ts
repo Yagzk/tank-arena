@@ -32,11 +32,14 @@ export interface SpawnOptions {
   hp?: number;
   maxHp?: number;
   powerCubes?: number;
+  /** Chosen gadget and star power, 0 or 1. */
+  gadget?: number;
+  starPower?: number;
 }
 
 export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
   const cfg = BRAWLERS[opts.brawlerId];
-  const kit = getKit(opts.brawlerId);
+  const kit = getKit(opts.brawlerId, opts.starPower ?? 0);
   const maxHp = opts.maxHp ?? cfg.maxHp;
 
   return {
@@ -79,6 +82,11 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     timeSinceLastDamage: 99,
     timeSinceLastAttack: 99,
     slowTimer: 0,
+    slowAmount: 0,
+    superActiveTimer: 0,
+    absorbTimer: 0,
+    guardTimer: 0,
+    guardAmount: 0,
     activeEmote: null,
     emoteTimer: 0,
     isBot: opts.isBot,
@@ -90,8 +98,11 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     reflectTimer: 0,
     bounty: 1,
     pendingBurst: null,
-    gadgetCharges: 3,
     gadgetCooldown: 0,
+    gadgetIndex: opts.gadget ?? 0,
+    starPower: opts.starPower ?? 0,
+    empowerUses: 0,
+    gadgetPending: false,
     passiveCooldowns: {},
     burnTimer: 0,
     burnDamagePerSec: 0,
@@ -147,6 +158,11 @@ export function respawnBrawler(
 
   b.stunTimer = 0;
   b.slowTimer = 0;
+  b.slowAmount = 0;
+  b.superActiveTimer = 0;
+  b.absorbTimer = 0;
+  b.guardTimer = 0;
+  b.guardAmount = 0;
   b.burnTimer = 0;
   b.burnDamagePerSec = 0;
   b.speedBoostTimer = 0;
@@ -159,6 +175,9 @@ export function respawnBrawler(
   b.revealTimer = 0;
   b.phaseTimer = 0;
   b.reflectTimer = 0;
+  b.empowerUses = 0;
+  b.empowerKey = undefined;
+  b.gadgetPending = false;
   b.charge = 0;
   b.comboIndex = 0;
   b.comboTimer = 0;

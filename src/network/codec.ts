@@ -59,6 +59,11 @@ const SKIP: ReadonlySet<string> = new Set([
   // Only the simulation reads which hit of a combo is next.
   'comboIndex',
   'comboTimer',
+  // A queued special attack is the simulation's business.
+  'empowerKey',
+  'touchDamage',
+  'decoyOwnerId',
+  'decoyTouchTimer',
 ]);
 
 /**
@@ -84,6 +89,11 @@ const SCALE: Readonly<Record<string, number>> = {
   reloadTimer: 100,
   stunTimer: 100,
   slowTimer: 100,
+  slowAmount: 100,
+  superActiveTimer: 100,
+  absorbTimer: 100,
+  guardTimer: 100,
+  guardAmount: 100,
   speedBoostTimer: 100,
   invisibilityTimer: 100,
   immunityTimer: 100,

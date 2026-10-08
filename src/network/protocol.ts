@@ -27,7 +27,7 @@ export const MAX_NAME_LENGTH = 16;
 export type ClientMessage =
   | { t: 'create'; name: string; brawler: BrawlerId; mode: BrawlGameMode }
   | { t: 'join'; code: string; name: string; brawler: BrawlerId }
-  | { t: 'pick'; brawler: BrawlerId }
+  | { t: 'pick'; brawler: BrawlerId; gadget: number; starPower: number }
   | { t: 'mode'; mode: BrawlGameMode }
   | { t: 'addBot' }
   | { t: 'remove'; id: string }
@@ -141,7 +141,15 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
 
     case 'pick':
-      return BRAWLERS.has(m.brawler as string) ? { t: 'pick', brawler: m.brawler as BrawlerId } : null;
+      return BRAWLERS.has(m.brawler as string)
+        ? {
+            t: 'pick',
+            brawler: m.brawler as BrawlerId,
+            // Two of each; anything else is the first.
+            gadget: m.gadget === 1 ? 1 : 0,
+            starPower: m.starPower === 1 ? 1 : 0,
+          }
+        : null;
 
     case 'mode':
       return MODES.has(m.mode as string) ? { t: 'mode', mode: m.mode as BrawlGameMode } : null;

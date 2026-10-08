@@ -37,6 +37,10 @@ export interface ExplosionParams {
   radius: number;
   /** Impulse applied to bodies, away from the centre. */
   knockback?: number;
+  /** Percent of the owner's Super added for each hostile brawler the blast hits. */
+  charge?: number;
+  /** Pixels bodies are shoved away from the centre, without a stun. */
+  push?: number;
   /** Leaves a burning patch where it went off. */
   spawnFire?: boolean;
   /** Burn applied to every body caught in it. */

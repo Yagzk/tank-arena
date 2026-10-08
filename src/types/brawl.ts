@@ -69,30 +69,30 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     color: '#a855f7',
     secondaryColor: '#7c3aed',
     avatarBg: 'from-purple-600 to-indigo-900',
-    maxHp: 3500,
-    speed: 175,
-    reloadTime: 1.4,
-    attackCooldown: 0.52,
+    maxHp: 7800,
+    speed: 160,
+    reloadTime: 1.5,
+    attackCooldown: 0.5,
     acceleration: 1500,
     superHitsRequired: 3,
-    range: 340,
-    damagePerAttack: 320,
-    superChargePerHit: 10.5,
+    range: 460,
+    damagePerAttack: 600,
+    superChargePerHit: 10.05,
     description:
-      'Hurdadan yaptığı saçma tüfeğiyle yakın mesafede ölümcüldür. Şarjlı atışı duvarları söker, rakipleri savurur ve sersemletir.',
+      'Yakın mesafede geniş bir saçma yelpazesi atar. Süperi bu yelpazenin büyüğüdür; siperleri de deler.',
     attackName: 'Hurda Saçması',
     attackDesc:
-      '5 adet konik yayılan saçma atar. Dipten tüm saçmalar isabet ederse devasa anlık hasar verir.',
-    superName: 'Yıkım Salvosu',
+      '5 saçma, yakında çok daha sert vurur.',
+    superName: 'Büyük Saçma',
     superDesc:
-      'Duvarları ve çalıları paramparça eden 9 ağır saçma fırlatır; rakipleri savurur, sersemletir ve yavaşlatır.',
-    gadgetName: 'Atılım',
-    gadgetDesc: 'Nişan yönünde hızla atılarak mesafeyi bir anda kapatır.',
-    starPowerName: 'Sargı',
-    starPowerDesc: 'Canı %40 altına düştüğünde anında +1800 Can yeniler (15 sn bekleme).',
-    projectileSpeed: 550,
+      '9 saçma; delip geçer, siperi yıkar, sağ kalanları iter.',
+    gadgetName: 'Atılış / Nişan Dar',
+    gadgetDesc: 'Atılıp cephaneyi doldurur ya da 3 atışı daraltıp uzatır.',
+    starPowerName: 'Sersemletici Saçma / Yara Bandı',
+    starPowerDesc: 'Süper yavaşlatır ya da canı düşünce yenilenir.',
+    projectileSpeed: 620,
     projectileCount: 5,
-    spreadAngle: 0.36,
+    spreadAngle: 0.47,
   },
   rivet: {
     id: 'rivet',
@@ -102,28 +102,28 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     color: '#ef4444',
     secondaryColor: '#b91c1c',
     avatarBg: 'from-red-600 to-rose-900',
-    maxHp: 2250,
-    speed: 195,
-    reloadTime: 1.5,
-    attackCooldown: 0.46,
+    maxHp: 6200,
+    speed: 150,
+    reloadTime: 1.3,
+    attackCooldown: 0.8,
     acceleration: 1700,
     superHitsRequired: 3.2,
-    range: 480,
-    damagePerAttack: 360,
-    superChargePerHit: 9,
-    description: 'Çift tabancasıyla seri isabet yağdırır. Şarjlı atışı engelleri delip geçer.',
-    attackName: 'Seri Atış',
+    range: 540,
+    damagePerAttack: 720,
+    superChargePerHit: 8.35,
+    description: 'Hızlı dolan, uzun menzilli çift tabanca. Süperi 12 kurşunluk geniş bir yağmurdur.',
+    attackName: 'Çifte Altıpatlar',
     attackDesc:
-      'Peş peşe 6 yüksek hızlı mermi sıkar. Hat boyunca hareket ederek mermi yolunu okuyabilirsiniz.',
-    superName: 'Delici Yaylım',
-    superDesc: 'Duvarları yıkan, rakiplerin ve sandıkların içinden geçen 12 uzun menzilli mermi.',
-    gadgetName: 'Hızlı Şarjör',
-    gadgetDesc: 'Anında 2 tam cephane doldurur.',
-    starPowerName: 'Hafif Taban',
-    starPowerDesc: 'Kalıcı olarak %12 daha hızlı koşar ve arkasında iz bırakır.',
-    projectileSpeed: 680,
+      'Altı kurşun, iki hat halinde.',
+    superName: 'Kurşun Fırtınası',
+    superDesc: '12 delici kurşun; siperleri yıkar.',
+    gadgetName: 'Hızlı Şarjör / Gümüş Kurşun',
+    gadgetDesc: 'İki yavaşlatıcı kurşun ya da tek delici kurşun.',
+    starPowerName: 'Kaygan Çizmeler / Büyük Mermi',
+    starPowerDesc: 'Hız +%13 ya da menzil +%11.',
+    projectileSpeed: 800,
     projectileCount: 6,
-    spreadAngle: 0.04,
+    spreadAngle: 0,
   },
   boulder: {
     id: 'boulder',
@@ -133,29 +133,29 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     color: '#0284c7',
     secondaryColor: '#0369a1',
     avatarBg: 'from-sky-600 to-blue-900',
-    maxHp: 5250,
-    speed: 200,
-    reloadTime: 0.85,
-    attackCooldown: 0.3,
+    maxHp: 13000,
+    speed: 160,
+    reloadTime: 0.8,
+    attackCooldown: 0.85,
     acceleration: 1250,
     superHitsRequired: 2.6,
-    range: 165,
-    damagePerAttack: 380,
-    superChargePerHit: 12,
+    range: 180,
+    damagePerAttack: 760,
+    superChargePerHit: 9.5,
     description:
-      'Cüssesiyle rakiplerin üstüne atılır. Hasar aldıkça şarjı dolar; havaya sıçrayıp indiği yeri sarsar.',
-    attackName: 'Çifte Yumruk',
-    attackDesc: 'Yakın mesafede art arda 4 seri yumruk savurur.',
-    superName: 'Göktaşı İnişi',
+      'Kısa menzilli dört yumruk ve devasa bir beden. Süperi bir zıplayıp inme; hasar aldıkça da dolar.',
+    attackName: 'Yumruk Yağmuru',
+    attackDesc: '4 delici yumruk, çok hızlı dolar.',
+    superName: 'Göktaşı Dirseği',
     superDesc:
-      'Duvarların üzerinden sıçrar; inişte 1300 hasar verir, engelleri yıkar ve herkesi savurur.',
-    gadgetName: 'Savurma',
-    gadgetDesc: 'Yakındaki rakibi kavrayıp arkasına fırlatır ve sersemletir.',
-    starPowerName: 'Köz',
-    starPowerDesc: 'Şarjlı inişiyle vurduğu rakipler 4 saniye yanar (toplam 1200 hasar).',
-    projectileSpeed: 420,
+      'Havadan iner, hasar verir, düşmanları savurur, siperi yıkar.',
+    gadgetName: 'Arkaya Fırlatış / Meteor Kuşağı',
+    gadgetDesc: 'Kapıp fırlatır ya da 1 sn mermileri yok eder.',
+    starPowerName: 'Ateşli Düşüş / Göktaşı Hızı',
+    starPowerDesc: 'Süper yakar ya da hızlandırır.',
+    projectileSpeed: 652,
     projectileCount: 4,
-    spreadAngle: 0.18,
+    spreadAngle: 0,
   },
   fuse: {
     id: 'fuse',
@@ -165,26 +165,26 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     color: '#f59e0b',
     secondaryColor: '#d97706',
     avatarBg: 'from-amber-600 to-yellow-900',
-    maxHp: 2100,
-    speed: 165,
-    reloadTime: 1.7,
-    attackCooldown: 0.62,
+    maxHp: 6000,
+    speed: 150,
+    reloadTime: 1.95,
+    attackCooldown: 0.5,
     acceleration: 1350,
     superHitsRequired: 2.4,
     range: 540,
-    damagePerAttack: 1360,
-    superChargePerHit: 25,
-    description: 'Uzaktan alan hasarı veren roketler atar. Vurduğu yeri alevler içinde bırakır.',
-    attackName: 'Tekli Roket',
+    damagePerAttack: 2320,
+    superChargePerHit: 20,
+    description: 'Yavaş ama uzağa giden bir roket atar, indiği yeri yakar. Süperi dokuz roketlik bir yağmurdur.',
+    attackName: 'Roket',
     attackDesc:
-      'Uzun menzilli roket. Çarptığında patlar ve yerde 2 saniye yanan bir alev havuzu bırakır.',
+      'Alan hasarı verir, yeri 2,9 sn yakar.',
     superName: 'Roket Yağmuru',
-    superDesc: 'Hedeflenen bölgeye 9 roket yağdırır, duvarları yok eder ve alev havuzları bırakır.',
-    gadgetName: 'İtki Fişeği',
-    gadgetDesc: 'Yere roket boşaltarak sıçrar, yakındaki rakipleri savurur ve hasar verir.',
-    starPowerName: 'Tutuşturucu',
-    starPowerDesc: 'Tüm patlamaları yerde saniyede 420 hasar veren yangın havuzları bırakır.',
-    projectileSpeed: 560,
+    superDesc: 'Geniş bir alana 9 roket, siperi yıkar.',
+    gadgetName: 'Roket Tepmesi / Roket Yakıtı',
+    gadgetDesc: 'Atlayıp savurur ya da büyük bir roket atar.',
+    starPowerName: 'Daha Çok Roket / Dördüncü Roket',
+    starPowerDesc: '13 roket ya da 4. cephane.',
+    projectileSpeed: 540,
     projectileCount: 1,
     spreadAngle: 0,
   },
@@ -196,28 +196,28 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     color: '#10b981',
     secondaryColor: '#059669',
     avatarBg: 'from-emerald-600 to-green-900',
-    maxHp: 2050,
-    speed: 165,
-    reloadTime: 1.65,
-    attackCooldown: 0.58,
+    maxHp: 6000,
+    speed: 150,
+    reloadTime: 2.0,
+    attackCooldown: 0.5,
     acceleration: 1400,
     superHitsRequired: 2.8,
-    range: 390,
-    damagePerAttack: 700,
-    superChargePerHit: 18,
+    range: 460,
+    damagePerAttack: 1080,
+    superChargePerHit: 12.975,
     description:
-      'Patlayan tohum bombaları 6 yöne diken saçar. Diken tarlası rakipleri kilitler, kendini besler.',
-    attackName: 'Tohum Bombası',
-    attackDesc: 'Çarptığında veya menzil sonunda 6 yöne kavisli diken fırlatır.',
-    superName: 'Diken Tarlası',
-    superDesc: 'Geniş bir alana diken serer; rakipleri %50 yavaşlatır ve saniyede 600 hasar verir.',
-    gadgetName: 'Diken Yağmuru',
-    gadgetDesc: 'Kendi etrafına 360 derece 16 diken saçar.',
-    starPowerName: 'Gübre',
-    starPowerDesc: 'Kendi diken tarlasının içinde dururken saniyede +700 Can yeniler.',
-    projectileSpeed: 480,
-    projectileCount: 1,
-    spreadAngle: 0,
+      'Atılan kaktüs patlayıp altı iğneye dağılır. Süperi yavaşlatan dikenli bir alan bırakır.',
+    attackName: 'Iğneli Kaktüs',
+    attackDesc: 'Çarptığı yerde 6 iğne saçar; yakında çok sert.',
+    superName: 'Dikenli Bomba',
+    superDesc: '4,5 sn hasar veren ve yavaşlatan bir diken alanı.',
+    gadgetName: 'İğne Yağmuru / Can Bitkisi',
+    gadgetDesc: '5 iğne ya da siper olan ve yıkılınca iyileştiren kaktüs.',
+    starPowerName: 'Gübre / Eğri Top',
+    starPowerDesc: 'Süper can yeniler ya da iğneler kıvrılır.',
+    projectileSpeed: 435,
+    projectileCount: 6,
+    spreadAngle: 6.28,
   },
   wisp: {
     id: 'wisp',
@@ -227,29 +227,29 @@ export const BRAWLERS: Record<BrawlerId, BrawlerConfig> = {
     color: '#06b6d4',
     secondaryColor: '#0891b2',
     avatarBg: 'from-cyan-600 to-teal-900',
-    maxHp: 2800,
-    speed: 210,
-    reloadTime: 1.45,
-    attackCooldown: 0.5,
+    maxHp: 6600,
+    speed: 171,
+    reloadTime: 1.9,
+    attackCooldown: 0.35,
     acceleration: 1850,
     superHitsRequired: 3,
-    range: 420,
-    damagePerAttack: 480,
-    superChargePerHit: 12,
+    range: 580,
+    damagePerAttack: 960,
+    superChargePerHit: 12.6,
     description:
-      'Dönen bıçakları yakından katlanarak vurur. Sis perdesiyle görünmez olur, hızlanır ve can yeniler.',
+      'Dört bıçak savurur; yakında çok, uzakta az vurur. Süperi 6 sn görünmezlik.',
     attackName: 'Dönen Bıçaklar',
-    attackDesc: 'Yay şeklinde 4 dönen bıçak fırlatır. Dipten devasa suikast hasarı verir.',
-    superName: 'Sis Perdesi',
+    attackDesc: 'Uzaklaştıkça azalan hasarla 4 bıçak.',
+    superName: 'Duman Bombası',
     superDesc:
-      '6 saniye boyunca görünmez olur, %30 ekstra hız kazanır ve her saniye +700 Can yeniler.',
-    gadgetName: 'Yanılsama',
-    gadgetDesc: 'Rakipleri şaşırtan ve mermileri çeken bir hologram kopya bırakır.',
-    starPowerName: 'Sessiz Şifa',
-    starPowerDesc: 'Görünmezken saniyede +700 Can yenilenir ve arkasında sis izi süzülür.',
-    projectileSpeed: 600,
+      '6 sn görünmez (4 kareden yakındakiler görür).',
+    gadgetName: 'Kopya Yansıtıcı / Şekerleme',
+    gadgetDesc: 'Düşmana koşan kopya ya da takımı gizleyen şeker.',
+    starPowerName: 'Duman İzi / Gizli Şifa',
+    starPowerDesc: 'Görünmezken hızlanır ya da yenilenir.',
+    projectileSpeed: 700,
     projectileCount: 4,
-    spreadAngle: 0.26,
+    spreadAngle: 0.3,
   },
   molotof: {
     id: 'molotof',
@@ -949,6 +949,10 @@ export interface PlayerInfo {
   isBot?: boolean;
   score: number;
   trophies: number;
+  /** Which of the character's two gadgets, 0 or 1. */
+  gadget?: number;
+  /** Which of the character's two star powers, 0 or 1. */
+  starPower?: number;
 }
 
 export interface BrawlerEntity {
@@ -993,12 +997,29 @@ export interface BrawlerEntity {
   timeSinceLastDamage: number;
   timeSinceLastAttack: number;
   slowTimer: number;
+  /** Fraction of speed the slow takes away while `slowTimer` runs. */
+  slowAmount: number;
+  /** While above zero the character's Super is in effect, for kits that change with it. */
+  superActiveTimer: number;
+  /** While above zero, shots that reach this body are destroyed, harmlessly. */
+  absorbTimer: number;
+  /** While above zero, damage taken is cut by `guardAmount` (a fraction). */
+  guardTimer: number;
+  guardAmount: number;
   activeEmote: string | null;
   emoteTimer: number;
   isBot?: boolean;
   kills: number;
   /** Times this brawler has been taken out. Matters in modes with respawn. */
   deaths: number;
+  /** Which gadget and star power this brawler took into the match. */
+  gadgetIndex: number;
+  starPower: number;
+  /** An attack waiting to replace the next `empowerUses` ordinary ones. */
+  empowerKey?: string;
+  empowerUses: number;
+  /** True while a gadget's cooldown is held back until its empowered attack is used. */
+  gadgetPending: boolean;
   /** Charged attacks: how much of the charge is built up, 0..1. */
   charge: number;
   /** Combo attacks: which hit of the chain comes next, and how long it stays live. */
@@ -1016,7 +1037,6 @@ export interface BrawlerEntity {
    */
   pendingBurst: PendingBurst | null;
   // Gadgets & Star Powers
-  gadgetCharges: number; // 3 per match
   gadgetCooldown: number;
   /** Remaining cooldown per passive, keyed by the passive's name. */
   passiveCooldowns: Record<string, number>;
@@ -1078,6 +1098,10 @@ export interface BrawlerEntity {
   isClone?: boolean;
   /** Seconds a summoned decoy has left before it dissipates. */
   decoyLifetime?: number;
+  /** A decoy's touch damage, and who it belongs to, for credit. */
+  touchDamage?: number;
+  decoyOwnerId?: string;
+  decoyTouchTimer?: number;
 }
 
 /** An attack that fires over several ticks rather than all at once. */
@@ -1100,6 +1124,10 @@ export interface PendingBurst {
   isSuper: boolean;
   /** Damage multiplier captured when the attack was triggered. */
   damageMultiplier: number;
+  /** Pixels each shot is shifted sideways, alternating, so a volley leaves in two streams. */
+  lateral: number;
+  /** A channelled burst blocks attacking and reloading, and a stun or shove cancels it. */
+  channel: boolean;
 }
 
 export interface BrawlProjectile {
@@ -1133,8 +1161,12 @@ export interface BrawlProjectile {
   bouncesLeft?: number;
   /** Distance at which a `lob` or `boomerang` turns, in pixels. */
   turnAt?: number;
+  /** Percent of the Super this projectile adds to its owner when it hits a brawler. */
+  charge?: number;
+  /** Distance, in pixels, a body hit by this is shoved. No stun. */
+  pushback?: number;
   /** Close-range damage bonus: `near` at point blank, `far` at `range`. */
-  falloff?: { near: number; far: number; range: number };
+  falloff?: { near: number; far: number; range: number; hold: number };
   /**
    * Key into the compiled kit registry for this projectile's hooks — the
    * statuses it applies and the action lists it runs on hit and at rest.
@@ -1185,9 +1217,33 @@ export interface DeployedEntity {
   actionKey?: string;
   /** True once it has gone off, so a mine cannot trigger twice in a tick. */
   spent?: boolean;
+  /** Health lost per second on its own. */
+  decay?: number;
+  /** Registry key of what it does when destroyed or replaced. */
+  onDestroyKey?: string;
+  /** A decoy's touch damage lives on the body; this is for deployables that bite. */
+  touchDamage?: number;
 }
 
-export type DeployedKind = 'turret' | 'minion' | 'mine' | 'healStation' | 'barrier' | 'wall';
+export type DeployedKind =
+  | 'turret'
+  | 'minion'
+  | 'mine'
+  | 'healStation'
+  | 'barrier'
+  | 'wall'
+  /** A plant that takes cover for its owner's side, and heals them when it falls. */
+  | 'cactus'
+  /** A machine shots can be bounced off, which fires when it breaks. */
+  | 'vending'
+  /** A sweet that hides everyone on its owner's side who stands near it. */
+  | 'lollipop'
+  /** A pad that throws whoever steps on it. */
+  | 'pad'
+  /** A small storm that shoves everyone out of it. */
+  | 'tornado'
+  /** A head that hops after an enemy and bursts. */
+  | 'head';
 
 export type DeployedBehaviour =
   /** Shoots the nearest enemy it can see. */
@@ -1201,7 +1257,9 @@ export type DeployedBehaviour =
   /** Does nothing but stand in the way of projectiles. */
   | 'blocker'
   /** A solid block: stops bodies and every side's shots, and can be shot down. */
-  | 'solid';
+  | 'solid'
+  /** Solid, but only the other side's shots are stopped by it. */
+  | 'cover';
 
 export interface ThornField {
   id: string;
@@ -1212,6 +1270,13 @@ export interface ThornField {
   radius: number;
   duration: number;
   damagePerSec: number;
+  /** Fraction of speed taken from enemies standing in it. */
+  slowAmount?: number;
+  /** Fraction of the damage it deals that the owner gets back as health. */
+  lifesteal?: number;
+  /** Health per second given to the owner's side standing in it. */
+  healPerSec?: number;
+  tint?: string;
 }
 
 export interface FirePatch {
@@ -1223,6 +1288,12 @@ export interface FirePatch {
   radius: number;
   duration: number;
   damagePerSec: number;
+  /** Fraction of speed taken from enemies standing in it. */
+  slowAmount?: number;
+  lifesteal?: number;
+  /** Health per second given to the owner's side standing in it. */
+  healPerSec?: number;
+  tint?: string;
 }
 
 export interface VisualEffect {

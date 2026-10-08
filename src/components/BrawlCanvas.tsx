@@ -7,7 +7,7 @@ import {
   BrawlerId,
   DeployedEntity,
 } from '../types/brawl';
-import { isTeamMode, BUSH_SIGHT } from '../game/modes';
+import { isTeamMode, BUSH_SIGHT, INVISIBLE_SIGHT } from '../game/modes';
 import { getKit } from '../sim/kits';
 import { MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import {
@@ -1513,8 +1513,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     } else if (b.invisibilityTimer > 0) {
       if (isMe) ctx.globalAlpha = 0.45;
       else {
-        // Enemies only see faint shimmer if close (< 90px)
-        if (localBrawler && Math.hypot(localBrawler.x - b.x, localBrawler.y - b.y) < 90) {
+        // Anyone within four tiles can make out an invisible body.
+        if (localBrawler && Math.hypot(localBrawler.x - b.x, localBrawler.y - b.y) < INVISIBLE_SIGHT) {
           ctx.globalAlpha = 0.25;
         } else {
           return; // Fully invisible!
@@ -2250,6 +2250,47 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       ctx.roundRect(-arm, -thick / 2, arm * 2, thick, thick * 0.4);
       ctx.fill();
       ctx.stroke();
+    } else if (d.kind === 'cactus' || d.kind === 'vending') {
+      // A plant with arms, or a machine: a tall silhouette that reads as cover.
+      ctx.beginPath();
+      ctx.roundRect(-r * 0.6, -r, r * 1.2, r * 2, r * 0.4);
+      ctx.fillStyle = d.kind === 'cactus' ? '#22c55e' : style.secondary;
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = d.kind === 'cactus' ? '#4ade80' : style.accent;
+      if (d.kind === 'cactus') {
+        ctx.beginPath();
+        ctx.roundRect(-r * 1.1, -r * 0.3, r * 0.6, r * 0.5, r * 0.25);
+        ctx.roundRect(r * 0.5, -r * 0.7, r * 0.6, r * 0.5, r * 0.25);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.roundRect(-r * 0.4, -r * 0.7, r * 0.8, r * 0.7, r * 0.1);
+        ctx.fill();
+        ctx.stroke();
+      }
+    } else if (d.kind === 'lollipop') {
+      // A round sweet on a stick, with a ring showing how far it hides people.
+      ctx.beginPath();
+      ctx.arc(0, 0, d.range || 260, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(103, 232, 249, 0.07)';
+      ctx.fill();
+      ctx.setLineDash([10, 10]);
+      ctx.strokeStyle = 'rgba(103, 232, 249, 0.45)';
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = style.accent;
+      ctx.fill();
+      ctx.strokeStyle = '#15161f';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.55, 0, Math.PI * 1.6);
+      ctx.strokeStyle = style.primary;
+      ctx.lineWidth = 4;
+      ctx.stroke();
     } else if (d.kind === 'barrier') {
       // An arc facing the way it was placed: cover, not a wall.
       ctx.rotate(d.angle);
@@ -2935,8 +2976,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
     ctx.fillText('★', layout.superX, layout.superY + 1);
 
     // Gadget button.
-    const charges = myBrawler?.gadgetCharges ?? 0;
-    const gadgetReady = charges > 0 && (myBrawler?.gadgetCooldown ?? 1) <= 0;
+    const gadgetReady = (myBrawler?.gadgetCooldown ?? 1) <= 0;
 
     ctx.beginPath();
     ctx.arc(layout.gadgetX, layout.gadgetY, layout.gadgetRadius, 0, Math.PI * 2);
@@ -2948,7 +2988,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     ctx.fillStyle = gadgetReady ? '#052e16' : '#94a3b8';
     ctx.font = 'bold 15px sans-serif';
-    ctx.fillText(`x${charges}`, layout.gadgetX, layout.gadgetY + 1);
+    const wait = myBrawler?.gadgetCooldown ?? 0;
+    ctx.fillText(wait > 5000 ? '…' : wait > 0 ? String(Math.ceil(wait)) : '⚡', layout.gadgetX, layout.gadgetY + 1);
 
     void viewW;
     void viewH;

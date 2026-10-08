@@ -61,11 +61,14 @@ export function spawnProjectile(world: SimWorld, p: SpawnProjectileParams): Braw
   };
 
   if (spec.knockback) proj.knockbackForce = spec.knockback;
+  if (spec.charge !== undefined) proj.charge = spec.charge;
+  if (spec.pushback) proj.pushback = spec.pushback;
   if (spec.falloff) {
     proj.falloff = {
       near: spec.falloff.near,
       far: spec.falloff.far,
       range: spec.falloff.distance,
+      hold: spec.falloff.hold ?? 0,
     };
   }
 
