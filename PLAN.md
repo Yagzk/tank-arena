@@ -413,8 +413,13 @@ Her mod için: kurallar · kazanma koşulu · HUD · harita tipi · bot davranı
       farkıyla, sayılar tam sayıya yuvarlanmış: paket 16–20 KB → 2,4–3,8 KB
       (PeerJS'in kendi serileştiricisiyle ölçüldü). İkili çerçeve (JSON yerine)
       hâlâ yok.
-- [ ] **Client-side prediction + reconciliation** (kendi karakterin için;
-      interpolasyon sadece rakipleri kapsıyor)
+- [x] **Client-side prediction + reconciliation** — kendi hareketin sunucuyla
+      *aynı kodla* (`sim/movement.ts`) hemen çalışır; her pakette sunucunun
+      konumundan başlanıp henüz işlenmemiş girdiler yeniden oynatılır. Sunucu
+      hangi girdiyi aldığını (`inputAck`) ve kaç ms önce aldığını söyler. Küçük
+      düzeltmeler birkaç karede erir, büyük olanlar (savurma) anında uygulanır.
+      Ölçüm: sabit hatta hata 0, jitter + kodlama yuvarlamasıyla en kötü <10
+      birim; saf enterpolasyon 26–79 birim sapıyordu.
 - [ ] **Lag compensation** — isabetler sunucuda geri sarılarak doğrulanır
 - [x] **Otoriter sunucu** (Node + `ws`) — `server/`, odayı ve maçı sunucuda
       çalıştırır; motor DOM'suz olduğu için aynen çalışıyor. Gelen her mesaj

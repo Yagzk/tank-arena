@@ -14,7 +14,7 @@ export type NetworkMessage =
   /** Round-trip measurement: the host echoes the timestamp straight back. */
   | { type: 'PING'; ts: number }
   | { type: 'PONG'; ts: number }
-  | { type: 'INPUT'; input: BrawlPlayerInput }
+  | { type: 'INPUT'; input: BrawlPlayerInput; seq?: number }
   | { type: 'STATE'; snapshot: NetSnapshot }
   | { type: 'SOUND'; event: BrawlSoundEvent };
 
@@ -26,7 +26,7 @@ export interface PeerManagerCallbacks {
   onReturnToLobby?: () => void;
   /** Round trip to the host in milliseconds, smoothed. */
   onPing?: (rttMs: number) => void;
-  onInputReceived?: (playerId: string, input: BrawlPlayerInput) => void;
+  onInputReceived?: (playerId: string, input: BrawlPlayerInput, seq?: number) => void;
   onSoundReceived?: (event: BrawlSoundEvent) => void;
   onError?: (err: string) => void;
 }
@@ -201,7 +201,7 @@ export class PeerManager {
     } else if (msg.type === 'PING') {
       conn.send({ type: 'PONG', ts: msg.ts });
     } else if (msg.type === 'INPUT') {
-      this.callbacks.onInputReceived?.(conn.peer, msg.input);
+      this.callbacks.onInputReceived?.(conn.peer, msg.input, msg.seq);
     }
   }
 

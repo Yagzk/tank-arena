@@ -100,6 +100,8 @@ export function createBrawlerEntity(opts: SpawnOptions): BrawlerEntity {
     rootTimer: 0,
     revealTimer: 0,
     lastDamageAngle: NO_DAMAGE_DIRECTION,
+    inputAck: 0,
+    inputAckAge: 0,
     isClone: opts.isClone ?? false,
     decoyLifetime: opts.decoyLifetime,
   };

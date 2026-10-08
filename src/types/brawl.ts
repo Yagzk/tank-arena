@@ -472,6 +472,14 @@ export interface BrawlerEntity {
   /** Visible to enemies even inside a bush. */
   revealTimer: number;
   /**
+   * The last input of this player's the server has received, by the client's
+   * own numbering, and how many milliseconds ago it arrived. A predicting
+   * client replays everything after that input on top of the position it was
+   * sent, so these two numbers are what let it agree with the server.
+   */
+  inputAck: number;
+  inputAckAge: number;
+  /**
    * World direction the last damage arrived from.
    *
    * Taking fire from somewhere you cannot see is the most common way a player

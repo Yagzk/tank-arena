@@ -77,6 +77,11 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
   onSendEmote,
   ping = null,
 }) => {
+  // Hooks first, always. This used to sit below the early return, so a client —
+  // which has no snapshot for the first moments of a round — rendered the HUD
+  // with no hooks and then with one, which React flags as a broken invariant.
+  const isTouch = useIsTouchDevice();
+
   if (!snapshot) return null;
 
   const myBrawler = snapshot.brawlers.find(b => b.id === myPlayerId);
@@ -90,8 +95,6 @@ export const BrawlHUD: React.FC<BrawlHUDProps> = ({
   const redGems = snapshot.brawlers.filter(b => b.team === 1).reduce((acc, b) => acc + b.gemsCarried, 0);
 
   const isSuperReady = (myBrawler?.superCharge || 0) >= 100;
-
-  const isTouch = useIsTouchDevice();
 
   // Showdown placement, read off the elimination order: the last player
   // knocked out finished second, the one before them third, and so on.

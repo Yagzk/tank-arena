@@ -29,6 +29,7 @@ import { SpatialHash } from '../core/spatialHash';
 import { NavGrid } from '../core/navGrid';
 import { BrawlBot } from './brawlBot';
 import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim/entity';
+import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { updateDeployables } from '../sim/systems/deployables';
 import { getKit } from '../sim/kits';
 import { getActions } from '../sim/kits/registry';
@@ -84,8 +85,6 @@ const GAS_DAMAGE_FINAL = 1600;
 /** Seconds of countdown before a match becomes playable. */
 const INTRO_DURATION = 3.0;
 
-/** Collision radius shared by every brawler body. */
-const BRAWLER_RADIUS = 22;
 
 /** Seconds a gadget is locked out for after use. */
 const GADGET_COOLDOWN = 4.5;
@@ -156,6 +155,10 @@ export class BrawlEngine {
   public onSoundTriggered?: (event: BrawlSoundEvent) => void;
 
   private nextEntityId: number = 1;
+  /** Seconds of simulated time since the engine was made. */
+  private simClock = 0;
+  /** `simClock` when each player's latest input arrived. */
+  private inputAckAt: Record<string, number> = {};
   private prevSuperReadyState: Record<string, boolean> = {};
 
   /** Seeded RNG. The simulation never calls this.rng.next(), so a match replays
@@ -377,8 +380,22 @@ export class BrawlEngine {
     });
   }
 
-  public setPlayerInput(playerId: string, input: BrawlPlayerInput) {
+  /**
+   * Stores a player's latest input.
+   *
+   * `seq`, when given, is the client's own numbering of it. The engine records
+   * it on the brawler together with how long ago it arrived, because that is
+   * exactly what a predicting client needs: "your inputs up to this one are in
+   * the position you were sent, and this one has been in effect for this long".
+   */
+  public setPlayerInput(playerId: string, input: BrawlPlayerInput, seq?: number) {
     this.playerInputs[playerId] = input;
+    if (seq === undefined) return;
+    const b = this.brawlers.find(x => x.id === playerId);
+    if (!b) return;
+    b.inputAck = seq;
+    this.inputAckAt[playerId] = this.simClock;
+    b.inputAckAge = 0;
   }
 
   /**
@@ -399,6 +416,9 @@ export class BrawlEngine {
   }
 
   public update(dt: number) {
+    this.simClock += dt;
+    this.refreshInputAges();
+
     if (this.phase === 'starting') {
       // Three seconds of countdown, so players can read the map and find
       // themselves before anything can shoot them.
@@ -430,6 +450,14 @@ export class BrawlEngine {
     this.updatePickups();
     this.updateFloatingNumbers(dt);
     this.checkGameModeRules(dt);
+  }
+
+  /** Keeps each brawler's "how long ago did your last input arrive" current. */
+  private refreshInputAges() {
+    for (const id in this.inputAckAt) {
+      const b = this.brawlers.find(x => x.id === id);
+      if (b) b.inputAckAge = Math.round((this.simClock - this.inputAckAt[id]) * 1000);
+    }
   }
 
   private updateBrawlers(dt: number) {
@@ -640,41 +668,27 @@ export class BrawlEngine {
         continue;
       }
 
-      let speed = cfg.speed * (kit.traits?.speedMultiplier ?? 1);
-      if (b.slowTimer > 0) speed *= 0.5;
-      if (b.speedBoostTimer > 0) speed *= b.speedBoostMagnitude;
-
-      // Velocity ramps toward the input rather than snapping to it. Instant
-      // full-speed starts and dead stops are why movement felt like sliding
-      // a cursor around instead of driving a character.
-      let targetVx = 0;
-      let targetVy = 0;
-      const inputLen = Math.hypot(input.moveX, input.moveY);
-      // Rooted brawlers keep shooting; they just cannot reposition.
-      const isPushing = inputLen > 0.001 && b.rootTimer <= 0;
-      if (isPushing) {
-        const scale = Math.min(1, inputLen) / inputLen;
-        targetVx = input.moveX * scale * speed;
-        targetVy = input.moveY * scale * speed;
-      }
-
-      // Stopping is sharper than starting: turns stay responsive while the
-      // body still carries weight.
-      const accelStep = cfg.acceleration * (isPushing ? 1 : 1.9) * dt;
-      b.vx = moveTowards(b.vx, targetVx, accelStep);
-      b.vy = moveTowards(b.vy, targetVy, accelStep);
-
+      // The same code the client runs to predict its own movement; see
+      // `sim/movement.ts`. Anything changed there changes both.
+      integrateMovement(
+        b,
+        input.moveX,
+        input.moveY,
+        maxSpeedFor(
+          cfg.speed,
+          kit.traits?.speedMultiplier ?? 1,
+          b.slowTimer,
+          b.speedBoostTimer,
+          b.speedBoostMagnitude
+        ),
+        cfg.acceleration,
+        b.rootTimer > 0,
+        dt,
+        horizontal => this.resolveAgainstGeometry(b, BRAWLER_RADIUS, horizontal)
+      );
       if (Math.abs(b.vx) > 1 || Math.abs(b.vy) > 1) {
         b.angle = Math.atan2(b.vy, b.vx);
       }
-
-      // Integrate and resolve one axis at a time so a blocked axis does not
-      // cancel the other — that is what makes sliding along cover smooth
-      // instead of sticky.
-      b.x += b.vx * dt;
-      this.resolveAgainstGeometry(b, BRAWLER_RADIUS, true);
-      b.y += b.vy * dt;
-      this.resolveAgainstGeometry(b, BRAWLER_RADIUS, false);
 
       // Brawler vs Brawler soft push
       for (const other of this.brawlers) {
@@ -1164,25 +1178,9 @@ export class BrawlEngine {
     const near = this.wallGrid.queryCircle(b.x, b.y, radius);
     for (let i = 0; i < near.length; i++) {
       const wall = this.walls[near[i]];
-      if (!wall) continue;
-      const col = circleRectCollision({ x: b.x, y: b.y, radius }, wall);
-      if (col.collided) {
-        b.x += col.nx * col.depth;
-        b.y += col.ny * col.depth;
-        if (horizontal) b.vx = 0;
-        else b.vy = 0;
-      }
+      if (wall) pushOutOfRect(b, radius, wall, horizontal);
     }
-
-    for (const box of this.boxes) {
-      const col = circleRectCollision({ x: b.x, y: b.y, radius }, box);
-      if (col.collided) {
-        b.x += col.nx * col.depth;
-        b.y += col.ny * col.depth;
-        if (horizontal) b.vx = 0;
-        else b.vy = 0;
-      }
-    }
+    for (const box of this.boxes) pushOutOfRect(b, radius, box, horizontal);
   }
 
   /**

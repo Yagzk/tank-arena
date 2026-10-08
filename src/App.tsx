@@ -13,6 +13,7 @@ import { SnapshotDecoder, SnapshotEncoder, type NetSnapshot } from './network/co
 import { ServerManager } from './network/serverManager';
 import { getServerUrl } from './network/config';
 import { SnapshotInterpolator } from './net/interpolation';
+import { Predictor } from './net/prediction';
 import { brawlAudio } from './audio/brawlAudio';
 import { BrawlLobby } from './components/BrawlLobby';
 import { BrawlCanvas } from './components/BrawlCanvas';
@@ -95,6 +96,8 @@ export const App: React.FC = () => {
   const decoderRef = useRef(new SnapshotDecoder());
   /** Client: every packet is fed here the moment it arrives. */
   const interpolatorRef = useRef(new SnapshotInterpolator());
+  /** Client: runs this player's own movement ahead of the server's word. */
+  const predictorRef = useRef(new Predictor());
   /** Whether a match is on screen, readable from callbacks that outlive a render. */
   const inGameRef = useRef(false);
   /** Counts rounds in a room, so a rematch is not the same match again. */
@@ -186,6 +189,11 @@ export const App: React.FC = () => {
     if (!inGameRef.current) return;
 
     const snap = decoderRef.current.decode(net);
+
+    // Our own body is predicted; the server's account of it corrects the guess.
+    const me = snap.brawlers.find(b => b.id === myPlayerIdRef.current);
+    if (me) predictorRef.current.reconcile(me, snap.walls, snap.boxes, snap.phase === 'playing');
+
     // Every packet goes straight to the interpolator, so motion is smooth at
     // the rate packets arrive. React only needs the HUD's rate: it used to
     // re-render the whole tree on every packet.
@@ -298,8 +306,8 @@ export const App: React.FC = () => {
         const me = updatedPlayers.find(p => p.id === myPlayerIdRef.current);
         if (me) setSelectedBrawlerState(me.brawler);
       },
-      onInputReceived: (pId, input) => {
-        engineRef.current?.setPlayerInput(pId, input);
+      onInputReceived: (pId, input, seq) => {
+        engineRef.current?.setPlayerInput(pId, input, seq);
       },
       onError: err => {
         alert(err);
@@ -510,15 +518,22 @@ export const App: React.FC = () => {
   const handleSendInput = useCallback((input: BrawlPlayerInput) => {
     const server = serverRef.current;
     if (server) {
-      server.sendInput(++inputSeqRef.current, input);
+      const seq = ++inputSeqRef.current;
+      predictorRef.current.onLocalInput(seq, input.moveX, input.moveY, performance.now());
+      server.sendInput(seq, input);
       return;
     }
     if (isHost || isSingleplayer) {
+      // The host's own body is simulated right here, so there is nothing to
+      // predict and nothing to wait for.
       engineRef.current?.setPlayerInput(myPlayerIdRef.current, input);
     } else {
+      const seq = ++inputSeqRef.current;
+      predictorRef.current.onLocalInput(seq, input.moveX, input.moveY, performance.now());
       peerManagerRef.current?.sendToHost({
         type: 'INPUT',
         input,
+        seq,
       });
     }
   }, [isHost, isSingleplayer]);
@@ -572,6 +587,7 @@ export const App: React.FC = () => {
   const beginClientMatch = () => {
     decoderRef.current.reset();
     interpolatorRef.current.clear();
+    predictorRef.current.reset();
     lastClientPhaseRef.current = '';
     lastClientHudRef.current = 0;
     inGameRef.current = true;
@@ -682,6 +698,7 @@ export const App: React.FC = () => {
         <div className="relative w-full h-full flex items-center justify-center bg-slate-950">
           <BrawlCanvas
             snapshot={snapshot}
+            predictor={isSingleplayer || (isHost && !serverRef.current) ? null : predictorRef.current}
             myPlayerId={myPlayerId}
             onSendInput={handleSendInput}
             getSnapshot={snapshotSourceRef.current}

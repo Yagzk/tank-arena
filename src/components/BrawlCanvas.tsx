@@ -16,6 +16,7 @@ import {
 } from '../render/characterArt';
 import { CHARACTER_STYLES } from '../render/characterStyles';
 import { SnapshotInterpolator } from '../net/interpolation';
+import type { Predictor } from '../net/prediction';
 import { TouchControls } from '../input/touchControls';
 import { getInputMode, onInputModeChange } from '../input/inputMode';
 import { profiler } from '../core/profiler';
@@ -84,6 +85,12 @@ interface BrawlCanvasProps {
   myPlayerId: string;
   onSendInput: (input: BrawlPlayerInput) => void;
   /**
+   * Runs this player's own movement ahead of the server's word. Absent when the
+   * body is simulated locally — a host or a solo game — and there is nothing
+   * to predict.
+   */
+  predictor?: Predictor | null;
+  /**
    * Pulls the live simulation state. The canvas draws every frame, but React
    * only re-renders the HUD a few times a second, so the renderer reads the
    * engine directly instead of waiting for a prop update.
@@ -95,6 +102,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   snapshot,
   myPlayerId,
   onSendInput,
+  predictor = null,
   getSnapshot,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -167,6 +175,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
   snapshotRef.current = snapshot;
   const myPlayerIdRef = useRef<string>(myPlayerId);
   myPlayerIdRef.current = myPlayerId;
+  const predictorRef = useRef<Predictor | null>(predictor);
+  predictorRef.current = predictor;
   const onSendInputRef = useRef<(input: BrawlPlayerInput) => void>(onSendInput);
   onSendInputRef.current = onSendInput;
   const getSnapshotRef = useRef<(() => BrawlSnapshot | null) | undefined>(getSnapshot);
@@ -340,7 +350,13 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
       const keys = keysRef.current;
       const snap = snapshotRef.current;
       const myId = myPlayerIdRef.current;
-      const myBrawler = snap?.brawlers.find(b => b.id === myId);
+      const heldBrawler = snap?.brawlers.find(b => b.id === myId);
+      // Aim is measured from where the body is *drawn*. The React snapshot is a
+      // twelve-a-second copy, and the server's position is a round trip old;
+      // aiming from either points the shot at where you were.
+      const predictedAt = predictorRef.current?.position(performance.now());
+      const myBrawler =
+        heldBrawler && predictedAt ? { ...heldBrawler, x: predictedAt.x, y: predictedAt.y } : heldBrawler;
 
       // Desktop WASD movement
       let moveX = 0;
@@ -472,7 +488,8 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     const render = () => {
       const now = performance.now();
-      profiler.frame.push(now - lastFrameAtRef.current);
+      const frameMs = now - lastFrameAtRef.current;
+      profiler.frame.push(frameMs);
       lastFrameAtRef.current = now;
       profiler.render.begin();
 
@@ -483,11 +500,29 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
       // Prefer the live engine state; fall back to the prop for network
       // clients, which only ever receive snapshots.
-      const snap =
+      const rawSnap =
         getSnapshotRef.current?.() ??
         interpolatorRef.current.sample(performance.now()) ??
         snapshotRef.current;
       const myId = myPlayerIdRef.current;
+
+      // Draw our own body where we predict it is, not where the server last said
+      // it was, and aim it at the mouse this frame rather than a round trip ago.
+      // Everyone else is drawn from the server's account, as before.
+      let snap = rawSnap;
+      const predictor = predictorRef.current;
+      if (rawSnap && predictor) {
+        predictor.advance(frameMs / 1000);
+        const p = predictor.position(now);
+        if (p) {
+          snap = {
+            ...rawSnap,
+            brawlers: rawSnap.brawlers.map(b =>
+              b.id === myId ? { ...b, x: p.x, y: p.y, aimAngle: lastAimAngleRef.current } : b
+            ),
+          };
+        }
+      }
       const myBrawler = snap?.brawlers.find(b => b.id === myId);
 
       // Smooth Camera tracking

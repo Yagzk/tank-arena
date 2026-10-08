@@ -93,6 +93,8 @@ const SCALE: Readonly<Record<string, number>> = {
   emoteTimer: 100,
   timeSinceLastDamage: 100,
   timeSinceLastAttack: 100,
+  inputAck: 1,
+  inputAckAge: 1,
   // `maxHp` grows by whole cubes, but is a float after a heal-scaled change.
   maxHp: 1,
 };

@@ -163,7 +163,7 @@ export class Room {
 
     switch (message.t) {
       case 'input':
-        this.engine?.setPlayerInput(peerId, message.input);
+        this.engine?.setPlayerInput(peerId, message.input, message.seq);
         break;
 
       case 'ping':
