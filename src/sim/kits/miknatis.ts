@@ -11,6 +11,9 @@ export const miknatisKit: Kit = {
   id: 'miknatis',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.66 },
+
   attack: {
     name: 'Çekim Darbesi',
     actions: [
@@ -40,9 +43,9 @@ export const miknatisKit: Kit = {
         type: 'status',
         target: 'allies',
         radius: 240,
-        statuses: [{ kind: 'reflect', duration: 3.2 }],
+        statuses: [{ kind: 'reflect', duration: 2.2 }],
       },
-      { type: 'status', target: 'self', statuses: [{ kind: 'reflect', duration: 3.2 }] },
+      { type: 'status', target: 'self', statuses: [{ kind: 'reflect', duration: 2.2 }] },
       { type: 'vfx', at: 'self', effect: 'shockwave', radius: 240, color: '#7dd3fc', duration: 0.5 },
     ],
   },
@@ -51,8 +54,7 @@ export const miknatisKit: Kit = {
     name: 'Çekirdek Kalkanı',
     actions: [
       { type: 'banner', text: 'KALKAN!', color: '#fca5a5' },
-      { type: 'status', target: 'self', statuses: [{ kind: 'reflect', duration: 1.1 }] },
-      { type: 'shield', target: 'self', amount: 700, duration: 2 },
+      { type: 'shield', target: 'self', amount: 1100, duration: 2.5 },
     ],
   },
 

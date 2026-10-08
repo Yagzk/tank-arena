@@ -16,6 +16,7 @@ import type { BrawlerEntity, DeployedEntity } from '../../types/brawl';
 import type { SimWorld } from '../world';
 import { hasLineOfSight } from '../../core/collision';
 import { getActions } from '../kits/registry';
+import { damageFactor } from '../damageFactor';
 import { runActions, type AbilityContext } from '../abilities';
 
 /** How far outside its radius a mine or minion counts as touching someone. */
@@ -57,7 +58,7 @@ function contextFor(
     targetX,
     targetY,
     // The owner's power cubes still count: a deployable is their damage.
-    damageMultiplier: 1 + owner.powerCubes * 0.1,
+    damageMultiplier: damageFactor(owner),
     isSuper: false,
     // Shots come out of the deployable, not out of whoever placed it.
     originX: d.x,

@@ -10,6 +10,9 @@ export const dinamitKit: Kit = {
   id: 'dinamit',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.17 },
+
   attack: {
     name: 'Çifte Fitil',
     actions: [

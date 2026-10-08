@@ -317,3 +317,35 @@ describe('getting out of the base', () => {
     }
   });
 });
+
+describe('as in the original rules', () => {
+  it('lets nobody use a Super or a gadget while holding the ball', () => {
+    const engine = start();
+    const p = engine.brawlers[0];
+    moveAway(engine, [p]);
+    p.x = engine.ball!.x - 20;
+    p.y = engine.ball!.y;
+    run(engine, 0.1);
+    expect(engine.ball!.carrier).toBe(p.id);
+    p.superCharge = 100;
+    const charges = p.gadgetCharges;
+    engine.setPlayerInput(p.id, idle({ superAttack: true, gadget: true }));
+    run(engine, 0.1);
+    expect(p.superCharge).toBe(100);
+    expect(p.gadgetCharges).toBe(charges);
+  });
+
+  it('clears the field when a tied game goes to sudden death', () => {
+    const engine = new BrawlEngine();
+    engine.initMatch(roster(4), 'brawl_ball', 7);
+    engine.phase = 'playing';
+    engine.matchTimer = 0;
+    engine.teamScores = [1, 1];
+    for (const b of engine.brawlers) engine.setPlayerInput(b.id, idle());
+    expect(engine.walls.length).toBeGreaterThan(0);
+    engine.matchTimer = MODES.brawl_ball.timeLimit! + 0.1;
+    run(engine, 0.05);
+    expect(engine.walls).toHaveLength(0);
+    expect(engine.bushes).toHaveLength(0);
+  });
+});

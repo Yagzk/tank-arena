@@ -12,6 +12,9 @@ export const karambolKit: Kit = {
   id: 'karambol',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.21 },
+
   attack: {
     name: 'Isteka Vuruşu',
     actions: [

@@ -11,6 +11,9 @@ export const tiktakKit: Kit = {
   id: 'tiktak',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 2.0 },
+
   attack: {
     name: 'Saatli Bomba',
     actions: [

@@ -7,7 +7,7 @@ import {
   BrawlerId,
   DeployedEntity,
 } from '../types/brawl';
-import { isTeamMode } from '../game/modes';
+import { isTeamMode, BUSH_SIGHT } from '../game/modes';
 import { getKit } from '../sim/kits';
 import { MAP_WIDTH, MAP_HEIGHT } from '../maps';
 import {
@@ -1487,7 +1487,7 @@ export const BrawlCanvas: React.FC<BrawlCanvasProps> = ({
 
     // Bush visibility logic
     if (!isMe && b.isInBush && !b.isVisibleToEnemies) {
-      if (localBrawler && Math.hypot(localBrawler.x - b.x, localBrawler.y - b.y) > 85) {
+      if (localBrawler && Math.hypot(localBrawler.x - b.x, localBrawler.y - b.y) > BUSH_SIGHT) {
         return;
       }
     }

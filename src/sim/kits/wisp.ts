@@ -11,6 +11,9 @@ export const wispKit: Kit = {
   id: 'wisp',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.7 },
+
   attack: {
     name: 'Dönen Bıçaklar',
     actions: [

@@ -11,6 +11,9 @@ export const pansumanKit: Kit = {
   id: 'pansuman',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.04 },
+
   attack: {
     name: 'Şırınga',
     actions: [

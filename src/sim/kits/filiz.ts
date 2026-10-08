@@ -11,6 +11,9 @@ export const filizKit: Kit = {
   id: 'filiz',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.36 },
+
   attack: {
     name: 'Tohum Bombası',
     actions: [

@@ -12,6 +12,9 @@ export const fisiltiKit: Kit = {
   id: 'fisilti',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 2.0 },
+
   attack: {
     name: 'Çifte Kesik',
     actions: [

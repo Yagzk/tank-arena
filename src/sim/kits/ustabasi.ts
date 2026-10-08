@@ -12,6 +12,9 @@ export const ustabasiKit: Kit = {
   id: 'ustabasi',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.89 },
+
   attack: {
     name: 'Hurda Yağmuru',
     actions: [

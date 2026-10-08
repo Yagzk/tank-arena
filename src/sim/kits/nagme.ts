@@ -12,6 +12,9 @@ export const nagmeKit: Kit = {
   id: 'nagme',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.68 },
+
   attack: {
     name: 'Ses Dalgası',
     actions: [

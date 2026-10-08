@@ -521,3 +521,33 @@ describe('bounty', () => {
     expect(tied.winnerTeam).toBeNull();
   });
 });
+
+describe('duo showdown respawn', () => {
+  it('brings a fallen partner back after fifteen seconds, beside the one still standing', () => {
+    const engine = start('duo_showdown', 4);
+    const [a, b] = team(engine, 0);
+    const killer = team(engine, 1)[0];
+    a.x = a.prevX = 500;
+    b.x = b.prevX = 800;
+    b.y = b.prevY = 900;
+    kill(engine, a, killer);
+    expect(a.isAlive).toBe(false);
+    run(engine, 14);
+    expect(a.isAlive, 'still waiting at fourteen seconds').toBe(false);
+    run(engine, 1.5);
+    expect(a.isAlive).toBe(true);
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(120);
+  });
+
+  it('does not bring them back if the other one falls first', () => {
+    const engine = start('duo_showdown', 4);
+    const [a, b] = team(engine, 0);
+    const killer = team(engine, 1)[0];
+    kill(engine, a, killer);
+    run(engine, 5);
+    kill(engine, b, killer);
+    run(engine, 16);
+    expect(a.isAlive).toBe(false);
+    expect(b.isAlive).toBe(false);
+  });
+});

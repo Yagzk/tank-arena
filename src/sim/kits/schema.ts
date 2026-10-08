@@ -326,6 +326,12 @@ export interface KitTraits {
    * `minScale` straight after a shot to `maxScale` when fully charged.
    */
   charge?: { time: number; minScale: number; maxScale: number };
+  /**
+   * The balance dial for the whole character: every point of damage it deals —
+   * shots, blasts, turrets, mines, chains — is multiplied by this. One means
+   * the numbers in the kit are the numbers that land.
+   */
+  damageScale?: number;
 }
 
 /**

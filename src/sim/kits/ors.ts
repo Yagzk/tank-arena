@@ -11,6 +11,9 @@ export const orsKit: Kit = {
   id: 'ors',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.8 },
+
   attack: {
     name: 'Süpürme',
     actions: [

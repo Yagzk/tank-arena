@@ -38,6 +38,7 @@ import { createBrawlerEntity, respawnBrawler, NO_DAMAGE_DIRECTION } from '../sim
 import { BRAWLER_RADIUS, integrateMovement, maxSpeedFor, pushOutOfRect } from '../sim/movement';
 import { updateDeployables } from '../sim/systems/deployables';
 import { getKit } from '../sim/kits';
+import { damageFactor } from '../sim/damageFactor';
 import { getActions } from '../sim/kits/registry';
 import {
   executeAbility,
@@ -75,6 +76,13 @@ export interface BrawlSoundEvent {
 /** Hot Zone: how big the zone is, and how fast holding it scores. */
 const ZONE_RADIUS = 150;
 const ZONE_POINTS_PER_SECOND = 1;
+
+/** Duo Showdown: how long a fallen partner waits, and how long they are protected on return. */
+const DUO_RESPAWN_DELAY = 15;
+const DUO_RESPAWN_IMMUNITY = 2;
+
+/** How much of its damage a reflected shot keeps on the way back. */
+const REFLECT_DAMAGE_KEPT = 0.6;
 
 /** Brawl Ball: the ball, how it rolls, and how hard it is kicked. */
 const BALL_RADIUS = 14;
@@ -164,6 +172,8 @@ export class BrawlEngine {
   /** Seconds of play already used before the last restart. */
   private playedBefore = 0;
   private lastToucher: string | null = null;
+  /** Brawl Ball: set once a tied game goes to sudden death and the field is cleared. */
+  private suddenDeath = false;
   private ballRetake: Record<string, number> = {};
   private goalsBy: Record<string, number> = {};
   /** Knockout: the round being played, and the rounds each team has won. */
@@ -398,6 +408,7 @@ export class BrawlEngine {
     this.lastToucher = null;
     this.ballRetake = {};
     this.goalsBy = {};
+    this.suddenDeath = false;
 
     const def = MODES[mode];
     const map = this.loadMap(mode, seed);
@@ -614,11 +625,23 @@ export class BrawlEngine {
           continue;
         }
         if (b.respawnTimer > 0) {
+          if (this.mode === 'duo_showdown') {
+            const partner = this.brawlers.find(o => o.team === b.team && o.id !== b.id && o.isAlive && !o.isClone);
+            if (!partner) {
+              // The one they were waiting on is gone: this was the last of them.
+              b.respawnTimer = 0;
+              if (this.eliminationOrder.indexOf(b.id) === -1) this.eliminationOrder.push(b.id);
+              continue;
+            }
+            // They come back beside whoever is left, not at the start.
+            b.spawnX = partner.x + 52;
+            b.spawnY = partner.y;
+          }
           b.respawnTimer -= dt;
           if (b.respawnTimer <= 0) {
             const rules = MODES[this.mode];
             respawnBrawler(b, {
-              immunity: rules.respawnImmunity,
+              immunity: this.mode === 'duo_showdown' ? DUO_RESPAWN_IMMUNITY : rules.respawnImmunity,
               superRetention: rules.superRetention,
             });
             this.emitSound('respawn', b.x, b.y);
@@ -890,14 +913,16 @@ export class BrawlEngine {
       // eighteen branches between them used to live below this point; all of
       // it is kit data now, run by one interpreter that never learns a
       // character's name.
-      if (input.gadget && b.gadgetCharges > 0 && b.gadgetCooldown <= 0) {
+      // Whoever has the ball has their hands full: no gadget, no Super.
+      const carryingBall = this.ball !== null && this.ball.carrier === b.id;
+      if (input.gadget && !carryingBall && b.gadgetCharges > 0 && b.gadgetCooldown <= 0) {
         b.gadgetCharges--;
         b.gadgetCooldown = GADGET_COOLDOWN;
         this.emitSound('gadget_activate', b.x, b.y);
         executeAbility(this.contextFor(b, input, false), kit.gadget);
       }
 
-      if (input.superAttack && b.superCharge >= 100 && b.silenceTimer <= 0) {
+      if (input.superAttack && !carryingBall && b.superCharge >= 100 && b.silenceTimer <= 0) {
         b.superCharge = 0;
         b.timeSinceLastAttack = 0;
         if (b.invisibilityTimer > 0) b.invisibilityTimer = 0; // Attacking breaks stealth
@@ -1278,6 +1303,8 @@ export class BrawlEngine {
         p.team = hitTarget.team;
         p.traveled = 0;
         p.hitIds = [];
+        // Sent back a little weaker, or standing in a reflection beats any fight.
+        p.damage = Math.round(p.damage * REFLECT_DAMAGE_KEPT);
         this.addEffect('hit_spark', hitX, hitY, 24, '#e0f2fe', 0.2, Math.atan2(p.vy, p.vx), 0.7);
         continue;
       }
@@ -1362,7 +1389,7 @@ export class BrawlEngine {
     const owner = this.brawlers.find(o => o.id === p.ownerId);
     runProjectileHooks(this.world, owner, p.hooks, x, y, {
       isSuper: p.isSuper,
-      damageMultiplier: owner ? 1 + owner.powerCubes * 0.1 : 1,
+      damageMultiplier: owner ? damageFactor(owner) : 1,
       kind,
       aimAngle: Math.atan2(p.vy, p.vx),
       excludeId: hitId,
@@ -1592,12 +1619,18 @@ export class BrawlEngine {
       const killer = source;
 
       const rules = MODES[this.mode];
-      b.respawnTimer = b.isClone ? 0 : rules.respawnDelay;
+      // Duo Showdown: a fallen partner comes back if the other one is still
+      // standing when the wait is over.
+      const partnerStanding =
+        this.mode === 'duo_showdown' &&
+        !b.isClone &&
+        this.brawlers.some(o => o.team === b.team && o.id !== b.id && o.isAlive && !o.isClone);
+      b.respawnTimer = b.isClone ? 0 : partnerStanding ? DUO_RESPAWN_DELAY : rules.respawnDelay;
 
       if (!b.isClone) {
         // Placement is only meaningful where death is final; in a mode with
         // respawn, being downed is a setback, not an exit.
-        if (rules.respawnDelay <= 0) this.eliminationOrder.push(b.id);
+        if (rules.respawnDelay <= 0 && !partnerStanding) this.eliminationOrder.push(b.id);
         this.killFeed.push({
           id: `kf-${this.nextEntityId++}`,
           killerName: killer ? killer.name : killerId === 'gas' ? 'Zehirli Gaz' : 'Çevre',
@@ -2020,6 +2053,14 @@ export class BrawlEngine {
     if (clock < (def.timeLimit ?? Infinity)) return;
 
     const standing = decideByScore(this.teamScores, undefined, true);
+    if (standing.winner === null && !this.suddenDeath) {
+      // Level at the whistle: the field is cleared, so there is nowhere to hide.
+      this.suddenDeath = true;
+      this.walls = [];
+      this.bushes = [];
+      this.wallGridDirty = true;
+      this.addFloatingNumber('ALTIN GOL!', this.ball ? this.ball.x : 1200, this.ball ? this.ball.y - 40 : 900, '#fde047');
+    }
     if (standing.winner !== null) {
       this.finishMatch(standing.winner, players.filter(b => b.team === standing.winner));
     } else if (clock >= (def.timeLimit ?? 0) + OVERTIME_LIMIT) {

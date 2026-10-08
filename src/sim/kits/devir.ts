@@ -12,6 +12,9 @@ export const devirKit: Kit = {
   id: 'devir',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.41 },
+
   attack: {
     name: 'Kesik',
     actions: [

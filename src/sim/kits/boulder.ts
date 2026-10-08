@@ -100,6 +100,8 @@ export const boulderKit: Kit = {
   },
 
   traits: {
+    // Balance dial: see docs/DENGE.md.
+    damageScale: 0.75,
     superChargeFromDamageTaken: 75,
   },
 };

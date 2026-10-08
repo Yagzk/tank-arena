@@ -11,6 +11,9 @@ export const thornKit: Kit = {
   id: 'thorn',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.73 },
+
   attack: {
     name: 'Tohum Bombası',
     actions: [

@@ -20,6 +20,7 @@ import type {
   PassiveSpec,
 } from './kits/schema';
 import { getActions, getHooks, keyFor } from './kits/registry';
+import { damageFactor } from './damageFactor';
 import {
   applyDamage,
   applyDash,
@@ -86,7 +87,7 @@ export function makeContext(
     aimAngle: opts.aimAngle ?? caster.aimAngle,
     targetX: opts.targetX ?? caster.x,
     targetY: opts.targetY ?? caster.y,
-    damageMultiplier: opts.damageMultiplier ?? 1 + caster.powerCubes * 0.1,
+    damageMultiplier: opts.damageMultiplier ?? damageFactor(caster),
     isSuper: opts.isSuper ?? false,
     originX: opts.originX ?? caster.x,
     originY: opts.originY ?? caster.y,

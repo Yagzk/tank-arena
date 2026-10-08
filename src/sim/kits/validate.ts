@@ -278,6 +278,9 @@ export function validateKit(kit: Kit): string[] {
   if (traits?.superChargeFromDamageTaken !== undefined && traits.superChargeFromDamageTaken < 0) {
     p.at('traits.superChargeFromDamageTaken', 'cannot be negative');
   }
+  if (traits?.damageScale !== undefined && !(traits.damageScale > 0)) {
+    p.at('traits.damageScale', 'must be positive');
+  }
   if (traits?.charge) {
     const c = traits.charge;
     if (!(c.time > 0)) p.at('traits.charge.time', 'must be positive');

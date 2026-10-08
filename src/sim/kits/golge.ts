@@ -11,6 +11,9 @@ export const golgeKit: Kit = {
   id: 'golge',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.2 },
+
   attack: {
     name: 'İkiz Bıçak',
     actions: [

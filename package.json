@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "server": "tsx server/index.ts",
-    "typecheck:server": "tsc -p tsconfig.server.json"
+    "typecheck:server": "tsc -p tsconfig.server.json",
+    "balance": "tsx tools/balance.ts 0 900 4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

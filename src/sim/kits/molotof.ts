@@ -14,6 +14,9 @@ export const molotofKit: Kit = {
   // the whole map; scarcity is what keeps it a decision.
   maxAmmo: 2,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.17 },
+
   attack: {
     name: 'Yangın Şişesi',
     actions: [

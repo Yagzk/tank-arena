@@ -16,6 +16,9 @@ export const fuseKit: Kit = {
   id: 'fuse',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.6 },
+
   attack: {
     name: 'Tekli Roket',
     actions: [

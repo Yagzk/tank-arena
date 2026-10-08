@@ -13,6 +13,7 @@ import {
 import { dist } from '../core/math';
 import { hasLineOfSight } from '../core/collision';
 import { getKit } from '../sim/kits';
+import { BUSH_SIGHT } from './modes';
 import { NavGrid } from '../core/navGrid';
 
 /** Cubes a bot wants banked before it goes looking for a fight. */
@@ -97,7 +98,7 @@ export class BrawlBot {
 
     for (const enemy of enemies) {
       // If enemy is in bush and invisible to us, skip targeting unless very close
-      if (enemy.isInBush && !enemy.isVisibleToEnemies && dist(bot.x, bot.y, enemy.x, enemy.y) > 70) {
+      if (enemy.isInBush && !enemy.isVisibleToEnemies && dist(bot.x, bot.y, enemy.x, enemy.y) > BUSH_SIGHT) {
         continue;
       }
       if (enemy.invisibilityTimer > 0) continue; // Leon invisible

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BrawlEngine } from '../game/brawlEngine';
 import { FIXED_DT } from '../core/loop';
+import { KITS } from './kits';
 import {
   BRAWLERS,
   type BrawlPlayerInput,
@@ -161,7 +162,7 @@ describe('projectile hooks', () => {
     run(engine, 0.6);
 
     const dealt = before - victim.hp;
-    const rocket = BRAWLERS.fuse.damagePerAttack;
+    const rocket = BRAWLERS.fuse.damagePerAttack * (KITS.fuse.traits?.damageScale ?? 1);
     expect(dealt).toBeGreaterThan(rocket * 0.9);
     expect(dealt).toBeLessThan(rocket * 1.4);
   });

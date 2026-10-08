@@ -86,6 +86,8 @@ export const rivetKit: Kit = {
   },
 
   traits: {
+    // Balance dial: see docs/DENGE.md.
+    damageScale: 0.56,
     // Light-foot: a permanent edge in a kiting duel, which is the only kind
     // of fight this character wants.
     speedMultiplier: 1.12,

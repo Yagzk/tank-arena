@@ -11,6 +11,9 @@ export const kalkanKit: Kit = {
   id: 'kalkan',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.93 },
+
   attack: {
     name: 'Kalkan Darbesi',
     actions: [

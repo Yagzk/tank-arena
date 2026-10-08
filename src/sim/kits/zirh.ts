@@ -80,6 +80,8 @@ export const zirhKit: Kit = {
   },
 
   traits: {
+    // Balance dial: see docs/DENGE.md.
+    damageScale: 0.91,
     superChargeFromDamageTaken: 60,
   },
 };

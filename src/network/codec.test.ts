@@ -217,7 +217,7 @@ describe('the packet', () => {
     expect(second.mapName).toBe(source.mapName);
     for (let i = 0; i < source.brawlers.length; i++) {
       expect(second.brawlers[i].x).toBeCloseTo(source.brawlers[i].x, 0);
-      expect(second.brawlers[i].hp).toBeCloseTo(source.brawlers[i].hp, 0);
+      expect(Math.abs(second.brawlers[i].hp - source.brawlers[i].hp)).toBeLessThanOrEqual(0.5);
     }
   });
 

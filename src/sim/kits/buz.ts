@@ -12,6 +12,9 @@ export const buzKit: Kit = {
   id: 'buz',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 1.08 },
+
   attack: {
     name: 'Kırağı',
     actions: [

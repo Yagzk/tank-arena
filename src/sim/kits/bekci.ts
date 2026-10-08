@@ -12,6 +12,9 @@ export const bekciKit: Kit = {
   id: 'bekci',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.72 },
+
   attack: {
     name: 'İkiz Atış',
     actions: [

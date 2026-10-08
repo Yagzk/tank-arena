@@ -135,7 +135,8 @@ describe('damage and death', () => {
   });
 
   it('marks a brawler dead when health runs out', () => {
-    const engine = startedMatch(players('rivet', 'mira'));
+    // Not Mira: her emergency heal would bring the target back from one point.
+    const engine = startedMatch(players('rivet', 'boulder'));
     clearLevel(engine);
     const target = engine.brawlers[1];
     target.hp = 1;

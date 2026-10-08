@@ -11,6 +11,9 @@ export const cengelKit: Kit = {
   id: 'cengel',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.94 },
+
   attack: {
     name: 'Zincir Atışı',
     actions: [

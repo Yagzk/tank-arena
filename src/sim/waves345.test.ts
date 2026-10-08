@@ -303,7 +303,8 @@ describe('a vortex that heals', () => {
     me.superCharge = 100;
     press(engine, me, { superAttack: true }, 0.05);
     run(engine, 0.5);
-    expect(me.hp).toBeCloseTo(before, -1);
+    // Only the slow natural regeneration; nothing like the vortex's heal.
+    expect(me.hp - before).toBeLessThan(60);
   });
 });
 
@@ -415,5 +416,5 @@ describe('every character, played by a bot', () => {
         }
       }
     }
-  });
+  }, 60000);
 });

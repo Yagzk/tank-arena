@@ -13,6 +13,8 @@ export const lumenKit: Kit = {
   maxAmmo: 2,
 
   traits: {
+    // Balance dial: see docs/DENGE.md.
+    damageScale: 0.62,
     charge: { time: 1.4, minScale: 0.45, maxScale: 1.6 },
   },
 

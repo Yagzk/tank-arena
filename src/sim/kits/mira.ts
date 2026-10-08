@@ -11,6 +11,9 @@ export const miraKit: Kit = {
   id: 'mira',
   maxAmmo: 3,
 
+  // Balance dial: see docs/DENGE.md.
+  traits: { damageScale: 0.81 },
+
   attack: {
     name: 'Hurda Saçması',
     actions: [
