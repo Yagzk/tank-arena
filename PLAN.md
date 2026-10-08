@@ -362,9 +362,10 @@ Her mod için: kurallar · kazanma koşulu · HUD · harita tipi · bot davranı
 - [ ] **Hitstop** — isabette 40-60 ms donma
 - [x] Ekran sarsıntısı (şiddete göre ölçekli)
 - [x] İsabet kıvılcımları, namlu alevi
-- [ ] Kritik/öldürücü vuruşta ayrı geri bildirim
-- [ ] Ekran dışı düşman göstergesi (kenarda ok)
-- [ ] Hasar yönü göstergesi
+- [x] Öldürücü vuruşta ayrı geri bildirim — "X ELENDİ" duyurusu + sarsıntı
+- [x] Ekran dışı düşman göstergesi (kenarda ok) — en yakın 4, çalıdakini ele vermez
+- [x] Hasar yönü göstergesi — gaz/ateşte (yönü olmayan hasar) gösterilmez
+- [x] Vurulan bedenin beyaz parlaması
 
 ## 6.2 Ses — **şu an en zayıf halka**
 - [ ] Her karaktere ayrı atış / isabet / süper sesi, katmanlı
@@ -382,7 +383,8 @@ Her mod için: kurallar · kazanma koşulu · HUD · harita tipi · bot davranı
 - [x] Başlangıç geri sayımı
 - [x] Öldürme akışı, eleme bildirimi, izleyici kamerası
 - [ ] Maç girişi — takımları/rakipleri gösteren açılış
-- [ ] Zafer/yenilgi ekranı — ödül animasyonu, kupa sayacı
+- [x] Zafer/yenilgi ekranı — sıralama, 2 aşamalı açılış, konfeti yalnızca zaferde
+- [ ] Ödül animasyonu, kupa sayacı (kupa sistemi Faz 7'ye bağlı)
 - [ ] Karakter seçim karuseli
 - [ ] Mod seçim ekranı
 
